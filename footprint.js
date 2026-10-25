@@ -48,6 +48,19 @@ class FootprintRenderer {
     this.csShowLevels = true;
     this.csShowSignals = true;
     this.csVerticalScale = 1.0;
+
+    // Deep Historical Buffer (1,000+ bars across timeframes)
+    this.allCandles = [];
+
+    // Market Replay / Backtesting Engine State
+    this.isReplayMode = false;
+    this.replayIndex = 0;       // Current bar index displayed in replay
+    this.replayPlaying = false;
+    this.replaySpeed = 5;       // 1x, 2x, 5x, 10x
+    this.replayTimer = null;
+    this.replayTrades = [];     // Simulated trades placed during backtest
+    this.replayBalance = 10000.0;
+    this.onReplayUpdate = null; // UI callback
     this._confirmedSignalsCache = new Map(); // Permanent cache: c.time -> signal data (Prevents flickering & repainting)
     
     // 7 Independent Pro Trading Techniques (Can be toggled ON/OFF independently)
@@ -474,15 +487,221 @@ class FootprintRenderer {
     return rawCandles.slice(startIdx, endIdx);
   }
 
+  setHistoricalCandles(candles) {
+    if (Array.isArray(candles) && candles.length > 0) {
+      this.allCandles = candles;
+      if (this.isReplayMode && this.replayIndex > this.allCandles.length) {
+        this.replayIndex = this.allCandles.length;
+      }
+    }
+  }
+
+  mergeLiveCandles(snapshotCandles) {
+    if (!Array.isArray(snapshotCandles) || snapshotCandles.length === 0) return;
+    if (!this.allCandles || this.allCandles.length === 0) {
+      this.allCandles = snapshotCandles.slice();
+      return;
+    }
+    for (const sc of snapshotCandles) {
+      const idx = this.allCandles.findIndex(c => c.time === sc.time);
+      if (idx !== -1) {
+        this.allCandles[idx] = sc;
+      } else if (this.allCandles.length > 0 && sc.time > this.allCandles[this.allCandles.length - 1].time) {
+        this.allCandles.push(sc);
+        if (this.allCandles.length > 1500) {
+          this.allCandles.shift();
+        }
+      }
+    }
+  }
+
+  enterReplayMode(targetIndex) {
+    if (!this.allCandles || this.allCandles.length === 0) return;
+    this.isReplayMode = true;
+    this.replayPlaying = false;
+    if (this.replayTimer) { clearInterval(this.replayTimer); this.replayTimer = null; }
+    this.replayTrades = [];
+    if (targetIndex !== undefined) {
+      this.replayIndex = Math.max(10, Math.min(this.allCandles.length, targetIndex));
+    } else {
+      this.replayIndex = Math.max(10, this.allCandles.length - 120);
+    }
+    this.barOffset = 0;
+    this._notifyReplayUpdate();
+  }
+
+  exitReplayMode() {
+    this.isReplayMode = false;
+    this.replayPlaying = false;
+    if (this.replayTimer) { clearInterval(this.replayTimer); this.replayTimer = null; }
+    this.barOffset = 0;
+    this._notifyReplayUpdate();
+  }
+
+  toggleReplayPlay() {
+    if (this.replayPlaying) {
+      this.replayPause();
+    } else {
+      this.replayPlay();
+    }
+  }
+
+  replayPlay() {
+    if (!this.isReplayMode) return;
+    this.replayPlaying = true;
+    if (this.replayTimer) clearInterval(this.replayTimer);
+    const speed = this.replaySpeed || 5;
+    const intervalMs = Math.max(80, Math.round(1000 / speed));
+    this.replayTimer = setInterval(() => {
+      if (this.replayIndex >= this.allCandles.length) {
+        this.replayPause();
+        return;
+      }
+      this.replayStepForward(1);
+    }, intervalMs);
+    this._notifyReplayUpdate();
+  }
+
+  replayPause() {
+    this.replayPlaying = false;
+    if (this.replayTimer) { clearInterval(this.replayTimer); this.replayTimer = null; }
+    this._notifyReplayUpdate();
+  }
+
+  replayStepForward(n = 1) {
+    if (!this.isReplayMode || !this.allCandles || this.allCandles.length === 0) return;
+    this.replayIndex = Math.min(this.allCandles.length, this.replayIndex + n);
+    this._checkReplayTrades();
+    this._notifyReplayUpdate();
+  }
+
+  replayStepBack(n = 1) {
+    if (!this.isReplayMode || !this.allCandles || this.allCandles.length === 0) return;
+    this.replayIndex = Math.max(10, this.replayIndex - n);
+    this._notifyReplayUpdate();
+  }
+
+  replayJumpTo(idx) {
+    if (!this.isReplayMode || !this.allCandles || this.allCandles.length === 0) return;
+    this.replayIndex = Math.max(10, Math.min(this.allCandles.length, idx));
+    this._notifyReplayUpdate();
+  }
+
+  executeReplayTrade(action, volume = 0.01) {
+    if (!this.isReplayMode || !this.allCandles || this.replayIndex < 1) return null;
+    const bar = this.allCandles[this.replayIndex - 1];
+    if (!bar) return null;
+    const entryPrice = bar.close;
+    const isBuy = action.toUpperCase() === 'BUY';
+    const sl = Math.round((isBuy ? entryPrice - 3.0 : entryPrice + 3.0) * 100) / 100;
+    const tp = Math.round((isBuy ? entryPrice + 6.0 : entryPrice - 6.0) * 100) / 100;
+    const trade = {
+      id: Date.now() + Math.random(),
+      type: isBuy ? 'BUY' : 'SELL',
+      entryPrice,
+      entryBarIndex: this.replayIndex - 1,
+      time: bar.time,
+      sl,
+      tp,
+      volume,
+      pnl: 0.0,
+      status: 'OPEN'
+    };
+    this.replayTrades.push(trade);
+    this._notifyReplayUpdate();
+    return trade;
+  }
+
+  _checkReplayTrades() {
+    if (!this.allCandles || this.replayIndex < 1) return;
+    const bar = this.allCandles[this.replayIndex - 1];
+    if (!bar) return;
+    for (const t of this.replayTrades) {
+      if (t.status !== 'OPEN') continue;
+      const isBuy = t.type === 'BUY';
+      const diff = isBuy ? (bar.close - t.entryPrice) : (t.entryPrice - bar.close);
+      t.pnl = Math.round(diff * 100 * t.volume * 100) / 100;
+
+      if (isBuy) {
+        if (bar.low <= t.sl) {
+          t.status = 'CLOSED';
+          t.pnl = Math.round((t.sl - t.entryPrice) * 100 * t.volume * 100) / 100;
+          t.exitPrice = t.sl;
+          t.exitReason = 'SL';
+        } else if (bar.high >= t.tp) {
+          t.status = 'CLOSED';
+          t.pnl = Math.round((t.tp - t.entryPrice) * 100 * t.volume * 100) / 100;
+          t.exitPrice = t.tp;
+          t.exitReason = 'TP';
+        }
+      } else {
+        if (bar.high >= t.sl) {
+          t.status = 'CLOSED';
+          t.pnl = Math.round((t.entryPrice - t.sl) * 100 * t.volume * 100) / 100;
+          t.exitPrice = t.sl;
+          t.exitReason = 'SL';
+        } else if (bar.low <= t.tp) {
+          t.status = 'CLOSED';
+          t.pnl = Math.round((t.entryPrice - t.tp) * 100 * t.volume * 100) / 100;
+          t.exitPrice = t.tp;
+          t.exitReason = 'TP';
+        }
+      }
+    }
+  }
+
+  _notifyReplayUpdate() {
+    if (typeof this.onReplayUpdate === 'function') {
+      const currentBar = (this.allCandles && this.replayIndex > 0) ? this.allCandles[this.replayIndex - 1] : null;
+      let totalPnl = 0;
+      let winCount = 0;
+      let lossCount = 0;
+      for (const t of this.replayTrades) {
+        totalPnl += t.pnl;
+        if (t.status === 'CLOSED') {
+          if (t.pnl > 0) winCount++;
+          else lossCount++;
+        }
+      }
+      this.onReplayUpdate({
+        isReplayMode: this.isReplayMode,
+        replayIndex: this.replayIndex,
+        totalBars: (this.allCandles ? this.allCandles.length : 0),
+        replayPlaying: this.replayPlaying,
+        replaySpeed: this.replaySpeed,
+        bar: currentBar,
+        trades: this.replayTrades,
+        totalPnl: Math.round(totalPnl * 100) / 100,
+        winCount,
+        lossCount
+      });
+    }
+  }
+
   render(snapshot) {
     if (!this.width || !this.height) return;
     const ctx = this.ctx;
-    const rawCandles = snapshot.candles || [];
+
+    // Merge incoming snapshot candles into full history buffer
+    if (snapshot && snapshot.candles) {
+      this.mergeLiveCandles(snapshot.candles);
+    }
+
+    // Determine active candles array (Replay slice vs full deep history buffer)
+    let rawCandles;
+    if (this.isReplayMode) {
+      const endIdx = Math.max(1, Math.min(this.allCandles.length, this.replayIndex));
+      rawCandles = this.allCandles.slice(0, endIdx);
+    } else {
+      rawCandles = (this.allCandles && this.allCandles.length > 0) ? this.allCandles : (snapshot ? snapshot.candles || [] : []);
+    }
     if (rawCandles.length === 0) return;
+
+    const effectiveSnapshot = { ...snapshot, candles: rawCandles };
 
     // If Pro Candlestick Chart mode is active, render TradingView-style OHLC + Orderflow Candlestick workspace
     if (this.viewMode === 'candlestick') {
-      this._renderCandlestickChart(ctx, snapshot);
+      this._renderCandlestickChart(ctx, effectiveSnapshot);
       this._drawManualDrawings(ctx);
       this._handleHoverTooltip();
       return;
@@ -490,7 +709,7 @@ class FootprintRenderer {
 
     // If ClusterDelta Orderflow mode is active, render authentic ClusterDelta workspace
     if (this.viewMode === 'clusterdelta') {
-      this._renderClusterDelta(ctx, snapshot);
+      this._renderClusterDelta(ctx, effectiveSnapshot);
       this._drawManualDrawings(ctx);
       this._handleHoverTooltip();
       return;
@@ -4265,6 +4484,76 @@ class FootprintRenderer {
       ctx.fillText(`⏱ ${mm}:${ss}`, chartW + rightAxisW / 2, timerY + 10);
     }
 
+    // 11b. Render Backtest Replay Simulated Trades and Banner
+    if (this.isReplayMode) {
+      // Top Replay Banner
+      const bW = 280;
+      const bH = 20;
+      const bX = Math.round((chartW - bW) / 2);
+      const bY = topBarH + 6;
+      ctx.fillStyle = 'rgba(79, 70, 229, 0.90)';
+      ctx.fillRect(bX, bY, bW, bH);
+      ctx.strokeStyle = '#c7d2fe';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bX, bY, bW, bH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`⏪ MOD REPLAY AKTIF • Bar ${this.replayIndex}/${this.allCandles.length}`, bX + bW / 2, bY + bH / 2);
+
+      // Render Open Replay Trades
+      if (this.replayTrades && this.replayTrades.length > 0) {
+        for (const t of this.replayTrades) {
+          if (t.status !== 'OPEN') continue;
+          const yEntry = pToY(t.entryPrice);
+          const ySl = pToY(t.sl);
+          const yTp = pToY(t.tp);
+          const isBuy = t.type === 'BUY';
+          const col = isBuy ? '#10b981' : '#ef4444';
+
+          ctx.save();
+          // Entry line
+          ctx.strokeStyle = col;
+          ctx.setLineDash([5, 4]);
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(0, yEntry);
+          ctx.lineTo(chartW, yEntry);
+          ctx.stroke();
+
+          // Entry tag
+          const pnlStr = (t.pnl >= 0 ? '+' : '') + `$${t.pnl.toFixed(2)}`;
+          const txt = `⚡ SIM ${t.type} @ $${t.entryPrice.toFixed(2)} (${pnlStr})`;
+          ctx.font = 'bold 9px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(txt).width + 12;
+          ctx.fillStyle = isBuy ? 'rgba(6, 78, 59, 0.95)' : 'rgba(136, 19, 55, 0.95)';
+          ctx.fillRect(8, yEntry - 8, tw, 16);
+          ctx.strokeStyle = col;
+          ctx.strokeRect(8, yEntry - 8, tw, 16);
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(txt, 14, yEntry);
+
+          // SL line
+          ctx.strokeStyle = '#ef4444';
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath(); ctx.moveTo(0, ySl); ctx.lineTo(chartW, ySl); ctx.stroke();
+          ctx.fillStyle = '#ef4444';
+          ctx.fillText(`SL $${t.sl.toFixed(2)}`, 14, ySl - 4);
+
+          // TP line
+          ctx.strokeStyle = '#10b981';
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath(); ctx.moveTo(0, yTp); ctx.lineTo(chartW, yTp); ctx.stroke();
+          ctx.fillStyle = '#10b981';
+          ctx.fillText(`TP $${t.tp.toFixed(2)}`, 14, yTp - 4);
+          ctx.restore();
+        }
+      }
+    }
+
     // 12. Crosshair on Hover
     if (this.mousePos.x > 0 && this.mousePos.x < chartW && this.mousePos.y > mainChartTop && this.mousePos.y < mainChartBottom) {
       ctx.save();
@@ -4299,6 +4588,11 @@ class FootprintRenderer {
 
     // Define interactive pills: Feature Toggles + Navigation + Quick Action Trade HUD
     const pills = [
+      // Replay / Backtesting Mode Quick Toggle
+      { label: this.isReplayMode ? '⏪ REPLAY: ON' : '⏪ REPLAY', active: this.isReplayMode, col: '#818cf8', fn: () => {
+        if (window.app && window.app.toggleReplayMode) window.app.toggleReplayMode();
+        else if (window.orderFlowApp && window.orderFlowApp.toggleReplayMode) window.orderFlowApp.toggleReplayMode();
+      }},
       // Quick Action Trade HUD
       { label: '⚡ BUY', active: true, col: '#059669', isTrade: true, fn: () => {
         if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('BUY');
