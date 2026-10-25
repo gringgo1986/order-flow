@@ -175,6 +175,19 @@ def reset_candles():
     engine._seed_initial_data()
     return {"status": "success", "message": "Candles reset to fresh high-definition state"}
 
+@app.get("/api/history")
+def history_endpoint(limit: int = 1000, tf: str = None):
+    if tf and tf != engine.timeframe:
+        engine.set_timeframe(tf)
+    candles = engine.get_historical_candles(limit=limit)
+    return {
+        "status": "success",
+        "symbol": engine.symbol,
+        "timeframe": engine.timeframe,
+        "count": len(candles),
+        "candles": candles
+    }
+
 @app.get("/api/candles")
 def candles_endpoint():
     candles = engine.candles[-15:]
