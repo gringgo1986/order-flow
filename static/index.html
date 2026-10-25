@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XAUUSD Pro Order Flow & Bookmap Trading Cockpit</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=5.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ==================== HEADER BAR ==================== -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-logo">
+        <div class="brand-icon">⚡</div>
+        <span>XAUUSD<span style="color:var(--gold-accent)">.FLOW</span></span>
+      </div>
+
+      <!-- Symbol Price Widget -->
+      <div class="symbol-badge">
+        <span class="symbol-title" id="symbolTitle">XAUUSD.m</span>
+        <div class="symbol-price-group">
+          <span class="symbol-price" id="symbolPrice">4145.20</span>
+          <span class="symbol-spread" id="symbolSpread">Spread: 0.25</span>
+        </div>
+      </div>
+
+      <!-- 1s Real-Time Precision Pulse Badge -->
+      <div class="precision-badge" id="precisionBadge" title="Status Pengambilan Harga Live Setiap 1 Saat (Tepat)" style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,240,255,0.08); border:1px solid rgba(0,240,255,0.3); border-radius:4px; padding:3px 8px; font-family:var(--font-mono); font-size:11px;">
+        <span class="pulse-dot" style="width:7px; height:7px; background:#00e676; border-radius:50%; box-shadow:0 0 8px #00e676; display:inline-block;"></span>
+        <span id="txtTickCadence" style="color:#00f0ff; font-weight:700;">1s LIVE</span>
+        <span id="txtTickClock" style="color:#94a3b8; font-size:10px;">--:--:--</span>
+        <span id="txtTickLatency" style="color:#22c55e; font-size:9.5px; font-weight:700;">0ms</span>
+        <span style="color:#334155;">|</span>
+        <span id="txtTickVelocity" style="color:#ffb703; font-size:10px; font-weight:700;" title="Halaju Ketibaan Tick & Volum Sebenar">⚡ 1t/s</span>
+      </div>
+
+      <!-- Active Market Session Badge -->
+      <div class="session-badge" id="sessionHeaderBadge" title="Sesi Dagangan Semasa & Penjejak Sapuan Kecairan (Asia/London/NY)" style="display:inline-flex; align-items:center; gap:5px; background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.35); border-radius:4px; padding:3px 8px; font-family:var(--font-mono); font-size:10.5px; color:#fbbf24; font-weight:700;">
+        <span>🌏</span>
+        <span id="txtActiveSession">SESI: ASIA</span>
+      </div>
+
+      <!-- Unified Live Feed Status Badge & Source Switcher -->
+      <button class="mode-badge live" id="btnToggleFeedSource" title="Klik untuk tukar sumber harga: Swissquote Bank (Cloud) / JustMarkets MT5" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; border:1px solid #00f0ff; background:rgba(0,240,255,0.08); padding:3px 8px; border-radius:4px; font-family:var(--font-mono); font-size:11px;">
+        <span class="status-dot" style="background:#00f0ff; box-shadow:0 0 8px #00f0ff; width:7px; height:7px; border-radius:50%; display:inline-block;"></span>
+        <span id="modeText" style="color:#00f0ff; font-weight:700;">SWISSQUOTE CLOUD</span>
+      </button>
+      <div id="modeBadge" style="display:none;"><span id="modeBadgeFallback"></span></div>
+    </div>
+
+    <!-- View Modes -->
+    <div class="view-switchers">
+      <button class="nav-btn active" data-view="bookmap">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+        Bookmap Heatmap
+      </button>
+      <button class="nav-btn" data-view="clusterdelta">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/><path d="M15 21V9"/></svg>
+        ClusterDelta
+      </button>
+      <button class="nav-btn" data-view="footprint">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16"/><path d="M15 4v16"/><path d="M4 9h16"/><path d="M4 15h16"/></svg>
+        Footprint
+      </button>
+      <button class="nav-btn" data-view="candlestick">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4v16"/><rect x="6" y="8" width="6" height="8" rx="1"/><path d="M17 3v18"/><rect x="14" y="7" width="6" height="10" rx="1"/></svg>
+        Carta Candle
+      </button>
+      <button class="nav-btn" data-view="split">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18"/></svg>
+        Split View
+      </button>
+    </div>
+
+    <!-- Institutional Order Flow Telemetry -->
+    <div class="account-summary">
+      <div class="acc-item">
+        <span class="acc-label">CVD Delta</span>
+        <span class="acc-val profit-pos" id="hdrCvdVal">+0.0 L</span>
+      </div>
+      <div class="acc-item">
+        <span class="acc-label">Session VWAP</span>
+        <span class="acc-val" id="hdrVwapVal" style="color:#00f0ff;">$0.00</span>
+      </div>
+      <div class="acc-item">
+        <span class="acc-label">dPOC Sesi</span>
+        <span class="acc-val" id="hdrDpocVal" style="color:#ffd60a;">$0.00</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== MAIN WORKSPACE ==================== -->
+  <main class="main-workspace">
+
+    <!-- Chart Panel -->
+    <section class="chart-container">
+      
+      <!-- Unified Executive Smart Cockpit Bar (Radar AI + MTF Matrix + Prop Shield) -->
+      <div class="market-radar-bar" id="marketRadarBar" style="display:flex; align-items:center; justify-content:space-between; background:linear-gradient(90deg, #0d1424, #080c16); border-bottom:1px solid #1c273c; padding:3px 10px; min-height:34px; max-height:36px; box-sizing:border-box; overflow:hidden; font-family:var(--font-mono); font-size:10px;">
+        <!-- Left: AI Radar Sentiment & Advice -->
+        <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+          <div class="radar-status-pill bullish" id="radarStatusPill" style="padding:2px 8px; font-size:10px; flex-shrink:0;">
+            <span class="radar-pulse-dot" id="radarPulseDot"></span>
+            <span class="radar-headline" id="radarHeadline">🟢 ANALISIS: MEMUATKAN...</span>
+          </div>
+          <div class="radar-advice" id="radarAdvice" style="font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:440px;">
+            <span>💡</span> <span id="radarAdviceText">Sistem menganalisis aliran pesanan institusi, VWAP & kecairan...</span>
+          </div>
+        </div>
+
+        <!-- Center: MTF Radar Matrix Pills -->
+        <div id="mtfMatrixBar" style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+          <span style="color:#fbbf24; font-weight:800; font-size:9.5px; display:flex; align-items:center; gap:3px;">
+            <span>⭐</span> MTF:
+          </span>
+          <span class="mtf-pill" id="mtfPillM1" style="background:#111b2b; padding:1px 5px; border-radius:3px; border:1px solid #273b54; color:#94a3b8; font-weight:700;">M1: ⚪</span>
+          <span class="mtf-pill" id="mtfPillM5" style="background:#111b2b; padding:1px 5px; border-radius:3px; border:1px solid #273b54; color:#94a3b8; font-weight:700;">M5: ⚪</span>
+          <span class="mtf-pill" id="mtfPillM15" style="background:#111b2b; padding:1px 5px; border-radius:3px; border:1px solid #273b54; color:#94a3b8; font-weight:700;">M15: ⚪</span>
+          <span class="mtf-pill" id="mtfPillH1" style="background:#111b2b; padding:1px 5px; border-radius:3px; border:1px solid #273b54; color:#94a3b8; font-weight:700;">H1: ⚪</span>
+          <span id="mtfHeadline" style="color:#00f0ff; font-weight:700; margin-left:4px; font-size:9.5px;">⚖️ 4TF</span>
+        </div>
+
+        <!-- Right: Strength Meter + Spoof + Prop Shield + Voice + Help -->
+        <div class="radar-right-actions" style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+          <div class="radar-strength-meter" title="Kekuatan Tekanan Pasaran (0-100%)" style="display:flex; align-items:center; gap:4px;">
+            <div class="radar-meter-track" style="width:40px; height:5px;">
+              <div class="radar-meter-fill" id="radarMeterFill" style="width: 50%;"></div>
+            </div>
+            <span class="radar-pct" id="radarStrengthPct" style="font-size:9px;">50%</span>
+          </div>
+
+          <div id="spoofAlertPill" style="display:none; align-items:center; gap:3px; background:rgba(239,68,68,0.22); border:1px solid #ef4444; border-radius:3px; padding:1px 6px; color:#fca5a5; font-weight:800; font-size:9px;">
+            <span id="spoofAlertText">⚡ SPOOF PULL</span>
+          </div>
+
+          <div id="propFirmBadge" style="display:inline-flex; align-items:center; gap:3px; background:rgba(16,185,129,0.14); border:1px solid #10b981; border-radius:3px; padding:1px 6px; color:#34d399; font-weight:700; font-size:9px; cursor:pointer;" title="Klik untuk togol status Pelindung Prop-Firm">
+            <span>🛡️</span>
+            <span id="propFirmStatusText">AMAN</span>
+          </div>
+
+          <!-- Quad-Confluence Signal Dashboard Launch Button -->
+          <button class="tool-btn" id="btnOpenConfluenceDash" style="padding:1px 8px; font-size:9.5px; font-weight:800; background:rgba(255,214,10,0.14); border:1px solid #ffd60a; color:#ffd60a; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" title="Buka Dashboard Analisis Konfluens 4-Modul (Bookmap + ClusterDelta + Footprint + Candle)">
+            <span>🎯</span> DASHBOARD 4-MODUL
+          </button>
+
+          <button class="tool-btn" id="btnToggleVoice" style="padding:1px 6px; font-size:9.5px;" title="Hidup/Matikan Makluman Suara Pintar (Web Speech AI)">🎙️ Suara</button>
+          <button class="tool-btn" id="btnHelpGuide" style="padding:1px 6px; font-size:9.5px;" title="Buka Panduan Pantas & Kamus Order Flow">❓ Bantuan</button>
+        </div>
+      </div>
+
+      <div class="chart-toolbar">
+        <div class="chart-tools-left">
+          <button class="tool-btn" id="btnZoomIn" title="Besarkan saiz lilin & harga (Zoom In)">🔍+</button>
+          <button class="tool-btn" id="btnZoomOut" title="Kecilkan saiz lilin (Zoom Out)">🔍-</button>
+          <button class="tool-btn" id="btnZoomReset" title="Set semula zoom & pusatkan semula harga & masa (Atau Double-Click Carta)">⟲</button>
+
+          <!-- Canvas Interactive Drawing Tools -->
+          <div class="drawing-tools-group" style="display:inline-flex; align-items:center; gap:2px; border-left:1px solid #1e293b; padding-left:4px; margin-left:2px;">
+            <button class="tool-btn" id="btnDrawRay" title="Lukis Garis Rintangan / Sokongan Horizontal Ray (Klik pada harga di carta)">📏 Ray</button>
+            <button class="tool-btn" id="btnDrawTrend" title="Lukis Garisan Arah Trendline (Klik 2 titik pada carta)">📐 Trend</button>
+            <button class="tool-btn" id="btnClearDrawings" title="Padam semua garisan lukisan manual" style="color:#f43f5e;">🗑️</button>
+          </div>
+
+          <button class="tool-btn active" id="btnToggleZones" title="Papar / Sembunyi Tanda Zon Ramai Buyer & Seller">🎯 Zon B/S</button>
+          <button class="tool-btn active" id="btnToggleSVP" style="border-color:#38bdf8; color:#38bdf8; font-weight:700;" title="Papar / Sembunyi Composite Session Volume Profile (dPOC, VAH, VAL & LVN)">📊 SVP</button>
+          <button class="tool-btn active" id="btnToggleIcebergs" style="border-color:#00f0ff; color:#00f0ff; font-weight:700;" title="Papar / Sembunyi Pengesan Pesanan Iceberg & Absorption Institusi">🧊 Iceberg</button>
+          <button class="tool-btn active" id="btnToggleSessionLevels" style="border-color:#f59e0b; color:#fbbf24; font-weight:700;" title="Papar / Sembunyi Garisan Asian, London, NY High/Low, PDH, PDL, Daily Open & Sapuan Kecairan">🌐 Sesi/PDH</button>
+          <button class="tool-btn active" id="btnToggleNewsShield" style="border-color:#10b981; color:#34d399; font-weight:700;" title="Penapis Berita Merah USD & Pelindung Kejutan Volatiliti">🛡️ Berita</button>
+          
+          <!-- Timeframe Selector (M1, M5, M15, M30, H1, H4) -->
+          <span class="tool-tag" style="margin-left:2px; color:var(--gold-accent); font-weight:700;">TF:</span>
+          <button class="tool-btn tf-btn active" data-tf="M1">M1</button>
+          <button class="tool-btn tf-btn" data-tf="M5">M5</button>
+          <button class="tool-btn tf-btn" data-tf="M15">M15</button>
+          <button class="tool-btn tf-btn" data-tf="M30">M30</button>
+          <button class="tool-btn tf-btn" data-tf="H1">H1</button>
+          <button class="tool-btn tf-btn" data-tf="H4">H4</button>
+
+          <!-- Context-Aware Footprint Tools (Auto-hidden in Bookmap mode) -->
+          <div id="fpSpecificTools" style="display:none; align-items:center; gap:2px;">
+            <!-- Footprint Step Selector -->
+            <span class="tool-tag" style="margin-left:2px;">Blok:</span>
+            <button class="tool-btn step-btn" data-step="0.25">$0.25</button>
+            <button class="tool-btn step-btn" data-step="0.50">$0.50</button>
+            <button class="tool-btn step-btn active" data-step="1.00">$1.00</button>
+            <button class="tool-btn step-btn" data-step="2.00">$2.00</button>
+
+            <!-- Footprint Advanced Order Flow Controls -->
+            <div class="footprint-tools-group" style="display:inline-flex; align-items:center; gap:2px; margin-left:2px; border-left:1px solid #1e293b; padding-left:4px;">
+              <span class="tool-tag" style="color:#38bdf8; font-weight:700;">OF:</span>
+              <button class="tool-btn fp-mode-btn active" data-mode="bid_ask" title="Mod Footprint: Bid x Ask">Bid×Ask</button>
+              <button class="tool-btn fp-mode-btn" data-mode="delta" title="Mod Footprint: Profil Delta Net">Delta Δ</button>
+              <button class="tool-btn fp-mode-btn" data-mode="volume" title="Mod Footprint: Profil Volum">Vol</button>
+              <button class="tool-btn active" id="btnToggleVA" title="Papar / Sembunyi Kawasan Nilai 70% (Value Area VAH/VAL)">VA 70%</button>
+              <button class="tool-btn active" id="btnToggleStackedImb" title="Papar / Sembunyi Ketidakseimbangan Bertingkat Institusi (Stacked Imbalances 3x)">⚡Imb</button>
+            </div>
+          </div>
+
+          <!-- Context-Aware Candlestick Multi-Technique Dropdown Bar -->
+          <div id="csTechniquesBar" style="display:none; align-items:center; gap:4px; margin-left:3px; border-left:1px solid #1e293b; padding-left:4px;">
+            <span class="tool-tag" style="color:#ffd60a; font-weight:800; font-size:9.5px;">TEKNIK:</span>
+            <select id="selectCsTechnique" style="background:#0b1324; color:#ffd60a; border:1px solid #ffd60a; padding:2px 8px; font-size:10px; font-family:var(--font-mono); font-weight:700; border-radius:4px; cursor:pointer; outline:none;" title="Pilih teknik dagangan untuk modul lilin (Tidak menyemakkan carta)">
+              <option value="all" selected>🌟 SEMUA TEKNIK (7 Gabungan Strategi)</option>
+              <option value="smc">⭐ 1. SMC Liquidity Sweep (Turtle Soup)</option>
+              <option value="of_absorb">⚡ 2. Order Flow Absorption & Divergence</option>
+              <option value="vwap_band">🌐 3. VWAP ±2σ Extreme Band Bounce</option>
+              <option value="ema_trend">🚀 4. EMA Ribbon Trend Pullback</option>
+              <option value="vp_retest">🏛️ 5. Volume Profile dPOC / VA Retest</option>
+              <option value="snr">🎯 6. SNR (Support & Resistance / RBS / SBR)</option>
+              <option value="snd">📦 7. SND (Supply & Demand DBR / RBD / FTB)</option>
+              <option value="none">🚫 MATIKAN ISYARAT (Off)</option>
+            </select>
+            <button class="tool-btn" id="btnCsSopGuide" style="border-color:#34d399; color:#34d399; font-weight:700; padding:1px 8px; font-size:9.5px;" title="Buka Kamus & SOP Lengkap 5 Teknik Dagangan">📖 SOP</button>
+          </div>
+        </div>
+
+        <div class="chart-tools-right">
+          <!-- ClusterDelta Jalur (20-50) Slider (Context-Aware) -->
+          <div id="clusterJalurWrap" style="display:none; align-items:center; gap:3px; margin-right:3px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.32); border-radius:4px; padding:1px 5px;" title="Laras Bilangan Jalur ClusterDelta (20 hingga 50 Jalur)">
+            <span class="tool-tag" style="font-size:9.5px; color:#fbbf24; font-weight:700;">Jalur(20-50):</span>
+            <input type="range" id="sliderClusterJalur" min="20" max="50" step="1" value="30" style="width:52px; cursor:pointer; accent-color:#fbbf24;">
+            <span id="lblClusterJalur" style="font-family:var(--font-mono); font-size:9.5px; color:#fde047; font-weight:800; min-width:16px; text-align:right;">30</span>
+          </div>
+
+          <!-- Bubble Size Slider (Context-Aware: Bookmap Only) -->
+          <div id="bookmapBubbleWrap" style="display:inline-flex; align-items:center; gap:3px; margin-right:2px;" title="Sensitiviti saiz buble order flow">
+            <span class="tool-tag" style="font-size:9.5px;">Buble:</span>
+            <input type="range" id="sliderBubbleZoom" min="0.4" max="2.5" step="0.1" value="1.0" style="width:40px; cursor:pointer;">
+          </div>
+
+          <button class="tool-btn active" id="btnToggleSound" title="Makluman Bunyi Audio (Whale Ping & Sentuhan Zon)">🔊</button>
+          <button class="tool-btn" id="btnScreenshot" title="Simpan Tangkapan Skrin Carta (PNG)">📸</button>
+          <button class="tool-btn" id="btnFullscreen" title="Mod Skrin Penuh (Zen Mode)">⛶</button>
+        </div>
+      </div>
+
+      <!-- Viewports (Expanded Full Vertical Height — Redundant CVD Sub-Pane Removed) -->
+      <div class="canvas-viewport" id="chartViewport" style="flex: 1 1 0; min-height: 360px; position: relative; width: 100%; height: 100%; overflow: hidden;">
+        <!-- Reconnecting Banner Alert -->
+        <div id="reconnectBanner" style="display:none; position:absolute; top:8px; left:50%; transform:translateX(-50%); background:rgba(239,68,68,0.92); color:#fff; padding:5px 14px; border-radius:5px; font-family:var(--font-mono); font-size:10.5px; font-weight:700; z-index:9999; box-shadow:0 4px 15px rgba(0,0,0,0.5); align-items:center; gap:6px;">
+          <span>⚠️</span> <span id="reconnectText">Sambungan pelayan terputus. Menyambung semula...</span>
+        </div>
+        <canvas id="bookmapCanvas"></canvas>
+        <canvas id="footprintCanvas" style="display:none;"></canvas>
+        <div class="chart-tooltip" id="chartTooltip"></div>
+      </div>
+    </section>
+
+    <!-- Right Sidebar: Full-Height Institutional DOM Ladder (Top-to-Bottom) -->
+    <aside class="trading-sidebar">
+      <div class="dom-panel" style="height: 100%; border-bottom: none; display: flex; flex-direction: column;">
+        <div class="panel-header">
+          <span>Depth of Market (DOM)</span>
+          <span style="color:var(--gold-accent); font-size:9.5px; font-weight:700;" title="Tangga Kecairan Institusi Penuh (16 Paras Ask di Atas, Harga Semasa di Tengah, 16 Paras Bid di Bawah)">📊 FULL LADDER (32 PARAS)</span>
+        </div>
+        <div class="dom-table-header">
+          <span style="color:#00e676;">DEMAND (BID)</span>
+          <span>HARGA ($)</span>
+          <span style="color:#ff3366;">SUPPLY (ASK)</span>
+        </div>
+        <div class="dom-ladder-container" id="domLadder" style="flex: 1 1 0; overflow-y: auto;">
+          <!-- Populated dynamically by dom.js -->
+        </div>
+
+        <!-- Live Institutional Book Imbalance Summary Footer -->
+        <div class="dom-summary-footer" id="domSummaryFooter" style="padding: 6px 10px; background: #080c14; border-top: 1px solid #1e293b; font-family: var(--font-mono); font-size: 10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-weight:700;">
+            <span id="domBidSum" style="color:#00e676;">BID: 0L (50%)</span>
+            <span id="domImbBiasText" style="color:#ffb703; font-size:9.5px;">⚖️ SEIMBANG</span>
+            <span id="domAskSum" style="color:#ff3366;">ASK: 0L (50%)</span>
+          </div>
+          <div style="width:100%; height:6px; background:rgba(255, 51, 102, 0.35); border-radius:3px; overflow:hidden; display:flex;">
+            <div id="domImbBidBar" style="width:50%; height:100%; background:linear-gradient(90deg, #00b4d8, #00e676); transition:width 0.2s ease;"></div>
+          </div>
+        </div>
+
+        <!-- Feature 3 & 4: Prop-Firm Auto-Lot Sizing & 1-Click Fast Execution Cockpit -->
+        <div class="dom-execution-bar" style="padding: 6px 8px; background: #070a12; border-top: 1px solid #1a2538; font-family: var(--font-mono); font-size: 10px;">
+          <!-- Prop-Firm Auto-Lot Risk Presets -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+            <span style="color:#94a3b8; font-size:9px; font-weight:700;">RISIKO:</span>
+            <div style="display:flex; gap:3px;">
+              <button class="tool-btn risk-preset-btn active" data-risk="0.5" style="padding:1px 5px; font-size:9px;" title="Risiko 0.5% Ekuiti">0.5%</button>
+              <button class="tool-btn risk-preset-btn" data-risk="1.0" style="padding:1px 5px; font-size:9px;" title="Risiko 1.0% Ekuiti (Standard Prop-Firm)">1.0%</button>
+              <button class="tool-btn risk-preset-btn" data-risk="2.0" style="padding:1px 5px; font-size:9px;" title="Risiko 2.0% Ekuiti">2.0%</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:2px;">
+              <span style="color:#94a3b8; font-size:9px;">Lot:</span>
+              <input type="number" id="inputFastLot" value="0.05" step="0.01" min="0.01" max="10" style="width:44px; background:#111b2d; border:1px solid #273e60; color:#ffd60a; font-family:var(--font-mono); font-weight:800; font-size:10px; text-align:center; border-radius:3px; padding:1px 0;">
+            </div>
+          </div>
+          <!-- 1-Click Fast Execution Buttons -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; margin-bottom:4px;">
+            <button class="tool-btn" id="btnFastBuy" style="background:rgba(0,230,118,0.18); border:1px solid #00e676; color:#00e676; font-weight:800; font-size:11px; padding:4px 0; border-radius:3px;" title="Beli Pasaran Serta-Merta (Market Buy)">⚡ BUY MKT</button>
+            <button class="tool-btn" id="btnFastSell" style="background:rgba(255,51,102,0.18); border:1px solid #ff3366; color:#ff3366; font-weight:800; font-size:11px; padding:4px 0; border-radius:3px;" title="Jual Pasaran Serta-Merta (Market Sell)">⚡ SELL MKT</button>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
+            <button class="tool-btn" id="btnFastBE" style="background:#111b2d; border:1px solid #38bdf8; color:#38bdf8; font-weight:700; font-size:9.5px; padding:2px 0;" title="Pindahkan Stop Loss ke Breakeven untuk semua posisi aktif">🎯 BE SEMUA</button>
+            <button class="tool-btn" id="btnFastCloseAll" style="background:#1b1218; border:1px solid #f43f5e; color:#fb7185; font-weight:700; font-size:9.5px; padding:2px 0;" title="Tutup Semua Posisi Aktif">❌ TUTUP SEMUA</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom Dock: Live Order Flow Insights & Time & Sales Tape -->
+    <section class="bottom-dock" id="bottomDock">
+      <div class="dock-tabs" style="justify-content:space-between;">
+        <div style="display:flex; gap:4px; align-items:center;">
+          <button class="dock-tab active" data-tab="insights">
+            Order Flow Insights ⚡
+          </button>
+          <button class="dock-tab" data-tab="tape">
+            Time & Sales (Tape)
+          </button>
+          <!-- Feature 6: Tape Lot Size Filter -->
+          <div id="tapeFilterGroup" style="display:none; align-items:center; gap:2px; margin-left:8px;">
+            <span style="font-size:9.5px; color:#94a3b8; font-family:var(--font-mono);">Tapis:</span>
+            <button class="tool-btn tape-filter-btn active" data-minlot="0" style="padding:1px 5px; font-size:9px;">Semua</button>
+            <button class="tool-btn tape-filter-btn" data-minlot="1.0" style="padding:1px 5px; font-size:9px;">≥1.0L</button>
+            <button class="tool-btn tape-filter-btn" data-minlot="3.0" style="padding:1px 5px; font-size:9px;">≥3.0L</button>
+            <button class="tool-btn tape-filter-btn" data-minlot="5.0" style="padding:1px 5px; font-size:9px; color:#38bdf8; font-weight:800;">≥5.0L 🐋</button>
+          </div>
+        </div>
+        <button class="tool-btn" id="btnToggleDock" style="font-size:10px; padding:2px 8px; border-color:#38bdf8; color:#38bdf8; font-weight:700;" title="Kecilkan atau Besarkan Panel Bawah untuk meluaskan Carta Utama">▼ Kecilkan Dock</button>
+      </div>
+
+      <div class="dock-content">
+        <!-- Tab 1: Insights (Active Default) -->
+        <div id="tabPaneInsights" style="display:block;">
+          <div class="insights-list" id="insightsList">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Tab 2: Tape -->
+        <div id="tabPaneTape" style="display:none;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Masa</th>
+                <th>Harga ($)</th>
+                <th>Saiz (Lots)</th>
+                <th>Pihak (Aggressor)</th>
+                <th>Kategori</th>
+              </tr>
+            </thead>
+            <tbody id="tapeTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Compact Floating Quad-Confluence Signal Dashboard Card -->
+  <div class="help-modal" id="confluenceDashModal" style="display:none; position:fixed; top:46px; right:12px; width:380px; max-width:92vw; max-height:82vh; background:rgba(7,11,20,0.96); backdrop-filter:blur(14px); border:1px solid #334155; border-radius:8px; box-shadow:0 8px 32px rgba(0,0,0,0.85); z-index:99999; flex-direction:column; overflow:hidden;">
+    <div class="help-content" style="display:flex; flex-direction:column; max-height:82vh; padding:10px 12px; box-sizing:border-box;">
+      
+      <!-- Dashboard Header (Compact) -->
+      <div class="help-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:6px; margin-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:14px;">🎯</span>
+          <div>
+            <h3 style="margin:0; font-size:11.5px; color:#ffd60a; letter-spacing:0.4px;">DASHBOARD KONFLUENS 4-MODUL</h3>
+            <span style="font-size:8.5px; color:#94a3b8;">Bookmap • ClusterDelta • Footprint • Candle</span>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:4px;">
+          <button class="tool-btn" id="btnMinimizeDash" style="padding:1px 6px; font-size:9px;" title="Kecilkan / Besarkan">➖</button>
+          <button class="tool-btn" id="btnCloseConfluenceDash" style="padding:1px 8px; border-color:#f43f5e; color:#f43f5e; font-weight:700; font-size:9.5px;">✕</button>
+        </div>
+      </div>
+
+      <div id="dashBodyContainer" class="help-body" style="flex:1 1 0; overflow-y:auto; padding-right:4px; display:flex; flex-direction:column; gap:8px;">
+        
+        <!-- SECTION 1: PRIME TRADE SIGNAL CARD (COMPACT) -->
+        <div id="dashSignalCard" style="background:linear-gradient(135deg, rgba(6,78,59,0.30), rgba(15,23,42,0.85)); border:1.2px solid #00e676; border-radius:6px; padding:8px 10px; box-shadow:0 0 12px rgba(0,230,118,0.12);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span class="pulse-dot" style="width:7px; height:7px; background:#00e676; border-radius:50%; box-shadow:0 0 6px #00e676;"></span>
+              <b id="dashSigTitle" style="color:#00e676; font-size:10.5px; font-family:var(--font-mono);">🟢 BUY ON PULLBACK (A+ PRIME)</b>
+            </div>
+            <span id="dashSigGrade" style="background:rgba(0,230,118,0.2); color:#00e676; border:1px solid #00e676; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:800; font-family:var(--font-mono);">SKOR 4/4</span>
+          </div>
+
+          <!-- Price Level Grid (3 Columns) -->
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; font-family:var(--font-mono); font-size:9.5px; background:rgba(0,0,0,0.35); padding:6px; border-radius:4px; border:1px solid rgba(255,255,255,0.06); text-align:center;">
+            <div>
+              <span style="color:#94a3b8; font-size:8.5px;">Zon Masuk:</span><br>
+              <b id="dashValEntry" style="color:#ffffff; font-size:11px;">$4,015.50</b>
+            </div>
+            <div>
+              <span style="color:#94a3b8; font-size:8.5px;">Stop Loss:</span><br>
+              <b id="dashValSL" style="color:#ff3366; font-size:11px;">$4,011.80</b>
+            </div>
+            <div>
+              <span style="color:#94a3b8; font-size:8.5px;">Take Profit (1:2.5):</span><br>
+              <b id="dashValTP1" style="color:#00e676; font-size:11px;">$4,024.00</b>
+            </div>
+          </div>
+
+          <!-- Action Buttons Bar -->
+          <div style="display:flex; gap:4px; margin-top:6px;">
+            <button class="tool-btn" id="btnDashCopyPlan" style="flex:1; border-color:#ffd60a; color:#ffd60a; font-weight:700; padding:3px 6px; font-size:9px;" title="Salin parameter isyarat">📋 Salin</button>
+            <button class="tool-btn" id="btnDashExecuteBuy" style="flex:1; background:#00c853; border-color:#00e676; color:#04101e; font-weight:800; padding:3px 6px; font-size:9px;" title="Buy Market">🟢 Buy</button>
+            <button class="tool-btn" id="btnDashExecuteSell" style="flex:1; background:#d50000; border-color:#ff3366; color:#ffffff; font-weight:800; padding:3px 6px; font-size:9px;" title="Sell Market">🔴 Sell</button>
+            <button class="tool-btn" id="btnDashBreakEven" style="border-color:#38bdf8; color:#38bdf8; font-weight:700; padding:3px 6px; font-size:9px;" title="Kunci Breakeven">🛡️ BE</button>
+          </div>
+        </div>
+
+        <!-- SECTION 2: QUAD CONFLUENCE GAUGE TRACK (COMPACT) -->
+        <div style="background:#0f172a; border:1px solid #1e293b; border-radius:5px; padding:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+            <span style="font-size:9.5px; color:#fbbf24; font-weight:800; display:flex; align-items:center; gap:3px;">
+              <span>⚖️</span> KEPUTUSAN 4-MODUL:
+            </span>
+            <span id="dashGaugeSummary" style="font-family:var(--font-mono); font-size:9.5px; font-weight:800; color:#00e676;">4/4 SEPAKAT (100%)</span>
+          </div>
+
+          <!-- 4 Segmented Progress Blocks -->
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:3px;">
+            <div id="gaugeMod1" style="background:rgba(0,230,118,0.18); border:1px solid #00e676; color:#00e676; border-radius:3px; padding:3px 1px; text-align:center; font-size:8px; font-weight:700;">
+              🗺️ Bookmap<br><b style="font-size:9.5px;">LULUS ✅</b>
+            </div>
+            <div id="gaugeMod2" style="background:rgba(0,230,118,0.18); border:1px solid #00e676; color:#00e676; border-radius:3px; padding:3px 1px; text-align:center; font-size:8px; font-weight:700;">
+              📊 Cluster<br><b style="font-size:9.5px;">LULUS ✅</b>
+            </div>
+            <div id="gaugeMod3" style="background:rgba(0,230,118,0.18); border:1px solid #00e676; color:#00e676; border-radius:3px; padding:3px 1px; text-align:center; font-size:8px; font-weight:700;">
+              👣 Footprint<br><b style="font-size:9.5px;">LULUS ✅</b>
+            </div>
+            <div id="gaugeMod4" style="background:rgba(0,230,118,0.18); border:1px solid #00e676; color:#00e676; border-radius:3px; padding:3px 1px; text-align:center; font-size:8px; font-weight:700;">
+              🕯️ Candle<br><b style="font-size:9.5px;">LULUS ✅</b>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 3: 4 SENSOR DETAIL CARDS (2x2 COMPACT GRID) -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
+          <!-- SENSOR 1: BOOKMAP -->
+          <div style="background:rgba(15,23,42,0.6); border:1px solid #334155; border-radius:4px; padding:5px 7px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+              <b style="color:#38bdf8; font-size:9px;">🗺️ BOOKMAP</b>
+              <span id="statSensor1" style="color:#00e676; font-size:8px; font-weight:800;">LULUS ✅</span>
+            </div>
+            <div style="font-size:8px; color:#cbd5e1; line-height:1.25;">
+              • Dinding Bids kukuh<br>
+              • Iceberg Buyer aktif
+            </div>
+          </div>
+
+          <!-- SENSOR 2: CLUSTERDELTA -->
+          <div style="background:rgba(15,23,42,0.6); border:1px solid #334155; border-radius:4px; padding:5px 7px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+              <b style="color:#fbbf24; font-size:9px;">📊 CLUSTERDELTA</b>
+              <span id="statSensor2" style="color:#00e676; font-size:8px; font-weight:800;">LULUS ✅</span>
+            </div>
+            <div style="font-size:8px; color:#cbd5e1; line-height:1.25;">
+              • POC Volum: <span id="dashClusterPoc">$4,015.00</span><br>
+              • Delta: <span id="dashClusterDelta">+18L Net</span>
+            </div>
+          </div>
+
+          <!-- SENSOR 3: FOOTPRINT -->
+          <div style="background:rgba(15,23,42,0.6); border:1px solid #334155; border-radius:4px; padding:5px 7px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+              <b style="color:#00e676; font-size:9px;">👣 FOOTPRINT</b>
+              <span id="statSensor3" style="color:#00e676; font-size:8px; font-weight:800;">LULUS ✅</span>
+            </div>
+            <div style="font-size:8px; color:#cbd5e1; line-height:1.25;">
+              • Stacked Imb 3x aktif<br>
+              • Serapan jualan (Absorb)
+            </div>
+          </div>
+
+          <!-- SENSOR 4: CARTA CANDLE -->
+          <div style="background:rgba(15,23,42,0.6); border:1px solid #334155; border-radius:4px; padding:5px 7px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+              <b style="color:#c084fc; font-size:9px;">🕯️ CARTA CANDLE</b>
+              <span id="statSensor4" style="color:#00e676; font-size:8px; font-weight:800;">LULUS ✅</span>
+            </div>
+            <div style="font-size:8px; color:#cbd5e1; line-height:1.25;">
+              • EMA 9>21>50 Uptrend<br>
+              • Retest dPOC Sesi
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 4: EASY CHEAT SHEET (TINY) -->
+        <div style="background:rgba(255,214,10,0.05); border:1px solid rgba(255,214,10,0.22); border-radius:4px; padding:5px 8px; font-size:8.5px; color:#cbd5e1; line-height:1.3;">
+          💡 <b>SOP:</b> Masuk bila skor &ge;3/4 di zon Entry. Kunci Breakeven bila untung +$3.50.
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Help / Kamus Order Flow Slide-Over Drawer -->
+  <div class="help-modal" id="helpModal" style="display:none; position:fixed; top:0; right:0; width:440px; max-width:92vw; height:100vh; background:rgba(8,12,22,0.96); backdrop-filter:blur(10px); border-left:1px solid #1e293b; box-shadow:-8px 0 30px rgba(0,0,0,0.8); z-index:99999; flex-direction:column; transition:transform 0.25s ease;">
+    <div class="help-content" style="display:flex; flex-direction:column; height:100%; padding:14px; box-sizing:border-box;">
+      <div class="help-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:10px; margin-bottom:10px;">
+        <h3 style="margin:0; font-size:13.5px; color:#ffb703; display:flex; align-items:center; gap:8px;">
+          <span>📖</span> Kamus & Panduan Order Flow
+        </h3>
+        <button class="tool-btn" id="btnCloseHelp" style="padding:2px 10px; border-color:#f43f5e; color:#f43f5e; font-weight:700;">✕ Tutup</button>
+      </div>
+      <div class="help-body" style="flex:1 1 0; overflow-y:auto; padding-right:6px;">
+        <p style="margin-top:0;">Terminal ini menggabungkan prinsip dagangan <b>Auction Market Theory (AMT)</b> dan <b>Order Flow</b> untuk mengesan transaksi institusi secara langsung:</p>
+        <div class="help-grid">
+          <div class="help-card">
+            <h4>🟢 ZON RAMAI BUYER (Demand)</h4>
+            <p style="margin:0; font-size:11px;">Paras harga di mana pembeli agresif melambakkan pesanan belian terbanyak. Bertindak sebagai <b>Sokongan Kuat</b> untuk mencari persediaan BUY.</p>
+          </div>
+          <div class="help-card">
+            <h4>🔴 ZON RAMAI SELLER (Supply)</h4>
+            <p style="margin:0; font-size:11px;">Paras harga di mana penjual agresif menolak harga ke bawah. Bertindak sebagai <b>Rintangan Kuat</b> untuk mencari persediaan SELL.</p>
+          </div>
+          <div class="help-card">
+            <h4>⭐ POC (Point of Control)</h4>
+            <p style="margin:0; font-size:11px;">Harga di mana jumlah volum dagangan paling padat bertukar tangan. Merupakan zon magnet nilai saksama (Fair Value).</p>
+          </div>
+          <div class="help-card">
+            <h4>🌐 SESSION VWAP & BANDS</h4>
+            <p style="margin:0; font-size:11px;">Purata harga berwajaran volum yang digunakan oleh pengurus dana. Jika harga di atas VWAP = Trend Bullish; di bawah VWAP = Trend Bearish.</p>
+          </div>
+          <div class="help-card">
+            <h4>🪤 TRAPPED TRADERS (Jerangkap)</h4>
+            <p style="margin:0; font-size:11px;">Dikesan apabila ramai trader membeli di pucuk atau menjual di akar tetapi harga berpatah balik secara drastik. Peluang reversal berkualiti tinggi!</p>
+          </div>
+          <div class="help-card">
+            <h4>🐋 WHALE BUBLES (Pesanan Besar)</h4>
+            <p style="margin:0; font-size:11px;">Bulatan besar (≥8 Lots) menandakan pesanan institusi. Buble hijau = pembeli makan offer, buble merah = penjual hentam bid.</p>
+          </div>
+          <div class="help-card">
+            <h4>⚡ STACKED IMBALANCES (3x)</h4>
+            <p style="margin:0; font-size:11px;">3 atau lebih paras berturut-turut mempunyai ketidakseimbangan diagonal (Buy Imbalance hijau / Sell Imbalance merah). Menandakan sweep agresif institusi dan zon pertahanan (Support/Resistance).</p>
+          </div>
+          <div class="help-card">
+            <h4>📊 VALUE AREA (VAH & VAL 70%)</h4>
+            <p style="margin:0; font-size:11px;">Kawasan yang merangkumi 70% volum dagangan di sekeliling POC. Garis putus-putus VAH (Value Area High) dan VAL (Value Area Low) adalah sempadan penerimaan harga pasaran.</p>
+          </div>
+          <div class="help-card">
+            <h4>📉 MOD PROFIL DELTA</h4>
+            <p style="margin:0; font-size:11px;">Memaparkan histogram Delta bersih bagi setiap tingkat harga. Memudahkan pengesanan penyerapan (Absorption) dan keletihan (Exhaustion) trader.</p>
+          </div>
+          <div class="help-card">
+            <h4>🌐 SESI H/L & SAPUAN (Judah Swing)</h4>
+            <p style="margin:0; font-size:11px;">Menandakan High/Low Sesi Asia, London & NY. Apabila harga menyapu Asian High/Low dan ditolak semula (🔥 SWEEP), ia adalah setup Reversal Emas berkebarangkalian paling tinggi.</p>
+          </div>
+          <div class="help-card">
+            <h4>🛡️ PELINDUNG BERITA MERAH USD</h4>
+            <p style="margin:0; font-size:11px;">Menjaga akaun daripada gelinciran (slippage) ekstrem ketika CPI/NFP/FOMC atau lonjakan spread > $0.65 dengan menjeda Auto-Trade secara automatik.</p>
+          </div>
+          <div class="help-card">
+            <h4>⚡ VOLUM HALAJU TICK SEBENAR</h4>
+            <p style="margin:0; font-size:11px;">Mengukur saiz lot institusi berdasarkan kepantasan ketibaan tick sesaat (tick/s) dan pecutan anjakan harga mikro.</p>
+          </div>
+          <div class="help-card">
+            <h4>🧊 ICEBERG & ABSORPTION</h4>
+            <p style="margin:0; font-size:11px;">Mengesan apabila pesanan limit tersembunyi bank besar menyerap ≥11 Lots pesanan agresif pada satu paras harga tanpa harga berganjak.</p>
+          </div>
+          <div class="help-card">
+            <h4>📊 SESSION VOLUME PROFILE (SVP)</h4>
+            <p style="margin:0; font-size:11px;">Histogram volum komposit sepanjang sesi bersama garisan <b>dPOC</b> (Developing POC), <b>Session VAH/VAL 70%</b>, dan <b>LVN</b> (Zon Vakum Kecairan).</p>
+          </div>
+          <div class="help-card">
+            <h4>🏛️ PDH, PDL & DAILY OPEN</h4>
+            <p style="margin:0; font-size:11px;">Penanda aras institusi harian (Previous Day High/Low & Harga Pembukaan Hari Ini) yang menjadi sasaran kecairan utama bank besar.</p>
+          </div>
+        </div>
+
+        <!-- Section: 7 Teknik Candlestick & SOP Dagangan -->
+        <div id="sopSectionHelp" style="margin-top:16px; padding-top:12px; border-top:1px solid #1e293b;">
+          <h4 style="margin:0 0 8px 0; color:#ffd60a; font-size:12px; display:flex; align-items:center; gap:6px;">
+            <span>🎯</span> 7 TEKNIK & SOP LENGKAP MODUL CARTA CANDLESTICK
+          </h4>
+          <p style="font-size:10px; color:#94a3b8; margin:0 0 10px 0;">Setiap teknik boleh dipilih melalui Dropdown Toolbar TEKNIK atau dihidupkan (ON) / dimatikan (OFF) secara bebas mengikut kesesuaian sesi:</p>
+
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="background:rgba(255,214,10,0.06); border:1px solid rgba(255,214,10,0.3); border-radius:4px; padding:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <b style="color:#ffd60a; font-size:11px;">1. ⭐ SMC LIQUIDITY SWEEP (Turtle Soup)</b>
+                <span style="background:rgba(255,214,10,0.2); color:#ffd60a; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:800;">R:R 1:2.5</span>
+              </div>
+              <div style="font-size:10px; color:#cbd5e1; line-height:1.35;">
+                • <b>SOP:</b> Lilin menyapu Asian H/L, London H/L, atau PDH/PDL dengan ekor (wick) dan tutup kembali ke dalam julat lelongan.<br>
+                • <b>Pengesahan:</b> Delta sehaluan dengan pusingan arah pasaran.<br>
+                • <b>Waktu Terbaik:</b> Pembukaan Sesi London (3:00 PM) & New York (8:00 PM).
+              </div>
+            </div>
+
+            <div style="background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.3); border-radius:4px; padding:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <b style="color:#38bdf8; font-size:11px;">2. ⚡ ORDER FLOW ABSORPTION & DIVERGENCE</b>
+                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:800;">R:R 1:2.0</span>
+              </div>
+              <div style="font-size:10px; color:#cbd5e1; line-height:1.35;">
+                • <b>SOP:</b> Ekor penolakan &ge;38%. Bullish Delta Divergence (lilin merah tetapi Delta &gt; +1.8) atau sebaliknya.<br>
+                • <b>Tujuan:</b> Menangkap titik pusingan (Turning Point) semasa pedagang runcit diserap oleh limit order institusi.<br>
+                • <b>Waktu Terbaik:</b> Mana-mana sesi pasaran aktif.
+              </div>
+            </div>
+
+            <div style="background:rgba(0,240,255,0.06); border:1px solid rgba(0,240,255,0.3); border-radius:4px; padding:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <b style="color:#00f0ff; font-size:11px;">3. 🌐 VWAP ±2σ BAND BOUNCE (Mean Reversion)</b>
+                <span style="background:rgba(0,240,255,0.2); color:#00f0ff; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:800;">R:R 1:2.0</span>
+              </div>
+              <div style="font-size:10px; color:#cbd5e1; line-height:1.35;">
+                • <b>SOP:</b> Harga menguji jalur keterlaluan VWAP +2σ (Premium) atau VWAP -2σ (Diskaun) dan melantun kembali ke arah Nilai Purata (Session VWAP).<br>
+                • <b>Waktu Terbaik:</b> Sesi Asia & pasaran ayunan mendatar (Ranging).
+              </div>
+            </div>
+
+            <div style="background:rgba(192,132,252,0.06); border:1px solid rgba(192,132,252,0.3); border-radius:4px; padding:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <b style="color:#c084fc; font-size:11px;">4. 🚀 EMA RIBBON TREND PULLBACK</b>
+                <span style="background:rgba(192,132,252,0.2); color:#c084fc; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:800;">R:R 1:3.0</span>
+              </div>
+              <div style="font-size:10px; color:#cbd5e1; line-height:1.35;">
+                • <b>SOP:</b> Susunan EMA 9 &gt; 21 &gt; 50 (Uptrend) atau sebaliknya. Masuk pada saat lilin 'pullback' menguji EMA 21 atau EMA 50 dan ditolak mengikut arah trend.<br>
+                • <b>Waktu Terbaik:</b> Trend kuat sesi New York / London petang.
+              </div>
+            </div>
+
+            <div style="background:rgba(251,191,36,0.06); border:1px solid rgba(251,191,36,0.3); border-radius:4px; padding:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <b style="color:#fbbf24; font-size:11px;">5. 🏛️ VOLUME PROFILE dPOC & VALUE AREA RETEST</b>
+                <span style="background:rgba(251,191,36,0.2); color:#fbbf24; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:800;">R:R 1:2.5</span>
+              </div>
+              <div style="font-size:10px; color:#cbd5e1; line-height:1.35;">
+                • <b>SOP:</b> Harga menembusi paras volum lelongan dPOC / VAH / VAL, kemudian menguji semula (retest) paras tersebut sebagai sokongan/rintangan baharu.<br>
+                • <b>Waktu Terbaik:</b> Selepas fasa penumpuan volum bertukar menjadi fasa pengembangan (Expansion).
+              </div>
+            </div>
+
+            <div style="background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.3); border-radius:4px; padding:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <b style="color:#10b981; font-size:11px;">6. 🎯 SNR (SUPPORT & RESISTANCE / RBS / SBR)</b>
+                <span style="background:rgba(16,185,129,0.2); color:#10b981; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:800;">R:R 1:2.5</span>
+              </div>
+              <div style="font-size:10px; color:#cbd5e1; line-height:1.35;">
+                • <b>SOP:</b> Mengesan sentuhan tepat pada Swing High/Low atau pertukaran peranan (RBS: Resistance Become Support / SBR: Support Become Resistance) dengan ekor penolakan & delta aktif.<br>
+                • <b>Waktu Terbaik:</b> Sesuai sepanjang hari terutamanya di zon harga pusingan genap (Key Psychological Levels).
+              </div>
+            </div>
+
+            <div style="background:rgba(6,182,212,0.06); border:1px solid rgba(6,182,212,0.3); border-radius:4px; padding:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <b style="color:#06b6d4; font-size:11px;">7. 📦 SND (SUPPLY & DEMAND FRESH ZONES & FTB)</b>
+                <span style="background:rgba(6,182,212,0.2); color:#06b6d4; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:800;">R:R 1:2.5</span>
+              </div>
+              <div style="font-size:10px; color:#cbd5e1; line-height:1.35;">
+                • <b>SOP:</b> Mengesan lilin pangkalan (Base) sebelum lonjakan besar (DBR / RBD / RBR / DBD). Masuk pada sentuhan pertama (First Time Back - FTB) apabila pesanan institusi belum diisi.<br>
+                • <b>Waktu Terbaik:</b> Pembukaan sesi London & New York di mana zon segar sering diuji.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/static/js/bookmap.js?v=9.7"></script>
+  <script src="/static/js/footprint.js?v=9.7"></script>
+  <script src="/static/js/dom.js?v=9.7"></script>
+  <script src="/static/js/app.js?v=9.7"></script>
+</body>
+</html>
