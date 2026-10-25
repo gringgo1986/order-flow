@@ -200,10 +200,37 @@ def status_endpoint():
         "clients_connected": len(connected_clients)
     }
 
-# Mount static folder
+import shutil
+
+# Mount static folder & auto-organize flat files if uploaded to root
 base_dir = Path(__file__).parent
 static_dir = base_dir / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
+(static_dir / "js").mkdir(parents=True, exist_ok=True)
+(static_dir / "css").mkdir(parents=True, exist_ok=True)
+
+# Auto-copy flat root files into static structure
+for fname in ["index.html"]:
+    src = base_dir / fname
+    dst = static_dir / fname
+    if src.exists() and not dst.exists():
+        try: shutil.copy2(src, dst)
+        except Exception: pass
+
+for fname in ["style.css"]:
+    src = base_dir / fname
+    dst = static_dir / "css" / fname
+    if src.exists() and not dst.exists():
+        try: shutil.copy2(src, dst)
+        except Exception: pass
+
+for fname in ["bookmap.js", "footprint.js", "dom.js", "app.js"]:
+    src = base_dir / fname
+    dst = static_dir / "js" / fname
+    if src.exists() and not dst.exists():
+        try: shutil.copy2(src, dst)
+        except Exception: pass
+
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/")
@@ -217,7 +244,7 @@ def index():
     for c in candidates:
         if c.exists():
             return FileResponse(str(c))
-    return {"status": "error", "message": "index.html not found. Sila pastikan folder 'static' dimuat naik ke GitHub."}
+    return {"status": "error", "message": "index.html not found"}
 
 if __name__ == "__main__":
     import uvicorn
