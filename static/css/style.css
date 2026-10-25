@@ -1219,3 +1219,46 @@ canvas#cvdCanvas {
 }
 
 
+
+
+/* ==================== ZEN COCKPIT SLEEK POLISH ==================== */
+header.app-header {
+  height: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  background: #070a12 !important;
+  border-bottom: 1px solid #1a2538 !important;
+  padding: 0 10px !important;
+}
+
+.chart-toolbar {
+  height: 30px !important;
+  min-height: 30px !important;
+  background: #090e1a !important;
+  border-bottom: 1px solid #1a2538 !important;
+  padding: 2px 8px !important;
+}
+
+.chart-toolbar .tool-btn {
+  height: 22px !important;
+  padding: 1px 6px !important;
+  font-size: 9.5px !important;
+}
+
+.main-workspace.dock-collapsed {
+  grid-template-rows: 1fr 28px !important;
+}
+
+.main-workspace.dock-collapsed .dock-tabs {
+  padding: 2px 8px !important;
+  background: #080c14 !important;
+  border-top: 1px solid #1e293b !important;
+}
+
+.layers-menu button.tool-btn {
+  width: 100% !important;
+  margin: 1px 0 !important;
+  font-size: 10px !important;
+  padding: 3px 6px !important;
+  border-radius: 3px !important;
+}
