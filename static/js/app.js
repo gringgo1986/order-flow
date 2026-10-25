@@ -1198,7 +1198,9 @@ class App {
 
   _connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const token = localStorage.getItem('session_id') || '';
+    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+    const wsUrl = `${protocol}//${window.location.host}/ws${tokenQuery}`;
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
@@ -2052,7 +2054,10 @@ class App {
 
   async initAuthAndAdmin() {
     try {
-      const res = await fetch('/api/me');
+      const token = localStorage.getItem('session_id');
+      const headers = {};
+      if (token) headers['X-Session-ID'] = token;
+      const res = await fetch('/api/me', { headers });
       if (res.status === 401) {
         window.location.href = '/login?error=unauthorized';
         return;
@@ -2095,6 +2100,7 @@ class App {
 
   async logout() {
     try {
+      localStorage.removeItem('session_id');
       await fetch('/api/logout', { method: 'POST' });
     } catch (e) {}
     window.location.href = '/login';
