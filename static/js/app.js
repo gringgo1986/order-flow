@@ -1903,7 +1903,6 @@ class App {
     };
     requestAnimationFrame(loop);
   }
-}
 
   async loadHistoricalCandles(tf) {
     try {
@@ -2013,6 +2012,7 @@ class App {
       if (btn) btn.click();
     }
   }
+}
 
 window.addEventListener('DOMContentLoaded', () => {
   window.app = new App();
