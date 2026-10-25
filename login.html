@@ -476,6 +476,9 @@
         const data = await res.json();
 
         if (res.ok && data.status === 'success') {
+          if (data.session_id) {
+            localStorage.setItem('session_id', data.session_id);
+          }
           btnSubmit.innerHTML = '<span>✅ Akses Diberikan! Membuka Terminal...</span>';
           btnSubmit.style.background = '#10b981';
           setTimeout(() => {
