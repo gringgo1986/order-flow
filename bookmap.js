@@ -66,6 +66,17 @@ class BookmapRenderer {
     this._draggingSLTP = null;   // Active SL/TP drag state
     this._depthHistoryBuffer = []; // Rolling 4s buffer for Pulling/Stacking delta calculation
 
+    // Bookmap World-Class Enhancements:
+    this.bmContrastMode = 'MED'; // 'AUTO' | 'LOW' | 'MED' | 'HIGH'
+    this.bmShowSweeps = true;    // Liquidity Sweeps & Voids Visualizer
+    this._bmSweepEvents = [];    // Cached sweep events [{ id, price, time, vol, bias, badge }]
+    this._prevDepthSnapshot = null;
+    this._autoMinCut = 12.0;     // Dynamic threshold for AUTO contrast
+    this._icebergReloads = {};   // priceKey -> { count, absorbed, lastSeen }
+    this.bmRulerActive = false;  // Interactive Order Flow Ruler Tool
+    this.bmRulerPointA = null;   // { x, y, price, time }
+    this.bmRulerPointB = null;   // { x, y, price, time }
+
     // Audio & Sound FX state
     this._audioCtx = null;
     this._lastWhaleSoundId = null;
@@ -434,12 +445,34 @@ class BookmapRenderer {
       if (window.app && window.app.drawingMode) {
         if (window.app._handleCanvasClickForDrawing(cx, cy, this.canvas)) return;
       }
-      if (!this.bmHudHitboxes) return;
-      for (const b of this.bmHudHitboxes) {
-        if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
-          if (b.onClick) b.onClick();
-          break;
+      if (this.bmHudHitboxes) {
+        for (const b of this.bmHudHitboxes) {
+          if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+            if (b.onClick) b.onClick();
+            return;
+          }
         }
+      }
+
+      // Order Flow Ruler clicks
+      if (this.bmRulerActive && cy > this.TOP_PADDING && cx < this.CHART_RIGHT && cx > this.CHART_LEFT) {
+        const curPrice = this.yToPrice(cy);
+        const curTime = this.xToTime ? this.xToTime(cx, Date.now()) : Date.now();
+        if (!this.bmRulerPointA || (this.bmRulerPointA && this.bmRulerPointB)) {
+          this.bmRulerPointA = { x: cx, y: cy, price: curPrice, time: curTime };
+          this.bmRulerPointB = null;
+        } else {
+          this.bmRulerPointB = { x: cx, y: cy, price: curPrice, time: curTime };
+        }
+      }
+    });
+
+    this.canvas.addEventListener('contextmenu', (e) => {
+      if (this.bmRulerActive) {
+        e.preventDefault();
+        this.bmRulerPointA = null;
+        this.bmRulerPointB = null;
+        this.bmRulerActive = false;
       }
     });
 
@@ -494,9 +527,28 @@ class BookmapRenderer {
     return this.CHART_LEFT + ((timestamp - windowStart) / this.timeWindowMs) * this.HIST_TIME_W;
   }
 
+  xToTime(x, now) {
+    const effectiveNow = now - (this.timeOffsetMs || 0);
+    const windowStart = effectiveNow - this.timeWindowMs;
+    const progress = (x - this.CHART_LEFT) / Math.max(1, this.HIST_TIME_W);
+    return windowStart + progress * this.timeWindowMs;
+  }
+
   /* ─── Bookmap Multi-Palette High-Definition Thermal Color Engine ── */
   getThermalColor(vol) {
-    const minCut = this.bmWallFilterOnly ? 28.0 : 3.0;
+    let minCut = 3.0;
+    if (this.bmWallFilterOnly) {
+      minCut = 28.0;
+    } else if (this.bmContrastMode === 'HIGH') {
+      minCut = 32.0; // High contrast: only institutional walls
+    } else if (this.bmContrastMode === 'MED') {
+      minCut = 12.0; // Medium contrast: filters retail noise, crisp view
+    } else if (this.bmContrastMode === 'LOW') {
+      minCut = 3.0;  // Low contrast: all subtle resting depth
+    } else if (this.bmContrastMode === 'AUTO') {
+      minCut = this._autoMinCut || 12.0;
+    }
+
     if (vol < minCut) return null;
 
     let stops;
@@ -578,6 +630,23 @@ class BookmapRenderer {
       while (this._depthHistoryBuffer.length > 1 && now - this._depthHistoryBuffer[0].t > 4000) {
         this._depthHistoryBuffer.shift();
       }
+    }
+
+    // Dynamic AUTO Contrast Sensitivity calculation
+    if (this.bmContrastMode === 'AUTO' && snapshot.order_book) {
+      const vols = [];
+      for (const v of Object.values(snapshot.order_book.bids || {})) if (v > 1) vols.push(v);
+      for (const v of Object.values(snapshot.order_book.asks || {})) if (v > 1) vols.push(v);
+      if (vols.length > 5) {
+        vols.sort((a, b) => a - b);
+        const medIdx = Math.floor(vols.length * 0.50);
+        this._autoMinCut = Math.max(6.0, Math.min(26.0, vols[medIdx] || 12.0));
+      }
+    }
+
+    // World-Class Liquidity Sweeps & Voids Tracker
+    if (this.bmShowSweeps !== false && snapshot.order_book) {
+      this._detectLiquiditySweeps(snapshot, now);
     }
 
     /* ── Smooth Price Center Tracking + Auto-Adaptive Volatility Span ── */
@@ -682,6 +751,9 @@ class BookmapRenderer {
     /* ── 12. Interactive Manual Drawing Tools Overlay (Ray & Trend) ── */
     this._drawManualDrawings(ctx);
 
+    /* ── 12B. World-Class Order Flow Measurement Ruler Tool ── */
+    this._drawOrderFlowRuler(ctx);
+
     /* ── 13. Interactive Top Bookmap Pro HUD Header ── */
     this._drawTopHUD(ctx, snapshot);
 
@@ -733,21 +805,24 @@ class BookmapRenderer {
       ctx.setLineDash([3, 6]);
     }
 
-    // Draw Iconic Bookmap "NOW" Vertical Time Line (Separating History vs Live Resting Book Projection)
-    ctx.setLineDash([4, 3]);
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.55)';
-    ctx.lineWidth = 1.3;
+    // Draw Iconic Bookmap "NOW" Vertical Laser Time Line (Separating History Tape vs Live Resting Book Projection)
+    ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1.4;
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 4;
     ctx.beginPath();
     ctx.moveTo(this.NOW_X, this.CHART_TOP);
     ctx.lineTo(this.NOW_X, this.CHART_BOTTOM);
     ctx.stroke();
+    ctx.shadowBlur = 0;
     ctx.setLineDash([]);
 
     // Top label inside Live Resting Projection Zone
-    ctx.fillStyle = 'rgba(0, 240, 255, 0.65)';
-    ctx.font = 'bold 8px "JetBrains Mono", monospace';
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('LIVE ORDER BOOK →', (this.NOW_X + this.CHART_RIGHT) / 2, this.CHART_TOP + 11);
+    ctx.fillText('⚡ NOW • LIVE DEPTH →', (this.NOW_X + this.CHART_RIGHT) / 2, this.CHART_TOP + 11);
 
     ctx.strokeStyle = '#1b2d48';
     ctx.lineWidth = 1.2;
@@ -781,7 +856,7 @@ class BookmapRenderer {
         if (x2 < this.CHART_LEFT || x1 > this.NOW_X) continue;
 
         const drawX = Math.max(this.CHART_LEFT, x1);
-        const drawW = Math.max(2.2, Math.min(this.NOW_X, x2) - drawX + 0.9);
+        const drawW = Math.max(2.4, Math.min(this.NOW_X, x2) - drawX + 1.2);
 
         const bids = snap.bids || {};
         for (const priceKey of Object.keys(bids)) {
@@ -883,27 +958,27 @@ class BookmapRenderer {
           ctx.stroke();
           ctx.restore();
 
-          // 2. High-Contrast "🦈 JERUNG" Badge showing exact lot size & price level
-          const icon = isMega ? '🦈 JERUNG BESAR' : '🦈 DINDING JERUNG';
-          const sideLbl = isAsk ? 'SELL LIMIT' : 'BUY LIMIT';
-          const badgeTxt = `${icon} (${sideLbl}): ${wall.v.toFixed(1)} LOT @ $${wall.p.toFixed(2)}`;
-          ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-          const tw = ctx.measureText(badgeTxt).width + 14;
-          const bh = 16;
-          // Place badge near right side of historical heatmap or inside projection zone
-          const bx = Math.max(this.CHART_LEFT + 12, this.NOW_X - tw - 10);
-          const by = wy - bh / 2;
+          // 2. Sleek Compact Shark Wall Tag (Only draw full pill for #1 Wall, compact tag for others)
+          if (rankIdx === 0) {
+            const sideLbl = isAsk ? 'SELL LIMIT' : 'BUY LIMIT';
+            const badgeTxt = `🦈 ${Math.round(wall.v)}L ${sideLbl} @ $${wall.p.toFixed(2)}`;
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            const tw = ctx.measureText(badgeTxt).width + 10;
+            const bh = 14;
+            const bx = Math.max(this.CHART_LEFT + 12, this.NOW_X - tw - 8);
+            const by = wy - bh / 2;
 
-          ctx.fillStyle = isAsk ? 'rgba(28, 6, 14, 0.92)' : 'rgba(4, 24, 16, 0.92)';
-          ctx.fillRect(bx, by, tw, bh);
-          ctx.strokeStyle = col;
-          ctx.lineWidth = isMega ? 1.5 : 1.1;
-          ctx.strokeRect(bx, by, tw, bh);
+            ctx.fillStyle = isAsk ? 'rgba(28, 6, 14, 0.88)' : 'rgba(4, 24, 16, 0.88)';
+            ctx.fillRect(bx, by, tw, bh);
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 1.0;
+            ctx.strokeRect(bx, by, tw, bh);
 
-          ctx.fillStyle = col;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(badgeTxt, bx + 7, wy + 0.5);
+            ctx.fillStyle = col;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(badgeTxt, bx + 5, wy);
+          }
 
           // 3. Compact tag inside Projection Zone (NOW_X -> CHART_RIGHT)
           if (rankIdx < 2) {
@@ -963,9 +1038,122 @@ class BookmapRenderer {
           ctx.fillText(sp.badge, bx + 6, by + 8);
         }
       }
+
+      // 4. World-Class Liquidity Sweeps & Voids Visualizer
+      if (this.bmShowSweeps !== false && this._bmSweepEvents && this._bmSweepEvents.length > 0) {
+        for (const sw of this._bmSweepEvents) {
+          if (now - sw.time > 45000) continue; // Show for 45s
+          const wy = this.priceToY(sw.price);
+          if (wy < this.CHART_TOP + 14 || wy > this.CHART_BOTTOM - 14) continue;
+
+          const isBuySweep = sw.bias === 'BUY_SWEEP';
+          const col = isBuySweep ? '#00f0ff' : '#ff0055';
+          const bgCol = isBuySweep ? 'rgba(0, 32, 45, 0.94)' : 'rgba(45, 0, 16, 0.94)';
+
+          // Flashing animated neon laser sweep line across full chart
+          ctx.save();
+          ctx.setLineDash([8, 4]);
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 1.4;
+          ctx.shadowColor = col;
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.moveTo(this.CHART_LEFT, wy);
+          ctx.lineTo(this.CHART_RIGHT, wy);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.restore();
+
+          // High-Impact Pill Badge
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const badgeTxt = sw.badge;
+          const tw = ctx.measureText(badgeTxt).width + 14;
+          const bx = this.CHART_LEFT + 16;
+          const by = wy - 8;
+
+          ctx.fillStyle = bgCol;
+          ctx.fillRect(bx, by, tw, 16);
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(bx, by, tw, 16);
+          ctx.fillStyle = col;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(badgeTxt, bx + 7, by + 8);
+        }
+      }
     }
 
     ctx.restore();
+  }
+
+  /* ─── Institutional Liquidity Sweeps & Voids Detector ───────────── */
+  _detectLiquiditySweeps(snapshot, now) {
+    if (!this._bmSweepEvents) this._bmSweepEvents = [];
+    if (!this._prevDepthSnapshot) {
+      this._prevDepthSnapshot = {
+        t: now,
+        bids: { ...(snapshot.order_book.bids || {}) },
+        asks: { ...(snapshot.order_book.asks || {}) }
+      };
+      return;
+    }
+
+    // Every ~1.5 seconds, compare resting walls from previous snapshot
+    if (now - this._prevDepthSnapshot.t >= 1500) {
+      const oldBids = this._prevDepthSnapshot.bids;
+      const oldAsks = this._prevDepthSnapshot.asks;
+      const curBids = snapshot.order_book.bids || {};
+      const curAsks = snapshot.order_book.asks || {};
+      const curP = snapshot.last_price || snapshot.bid || 0;
+
+      // Check Asks swept (Aggressive buyers broke through resistance wall)
+      for (const [pStr, oldV] of Object.entries(oldAsks)) {
+        if (oldV >= 26.0) {
+          const p = +pStr;
+          const curV = curAsks[pStr] || 0;
+          if (curV <= oldV * 0.22 && curP >= p - 0.15) {
+            if (!this._bmSweepEvents.some(sw => Math.abs(sw.price - p) < 0.25 && now - sw.time < 35000)) {
+              this._bmSweepEvents.push({
+                id: 'sw_' + now + '_' + p,
+                price: p,
+                time: now,
+                vol: oldV,
+                bias: 'BUY_SWEEP',
+                badge: `⚡ SWEEP & VOID $${p.toFixed(2)} (${oldV.toFixed(0)}L)`
+              });
+            }
+          }
+        }
+      }
+
+      // Check Bids swept (Aggressive sellers broke through support wall)
+      for (const [pStr, oldV] of Object.entries(oldBids)) {
+        if (oldV >= 26.0) {
+          const p = +pStr;
+          const curV = curBids[pStr] || 0;
+          if (curV <= oldV * 0.22 && curP <= p + 0.15) {
+            if (!this._bmSweepEvents.some(sw => Math.abs(sw.price - p) < 0.25 && now - sw.time < 35000)) {
+              this._bmSweepEvents.push({
+                id: 'sw_' + now + '_' + p,
+                price: p,
+                time: now,
+                vol: oldV,
+                bias: 'SELL_SWEEP',
+                badge: `⚡ SWEEP & VOID $${p.toFixed(2)} (${oldV.toFixed(0)}L)`
+              });
+            }
+          }
+        }
+      }
+
+      this._bmSweepEvents = this._bmSweepEvents.filter(sw => now - sw.time < 60000).slice(-6);
+      this._prevDepthSnapshot = {
+        t: now,
+        bids: { ...(snapshot.order_book.bids || {}) },
+        asks: { ...(snapshot.order_book.asks || {}) }
+      };
+    }
   }
 
   /* ─── Bottom Stacked Volume Histogram + Live CVD Curve ─────────── */
@@ -1123,6 +1311,24 @@ class BookmapRenderer {
         ctx.lineTo(x2, y2);
         ctx.stroke();
       }
+
+      // Micro-Absorption Beacon (🛡️) on Stepped Price Line
+      const isAbsorptionBuy = (t2.buy_vol >= 10.0 && t2.price <= t1.price);
+      const isAbsorptionSell = (t2.sell_vol >= 10.0 && t2.price >= t1.price);
+      if (isAbsorptionBuy || isAbsorptionSell) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x2, y2, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = isAbsorptionBuy ? '#00f0ff' : '#ff0077';
+        ctx.shadowColor = isAbsorptionBuy ? '#00f0ff' : '#ff0077';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
     }
 
     if (trades.length > 0 && currentPrice) {
@@ -1162,6 +1368,7 @@ class BookmapRenderer {
     ctx.clip();
 
     this.hoverTrade = null;
+    const drawnWhaleBadges = [];
     const sortedTrades = [...trades].sort((a, b) => a.volume - b.volume);
 
     for (const t of sortedTrades) {
@@ -1322,19 +1529,27 @@ class BookmapRenderer {
           const tagCol = isWhaleBuy ? '#00e676' : '#ff3366';
           const tagTxt = `🐋 ${t.volume.toFixed(1)}L`;
           ctx.font = 'bold 8px "JetBrains Mono", monospace';
-          const tw = ctx.measureText(tagTxt).width + 6;
-          const tx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - tw - 4, cx - tw / 2));
-          const ty = isWhaleBuy ? Math.max(this.CHART_TOP + 6, cy - r - 15) : Math.min(this.CHART_BOTTOM - 15, cy + r + 3);
+          const tw = ctx.measureText(tagTxt).width + 8;
+          let tx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - tw - 4, cx - tw / 2));
+          let ty = isWhaleBuy ? Math.max(this.CHART_TOP + 6, cy - r - 15) : Math.min(this.CHART_BOTTOM - 15, cy + r + 3);
 
-          ctx.fillStyle = 'rgba(6, 11, 22, 0.88)';
-          ctx.fillRect(tx, ty, tw, 12);
+          // Anti-Collision Staggering against nearby whale badges
+          for (const prev of drawnWhaleBadges) {
+            if (Math.abs(prev.x - tx) < tw + 4 && Math.abs(prev.y - ty) < 14) {
+              ty = isWhaleBuy ? prev.y - 14 : prev.y + 14;
+            }
+          }
+          drawnWhaleBadges.push({ x: tx, y: ty, w: tw, h: 12 });
+
+          ctx.fillStyle = 'rgba(6, 11, 22, 0.92)';
+          ctx.fillRect(tx, ty, tw, 13);
           ctx.strokeStyle = tagCol;
-          ctx.lineWidth = 0.9;
-          ctx.strokeRect(tx, ty, tw, 12);
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(tx, ty, tw, 13);
           ctx.fillStyle = tagCol;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(tagTxt, tx + tw / 2, ty + 6);
+          ctx.fillText(tagTxt, tx + tw / 2, ty + 6.5);
         }
       }
     }
@@ -1917,12 +2132,35 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── World-Class Real-Time Iceberg & Absorption Detector ─────── */
+  /* ─── World-Class Real-Time Iceberg & Absorption Detector (Reload Tracker) ─ */
   _drawIcebergOrders(ctx, icebergs) {
     if (!icebergs || icebergs.length === 0) return;
     ctx.save();
     const now = Date.now();
     const drawnIcebergYs = [];
+
+    if (!this._icebergReloads) this._icebergReloads = {};
+
+    // Track multi-fill reload counts
+    for (const ic of icebergs) {
+      const key = `${ic.bias}_${ic.price.toFixed(2)}`;
+      if (!this._icebergReloads[key]) {
+        this._icebergReloads[key] = { count: 1, absorbed: ic.absorbed_vol || 0, lastSeen: now };
+      } else {
+        const item = this._icebergReloads[key];
+        if (now - item.lastSeen < 65000) {
+          if ((ic.absorbed_vol || 0) > item.absorbed + 1.8) {
+            item.count += 1;
+            item.absorbed = ic.absorbed_vol;
+            item.lastSeen = now;
+          }
+        } else {
+          item.count = 1;
+          item.absorbed = ic.absorbed_vol || 0;
+          item.lastSeen = now;
+        }
+      }
+    }
 
     for (const ic of icebergs.slice(-3).reverse()) {
       if (now - ic.timestamp > 75000) continue; // Show active icebergs for 75s
@@ -1935,6 +2173,11 @@ class BookmapRenderer {
       const isBuyIceberg = ic.bias === 'BUY';
       const col = isBuyIceberg ? '#00f0ff' : '#f43f5e';
       const bg = isBuyIceberg ? 'rgba(0, 240, 255, 0.10)' : 'rgba(244, 63, 94, 0.10)';
+
+      const key = `${ic.bias}_${ic.price.toFixed(2)}`;
+      const reloadInfo = this._icebergReloads[key];
+      const reloadCount = reloadInfo ? reloadInfo.count : 1;
+      const reloadTxt = reloadCount > 1 ? ` • RELOAD ${reloadCount}x` : '';
 
       // Subtle Shaded Absorption Band
       ctx.fillStyle = bg;
@@ -1949,23 +2192,23 @@ class BookmapRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Compact Iceberg Pill
-      const txt = `🧊 ICE ${ic.bias} $${ic.price.toFixed(2)} (${ic.absorbed_vol}L)`;
+      // Compact Iceberg Pill with Multi-Fill Reload Tag
+      const txt = `🧊 ICE ${ic.bias} $${ic.price.toFixed(2)} (${ic.absorbed_vol}L${reloadTxt})`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      const tw = ctx.measureText(txt).width + 10;
+      const tw = ctx.measureText(txt).width + 12;
       const bx = this.NOW_X - tw - 16;
       const by = y - 7.5;
 
-      ctx.fillStyle = 'rgba(6, 12, 24, 0.92)';
+      ctx.fillStyle = 'rgba(6, 12, 24, 0.94)';
       ctx.fillRect(bx, by, tw, 15);
       ctx.strokeStyle = col;
-      ctx.lineWidth = 1.0;
+      ctx.lineWidth = 1.1;
       ctx.strokeRect(bx, by, tw, 15);
 
       ctx.fillStyle = col;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(txt, bx + 5, y);
+      ctx.fillText(txt, bx + 6, y);
     }
 
     ctx.restore();
@@ -2413,12 +2656,16 @@ class BookmapRenderer {
     ctx.fillStyle = '#060a12';
     ctx.fillRect(sx, 0, sw, this.height);
 
-    ctx.strokeStyle = '#1b2d48';
-    ctx.lineWidth   = 1.2;
+    // High-tech Neon Vertical Separator (Separating Projection from COB)
+    ctx.strokeStyle = '#00d4ff';
+    ctx.lineWidth   = 1.5;
+    ctx.shadowColor = '#00d4ff';
+    ctx.shadowBlur  = 6;
     ctx.beginPath();
     ctx.moveTo(sx, 0);
     ctx.lineTo(sx, this.height);
     ctx.stroke();
+    ctx.shadowBlur  = 0;
 
     ctx.fillStyle = '#101d30';
     ctx.fillRect(sx, 0, sw, this.TOP_PADDING);
@@ -2562,6 +2809,67 @@ class BookmapRenderer {
     ctx.restore();
   }
 
+  /* ─── World-Class Order Flow Measurement Ruler Tool ───────────── */
+  _drawOrderFlowRuler(ctx) {
+    if (!this.bmRulerActive) return;
+    if (!this.bmRulerPointA) return;
+
+    ctx.save();
+    const pA = this.bmRulerPointA;
+    const curX = this.bmRulerPointB ? this.bmRulerPointB.x : this.mouseX;
+    const curY = this.bmRulerPointB ? this.bmRulerPointB.y : this.mouseY;
+
+    if (curX < 0 || curY < 0) { ctx.restore(); return; }
+
+    const curP = this.yToPrice(curY);
+    const dPrice = curP - pA.price;
+    const dPips = (dPrice * 10).toFixed(1); // 1 pip = $0.10 on Gold
+    const isUp = dPrice >= 0;
+    const boxCol = isUp ? '#00e676' : '#ff3366';
+    const bgCol = isUp ? 'rgba(0, 230, 118, 0.12)' : 'rgba(255, 51, 102, 0.12)';
+
+    const rx = Math.min(pA.x, curX);
+    const ry = Math.min(pA.y, curY);
+    const rw = Math.max(1, Math.abs(curX - pA.x));
+    const rh = Math.max(1, Math.abs(curY - pA.y));
+
+    // Measurement Box
+    ctx.fillStyle = bgCol;
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = boxCol;
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.setLineDash([]);
+
+    // Anchor points
+    ctx.beginPath();
+    ctx.arc(pA.x, pA.y, 4, 0, Math.PI * 2);
+    ctx.arc(curX, curY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    // Measurement Floating Badge
+    const badgeTxt = `📏 ${isUp ? '+' : ''}$${dPrice.toFixed(2)} (${dPips} pips) | $${pA.price.toFixed(2)} → $${curP.toFixed(2)}`;
+    ctx.font = 'bold 9px "JetBrains Mono", monospace';
+    const tw = ctx.measureText(badgeTxt).width + 16;
+    const bh = 18;
+    const bx = Math.max(this.CHART_LEFT + 8, Math.min(this.CHART_RIGHT - tw - 8, rx + rw / 2 - tw / 2));
+    const by = Math.max(this.CHART_TOP + 8, ry - bh - 4);
+
+    ctx.fillStyle = 'rgba(6, 11, 22, 0.94)';
+    ctx.fillRect(bx, by, tw, bh);
+    ctx.strokeStyle = boxCol;
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(bx, by, tw, bh);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeTxt, bx + tw / 2, by + bh / 2);
+
+    ctx.restore();
+  }
+
   /* ─── Interactive Top Bookmap Pro HUD Header & Imbalance Gauges ─ */
   _drawTopHUD(ctx, snapshot) {
     ctx.save();
@@ -2581,7 +2889,7 @@ class BookmapRenderer {
     // 1. Thermal Spectrum Bar (Click to cycle Theme: THERMO -> CYBER -> GOLD)
     const palX = 8;
     const palY = 6;
-    const palW = 92;
+    const palW = 86;
     const palH = 15;
 
     const palGrad = ctx.createLinearGradient(palX, 0, palX + palW, 0);
@@ -2623,13 +2931,13 @@ class BookmapRenderer {
     });
 
     // 2. Interactive Bookmap Pro Control Pills
-    let pillX = palX + palW + 6;
+    let pillX = palX + palW + 5;
     const drawHudPill = (label, isActive, activeCol, onClick) => {
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      const w = Math.ceil(ctx.measureText(label).width) + 10;
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      const w = Math.ceil(ctx.measureText(label).width) + 8;
       const y = 6;
       const h = 15;
-      if (pillX + w > this.CHART_RIGHT - 295) return; // Keep room for right gauges
+      if (pillX + w > this.CHART_RIGHT - 245) return; // Keep room for right imbalance gauges
       ctx.fillStyle = isActive ? activeCol : '#111c2d';
       ctx.fillRect(pillX, y, w, h);
       ctx.strokeStyle = isActive ? '#ffffff' : '#273e60';
@@ -2639,8 +2947,37 @@ class BookmapRenderer {
       ctx.textAlign = 'center';
       ctx.fillText(label, pillX + w / 2, y + 10.5);
       this.bmHudHitboxes.push({ x: pillX, y, w, h, onClick });
-      pillX += w + 4;
+      pillX += w + 3;
     };
+
+    // Dynamic Contrast Dial (AUTO / LOW / MED / HIGH)
+    const contrastCol = this.bmContrastMode === 'HIGH' ? '#f43f5e' : (this.bmContrastMode === 'MED' ? '#38bdf8' : (this.bmContrastMode === 'LOW' ? '#a78bfa' : '#fbbf24'));
+    drawHudPill(`🎚️ ${this.bmContrastMode}`, true, contrastCol, () => {
+      const modes = ['AUTO', 'LOW', 'MED', 'HIGH'];
+      this.bmContrastMode = modes[(modes.indexOf(this.bmContrastMode) + 1) % modes.length];
+    });
+
+    // World-Class Liquidity Sweeps Visualizer Toggle
+    drawHudPill(
+      `⚡ SWEEP: ${this.bmShowSweeps !== false ? 'ON' : 'OFF'}`,
+      this.bmShowSweeps !== false,
+      '#00f0ff',
+      () => { this.bmShowSweeps = this.bmShowSweeps === false; }
+    );
+
+    // World-Class Order Flow Measurement Ruler Tool
+    drawHudPill(
+      `📏 RULER: ${this.bmRulerActive ? 'ON' : 'OFF'}`,
+      this.bmRulerActive,
+      '#facc15',
+      () => {
+        this.bmRulerActive = !this.bmRulerActive;
+        if (!this.bmRulerActive) {
+          this.bmRulerPointA = null;
+          this.bmRulerPointB = null;
+        }
+      }
+    );
 
     // Feature 4: On-Canvas Quick Action Trade HUD
     drawHudPill('⚡ BUY', true, '#059669', () => {
@@ -2665,7 +3002,7 @@ class BookmapRenderer {
     });
 
     drawHudPill(
-      this.bmWallFilterOnly ? '🔥 Wall ≥28L' : '🔥 Semua Kecairan',
+      this.bmWallFilterOnly ? '🔥 Wall ≥28L' : '🔥 Semua',
       this.bmWallFilterOnly,
       '#fbbf24',
       () => { this.bmWallFilterOnly = !this.bmWallFilterOnly; }
