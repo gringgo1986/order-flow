@@ -3066,15 +3066,15 @@ class FootprintRenderer {
       return;
     }
 
-    const numBars = Math.max(14, Math.min(48, this.csVisibleBars || 34));
+    const numBars = Math.max(14, Math.min(50, this.csVisibleBars || 34));
     const candles = this._sliceCandlesWithOffset(rawCandles, numBars);
     const sliceEndIdx = Math.max(candles.length, rawCandles.length - Math.round(this.barOffset || 0));
     const rawUpToView = rawCandles.slice(0, sliceEndIdx);
     const lastPrice = snapshot.last_price || snapshot.bid || candles[candles.length - 1].close;
 
-    // Layout geometry
-    const topBarH = 30;
-    const rightAxisW = 68;
+    // Layout geometry (World-Class TradingView Obsidian Layout)
+    const topBarH = 32;
+    const rightAxisW = 72;
     const bottomTimeH = 22;
     const volPaneH = Math.max(54, Math.floor((this.height - topBarH - bottomTimeH) * 0.19));
     const mainChartTop = topBarH;
@@ -3082,22 +3082,51 @@ class FootprintRenderer {
     const mainChartH = mainChartBottom - mainChartTop;
     const chartW = this.width - rightAxisW;
 
-    // 1. Background Fill (Deep TradingView Obsidian)
+    // Helper: Modern Smooth Rounded Rect
+    const drawRoundedRect = (rx, ry, rw, rh, rad, fillStyle, strokeStyle, lineWidth) => {
+      const r = Math.min(rad, rw / 2, rh / 2);
+      ctx.beginPath();
+      if (r > 0.5) {
+        ctx.moveTo(rx + r, ry);
+        ctx.lineTo(rx + rw - r, ry);
+        ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + r);
+        ctx.lineTo(rx + rw, ry + rh - r);
+        ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - r, ry + rh);
+        ctx.lineTo(rx + r, ry + rh);
+        ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - r);
+        ctx.lineTo(rx, ry + r);
+        ctx.quadraticCurveTo(rx, ry, rx + r, ry);
+      } else {
+        ctx.rect(rx, ry, rw, rh);
+      }
+      ctx.closePath();
+      if (fillStyle) {
+        ctx.fillStyle = fillStyle;
+        ctx.fill();
+      }
+      if (strokeStyle) {
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = lineWidth || 1;
+        ctx.stroke();
+      }
+    };
+
+    // 1. Background Fill (Deep TradingView Pro Obsidian)
     ctx.fillStyle = '#070b14';
     ctx.fillRect(0, 0, this.width, this.height);
 
     // Subtle radial ambient depth
     const bgGrad = ctx.createLinearGradient(0, mainChartTop, 0, mainChartBottom);
-    bgGrad.addColorStop(0, 'rgba(14, 25, 45, 0.35)');
-    bgGrad.addColorStop(1, 'rgba(6, 10, 20, 0.35)');
+    bgGrad.addColorStop(0, 'rgba(15, 27, 49, 0.40)');
+    bgGrad.addColorStop(1, 'rgba(5, 9, 18, 0.40)');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, mainChartTop, chartW, mainChartH);
 
-    // 2. Compute EMA 9, EMA 21, EMA 50 across all available rawCandles
+    // 2. Compute EMA 9, EMA 21, EMA 50 across visible raw candles
     const calcEMA = (arr, period) => {
       const k = 2 / (period + 1);
       const out = [];
-      let ema = arr[0].close;
+      let ema = arr[0] ? arr[0].close : 0;
       for (let i = 0; i < arr.length; i++) {
         ema = i === 0 ? arr[i].close : (arr[i].close * k + ema * (1 - k));
         out.push(ema);
@@ -3118,8 +3147,8 @@ class FootprintRenderer {
       if (c.high > maxP) maxP = c.high;
       if (c.volume > maxVol) maxVol = c.volume;
       if (this.csShowEMA) {
-        minP = Math.min(minP, ema9[i], ema21[i]);
-        maxP = Math.max(maxP, ema9[i], ema21[i]);
+        minP = Math.min(minP, ema9[i] || minP, ema21[i] || minP);
+        maxP = Math.max(maxP, ema9[i] || maxP, ema21[i] || maxP);
       }
     }
     const padP = Math.max(0.60, (maxP - minP) * 0.12);
@@ -3153,7 +3182,7 @@ class FootprintRenderer {
     for (let gp = firstGridP; gp <= maxP; gp += gridStep) {
       const gy = pToY(gp);
       if (gy < mainChartTop + 8 || gy > mainChartBottom - 8) continue;
-      ctx.strokeStyle = 'rgba(30, 41, 59, 0.55)';
+      ctx.strokeStyle = 'rgba(30, 41, 59, 0.45)';
       ctx.lineWidth = 0.8;
       ctx.beginPath();
       ctx.moveTo(0, gy);
@@ -3163,10 +3192,10 @@ class FootprintRenderer {
       ctx.fillStyle = '#64748b';
       ctx.font = '9.5px "JetBrains Mono", monospace';
       ctx.textAlign = 'right';
-      ctx.fillText(gp.toFixed(2), this.width - 6, gy + 3);
+      ctx.fillText(gp.toFixed(2), this.width - 6, gy + 3.5);
     }
 
-    // 5. Right-Edge Subtle Session Volume Profile Silhouette (if SVP available)
+    // 5. Right-Edge Subtle Session Volume Profile Silhouette
     if (snapshot.session_vp && snapshot.session_vp.buckets) {
       const svp = snapshot.session_vp;
       const maxSvpV = Math.max(10, svp.max_bucket_vol || 50);
@@ -3181,18 +3210,47 @@ class FootprintRenderer {
       }
     }
 
-    // 6. Key Institutional Levels (VWAP, dPOC, Asian H/L, PDH/PDL) with Non-Overlapping Right Tags
-    const usedLevelYs = [];
-    const drawHorizBenchmark = (price, label, color, dash = [5, 4]) => {
-      if (!price || price <= 0) return;
-      const y = pToY(price);
-      if (y < mainChartTop + 14 || y > mainChartBottom - 14) return;
-      if (usedLevelYs.some(uy => Math.abs(uy - y) < 16)) return;
-      usedLevelYs.push(y);
+    // 6. Key Institutional Levels with Anti-Collision Vertical Slotting
+    const candidateLevels = [];
+    if (this.csShowVWAP && snapshot.vwap && snapshot.vwap.value > 0) {
+      candidateLevels.push({ price: snapshot.vwap.value, label: '🌐 VWAP', color: '#00f0ff', dash: [], prio: 10 });
+    }
+    if (this.csShowLevels) {
+      if (snapshot.session_vp && snapshot.session_vp.dpoc > 0) {
+        candidateLevels.push({ price: snapshot.session_vp.dpoc, label: '⭐ dPOC', color: '#ffd60a', dash: [3, 3], prio: 9 });
+      }
+      if (snapshot.sessions) {
+        const s = snapshot.sessions;
+        if (s.h8_res > 0) candidateLevels.push({ price: s.h8_res, label: '🏛️ H8 RES', color: '#e11d48', dash: [8, 4], prio: 8 });
+        if (s.h8_sup > 0) candidateLevels.push({ price: s.h8_sup, label: '🏛️ H8 SUP', color: '#059669', dash: [8, 4], prio: 8 });
+        if (s.h4_res > 0) candidateLevels.push({ price: s.h4_res, label: '🏰 H4 RES', color: '#ec4899', dash: [6, 3], prio: 7 });
+        if (s.h4_sup > 0) candidateLevels.push({ price: s.h4_sup, label: '🏰 H4 SUP', color: '#10b981', dash: [6, 3], prio: 7 });
+        if (s.h1_res > 0) candidateLevels.push({ price: s.h1_res, label: '⏱️ H1 RES', color: '#f97316', dash: [5, 3], prio: 6 });
+        if (s.h1_sup > 0) candidateLevels.push({ price: s.h1_sup, label: '⏱️ H1 SUP', color: '#06b6d4', dash: [5, 3], prio: 6 });
+        if (s.m30_res > 0) candidateLevels.push({ price: s.m30_res, label: '⏳ M30 RES', color: '#a855f7', dash: [4, 3], prio: 5 });
+        if (s.m30_sup > 0) candidateLevels.push({ price: s.m30_sup, label: '⏳ M30 SUP', color: '#3b82f6', dash: [4, 3], prio: 5 });
+        if (s.m15_res > 0) candidateLevels.push({ price: s.m15_res, label: '⚡ M15 RES', color: '#fbbf24', dash: [3, 3], prio: 5 });
+        if (s.m15_sup > 0) candidateLevels.push({ price: s.m15_sup, label: '⚡ M15 SUP', color: '#2dd4bf', dash: [3, 3], prio: 5 });
+        if (s.asian_high > 0) candidateLevels.push({ price: s.asian_high, label: '🌏 ASIAN H', color: '#f59e0b', dash: [5, 4], prio: 4 });
+        if (s.asian_low > 0)  candidateLevels.push({ price: s.asian_low,  label: '🌏 ASIAN L', color: '#f59e0b', dash: [5, 4], prio: 4 });
+        if (s.pdh > 0) candidateLevels.push({ price: s.pdh, label: '🏛️ PDH', color: '#fde047', dash: [6, 3], prio: 4 });
+        if (s.pdl > 0) candidateLevels.push({ price: s.pdl, label: '🏛️ PDL', color: '#fde047', dash: [6, 3], prio: 4 });
+      }
+    }
 
+    // Anti-collision slotting: Sort candidate levels by priority and filter overlapping tags
+    candidateLevels.sort((a, b) => b.prio - a.prio);
+    const placedTagYs = [];
+
+    for (const lvl of candidateLevels) {
+      if (!lvl.price || lvl.price <= 0) continue;
+      const y = pToY(lvl.price);
+      if (y < mainChartTop + 12 || y > mainChartBottom - 12) continue;
+
+      // Draw Ray Line across the full chart width
       ctx.save();
-      ctx.setLineDash(dash);
-      ctx.strokeStyle = color;
+      ctx.setLineDash(lvl.dash);
+      ctx.strokeStyle = lvl.color;
       ctx.lineWidth = 1.0;
       ctx.beginPath();
       ctx.moveTo(0, y);
@@ -3200,65 +3258,32 @@ class FootprintRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Place benchmark pill tag at right edge (before right price axis) to keep candles 100% clean
-      const txt = `${label} $${price.toFixed(2)}`;
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      const tw = ctx.measureText(txt).width + 10;
-      const tagX = chartW - tw - 4;
-      ctx.fillStyle = 'rgba(7, 11, 20, 0.92)';
-      ctx.fillRect(tagX, y - 7, tw, 14);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 0.8;
-      ctx.strokeRect(tagX, y - 7, tw, 14);
-      ctx.fillStyle = color;
-      ctx.textAlign = 'center';
-      ctx.fillText(txt, tagX + tw / 2, y + 3.5);
+      // Check vertical clearance for Right-Edge Pill Tag (must have >= 15px distance)
+      const canDrawPill = !placedTagYs.some(py => Math.abs(py - y) < 15);
+      if (canDrawPill) {
+        placedTagYs.push(y);
+        const txt = `${lvl.label} $${lvl.price.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tw = ctx.measureText(txt).width + 10;
+        const tagX = chartW - tw - 4;
+        ctx.fillStyle = 'rgba(7, 11, 20, 0.94)';
+        ctx.fillRect(tagX, y - 7, tw, 14);
+        ctx.strokeStyle = lvl.color;
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(tagX, y - 7, tw, 14);
+        ctx.fillStyle = lvl.color;
+        ctx.textAlign = 'center';
+        ctx.fillText(txt, tagX + tw / 2, y + 3.5);
+      }
       ctx.restore();
-    };
-
-    if (this.csShowVWAP && snapshot.vwap && snapshot.vwap.value > 0) {
-      drawHorizBenchmark(snapshot.vwap.value, '🌐 VWAP', '#00f0ff', []);
-    }
-    if (this.csShowLevels) {
-      if (snapshot.session_vp && snapshot.session_vp.dpoc > 0) {
-        drawHorizBenchmark(snapshot.session_vp.dpoc, '⭐ dPOC', '#ffd60a', [3, 3]);
-      }
-      if (snapshot.sessions) {
-        const s = snapshot.sessions;
-        const h8Res = s.h8_res || s.h8_high;
-        const h8Sup = s.h8_sup || s.h8_low;
-        const h4Res = s.h4_res || s.h4_high;
-        const h4Sup = s.h4_sup || s.h4_low;
-        const h1Res = s.h1_res || s.h1_high;
-        const h1Sup = s.h1_sup || s.h1_low;
-        const m30Res = s.m30_res || s.m30_high;
-        const m30Sup = s.m30_sup || s.m30_low;
-        const m15Res = s.m15_res || s.m15_high;
-        const m15Sup = s.m15_sup || s.m15_low;
-        if (h8Res > 0) drawHorizBenchmark(h8Res, '🏛️ H8 RES', '#e11d48', [8, 4]);
-        if (h8Sup > 0) drawHorizBenchmark(h8Sup, '🏛️ H8 SUP', '#059669', [8, 4]);
-        if (h4Res > 0) drawHorizBenchmark(h4Res, '🏰 H4 RES', '#ec4899', [6, 3]);
-        if (h4Sup > 0) drawHorizBenchmark(h4Sup, '🏰 H4 SUP', '#10b981', [6, 3]);
-        if (h1Res > 0) drawHorizBenchmark(h1Res, '⏱️ H1 RES', '#f97316', [5, 3]);
-        if (h1Sup > 0) drawHorizBenchmark(h1Sup, '⏱️ H1 SUP', '#06b6d4', [5, 3]);
-        if (m30Res > 0) drawHorizBenchmark(m30Res, '⏳ M30 RES', '#a855f7', [4, 3]);
-        if (m30Sup > 0) drawHorizBenchmark(m30Sup, '⏳ M30 SUP', '#3b82f6', [4, 3]);
-        if (m15Res > 0) drawHorizBenchmark(m15Res, '⚡ M15 RES', '#fbbf24', [3, 3]);
-        if (m15Sup > 0) drawHorizBenchmark(m15Sup, '⚡ M15 SUP', '#2dd4bf', [3, 3]);
-
-        drawHorizBenchmark(s.asian_high, '🌏 ASIAN H', '#f59e0b', [5, 4]);
-        drawHorizBenchmark(s.asian_low,  '🌏 ASIAN L', '#f59e0b', [5, 4]);
-        drawHorizBenchmark(s.pdh,        '🏛️ PDH',     '#fde047', [6, 3]);
-        drawHorizBenchmark(s.pdl,        '🏛️ PDL',     '#fde047', [6, 3]);
-      }
     }
 
     // 7. Candle X Geometry & Vertical Time Grid
     const leftPad = 14;
-    const rightPad = 24;
+    const rightPad = 26;
     const usableW = Math.max(200, chartW - leftPad - rightPad);
     const slotW = usableW / candles.length;
-    const bodyW = Math.max(4, Math.min(22, Math.floor(slotW * 0.68)));
+    const bodyW = Math.max(4, Math.min(22, Math.floor(slotW * 0.70)));
 
     const getBarX = (idx) => leftPad + idx * slotW + slotW / 2;
 
@@ -3291,6 +3316,254 @@ class FootprintRenderer {
       }
     }
 
+    // 7.5. Feature 1 & 3: Institutional Fair Value Gaps (FVG) & Order Blocks (OB)
+    const showFvgOb = this.csShowFvgOb !== false;
+    if (showFvgOb && candles.length >= 4) {
+      ctx.save();
+
+      // --- A. Bullish & Bearish Fair Value Gaps (FVG) ---
+      for (let i = 2; i < candles.length; i++) {
+        const c1 = candles[i - 2];
+        const c2 = candles[i - 1];
+        const c3 = candles[i];
+
+        // Bullish FVG: C1 High < C3 Low
+        if (c3.low > c1.high + 0.12) {
+          const topP = c3.low;
+          let botP = c1.high;
+          const startX = getBarX(i - 1) - bodyW / 2;
+          let endX = chartW - 4;
+          let isMitigated = false;
+
+          // Check mitigation by subsequent candles
+          for (let j = i + 1; j < candles.length; j++) {
+            if (candles[j].low <= botP) {
+              endX = getBarX(j);
+              isMitigated = true;
+              break;
+            } else if (candles[j].low < topP) {
+              // Partial mitigation
+              botP = Math.max(botP, candles[j].low);
+            }
+          }
+
+          const yTop = pToY(topP);
+          const yBot = pToY(botP);
+          const boxH = Math.max(3, yBot - yTop);
+          const boxW = Math.max(12, endX - startX);
+
+          if (yTop >= mainChartTop - 10 && yBot <= mainChartBottom + 10) {
+            ctx.fillStyle = isMitigated ? 'rgba(16, 185, 129, 0.06)' : 'rgba(16, 185, 129, 0.14)';
+            ctx.fillRect(startX, yTop, boxW, boxH);
+            ctx.strokeStyle = isMitigated ? 'rgba(16, 185, 129, 0.25)' : 'rgba(52, 211, 153, 0.65)';
+            ctx.setLineDash([3, 3]);
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(startX, yTop, boxW, boxH);
+            ctx.setLineDash([]);
+
+            if (!isMitigated && boxW > 35) {
+              ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+              ctx.fillStyle = '#34d399';
+              ctx.textAlign = 'right';
+              ctx.fillText('FVG [+]', startX + boxW - 3, yTop + 8);
+            }
+          }
+        }
+
+        // Bearish FVG: C1 Low > C3 High
+        if (c1.low > c3.high + 0.12) {
+          const topP = c1.low;
+          let botP = c3.high;
+          const startX = getBarX(i - 1) - bodyW / 2;
+          let endX = chartW - 4;
+          let isMitigated = false;
+
+          // Check mitigation by subsequent candles
+          for (let j = i + 1; j < candles.length; j++) {
+            if (candles[j].high >= topP) {
+              endX = getBarX(j);
+              isMitigated = true;
+              break;
+            } else if (candles[j].high > botP) {
+              // Partial mitigation
+              topP = Math.min(topP, candles[j].high);
+            }
+          }
+
+          const yTop = pToY(topP);
+          const yBot = pToY(botP);
+          const boxH = Math.max(3, yBot - yTop);
+          const boxW = Math.max(12, endX - startX);
+
+          if (yTop >= mainChartTop - 10 && yBot <= mainChartBottom + 10) {
+            ctx.fillStyle = isMitigated ? 'rgba(244, 63, 94, 0.06)' : 'rgba(244, 63, 94, 0.14)';
+            ctx.fillRect(startX, yTop, boxW, boxH);
+            ctx.strokeStyle = isMitigated ? 'rgba(244, 63, 94, 0.25)' : 'rgba(251, 113, 133, 0.65)';
+            ctx.setLineDash([3, 3]);
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(startX, yTop, boxW, boxH);
+            ctx.setLineDash([]);
+
+            if (!isMitigated && boxW > 35) {
+              ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+              ctx.fillStyle = '#fb7185';
+              ctx.textAlign = 'right';
+              ctx.fillText('FVG [-]', startX + boxW - 3, yTop + 8);
+            }
+          }
+        }
+      }
+
+      // --- B. Institutional Unmitigated Order Blocks (OB Boxes) ---
+      for (let i = 2; i < candles.length - 1; i++) {
+        const base = candles[i - 1];
+        const impulse = candles[i];
+        const impulseRange = impulse.high - impulse.low;
+        const impulseBody = Math.abs(impulse.close - impulse.open);
+
+        // Bullish Order Block (Base Red Candle before violent upward move)
+        if (impulse.close > impulse.open && impulseBody >= 0.45 && base.close <= base.open) {
+          const obTop = Math.max(base.open, base.close);
+          const obBot = base.low;
+          const startX = getBarX(i - 1) - bodyW / 2;
+          let endX = chartW - 4;
+          let broken = false;
+
+          for (let j = i + 1; j < candles.length; j++) {
+            if (candles[j].close < obBot) {
+              endX = getBarX(j);
+              broken = true;
+              break;
+            }
+          }
+
+          if (!broken) {
+            const yTop = pToY(obTop);
+            const yBot = pToY(obBot);
+            const boxH = Math.max(3, yBot - yTop);
+            const boxW = Math.max(14, endX - startX);
+            if (yTop >= mainChartTop && yBot <= mainChartBottom) {
+              ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+              ctx.fillRect(startX, yTop, boxW, boxH);
+              ctx.strokeStyle = '#10b981';
+              ctx.lineWidth = 0.9;
+              ctx.strokeRect(startX, yTop, boxW, boxH);
+
+              ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+              ctx.fillStyle = '#10b981';
+              ctx.textAlign = 'left';
+              ctx.fillText('OB [BULL]', startX + 3, yTop + 8);
+            }
+          }
+        }
+
+        // Bearish Order Block (Base Green Candle before violent downward move)
+        if (impulse.close < impulse.open && impulseBody >= 0.45 && base.close >= base.open) {
+          const obTop = base.high;
+          const obBot = Math.min(base.open, base.close);
+          const startX = getBarX(i - 1) - bodyW / 2;
+          let endX = chartW - 4;
+          let broken = false;
+
+          for (let j = i + 1; j < candles.length; j++) {
+            if (candles[j].close > obTop) {
+              endX = getBarX(j);
+              broken = true;
+              break;
+            }
+          }
+
+          if (!broken) {
+            const yTop = pToY(obTop);
+            const yBot = pToY(obBot);
+            const boxH = Math.max(3, yBot - yTop);
+            const boxW = Math.max(14, endX - startX);
+            if (yTop >= mainChartTop && yBot <= mainChartBottom) {
+              ctx.fillStyle = 'rgba(244, 63, 94, 0.12)';
+              ctx.fillRect(startX, yTop, boxW, boxH);
+              ctx.strokeStyle = '#f43f5e';
+              ctx.lineWidth = 0.9;
+              ctx.strokeRect(startX, yTop, boxW, boxH);
+
+              ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+              ctx.fillStyle = '#f43f5e';
+              ctx.textAlign = 'left';
+              ctx.fillText('OB [BEAR]', startX + 3, yTop + 8);
+            }
+          }
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // 7.8. Feature 2: Smart Market Structure Breaks (BOS / CHoCH)
+    const showStructure = this.csShowStructure !== false;
+    if (showStructure && candles.length >= 8) {
+      ctx.save();
+      const swings = [];
+      for (let i = 2; i < candles.length - 2; i++) {
+        const c = candles[i];
+        const isSwingHigh = c.high > candles[i - 1].high && c.high > candles[i - 2].high &&
+                            c.high > candles[i + 1].high && c.high > candles[i + 2].high;
+        const isSwingLow = c.low < candles[i - 1].low && c.low < candles[i - 2].low &&
+                           c.low < candles[i + 1].low && c.low < candles[i + 2].low;
+        if (isSwingHigh) swings.push({ idx: i, type: 'HIGH', price: c.high });
+        if (isSwingLow)  swings.push({ idx: i, type: 'LOW',  price: c.low });
+      }
+
+      // Check breakout of recent swing points
+      for (let sIdx = 0; sIdx < swings.length; sIdx++) {
+        const sw = swings[sIdx];
+        const startX = getBarX(sw.idx);
+        const y = pToY(sw.price);
+        if (y < mainChartTop + 10 || y > mainChartBottom - 10) continue;
+
+        let breakBarIdx = -1;
+        for (let j = sw.idx + 1; j < candles.length; j++) {
+          if (sw.type === 'HIGH' && candles[j].close > sw.price) {
+            breakBarIdx = j;
+            break;
+          } else if (sw.type === 'LOW' && candles[j].close < sw.price) {
+            breakBarIdx = j;
+            break;
+          }
+        }
+
+        if (breakBarIdx !== -1) {
+          const endX = getBarX(breakBarIdx);
+          const isBullBreak = sw.type === 'HIGH';
+          const prevSame = swings.slice(0, sIdx).filter(x => x.type === sw.type).pop();
+          const isBOS = prevSame ? (isBullBreak ? sw.price >= prevSame.price : sw.price <= prevSame.price) : true;
+          const badgeText = isBOS ? (isBullBreak ? 'BOS ↗' : 'BOS ↘') : (isBullBreak ? 'CHoCH ↗' : 'CHoCH ↘');
+          const badgeCol = isBOS ? (isBullBreak ? '#00e676' : '#ff3366') : (isBullBreak ? '#00f0ff' : '#f59e0b');
+
+          ctx.setLineDash([3, 2]);
+          ctx.strokeStyle = badgeCol;
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          ctx.moveTo(startX, y);
+          ctx.lineTo(endX, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Break badge label
+          ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(badgeText).width + 6;
+          const bx = endX - tw / 2;
+          ctx.fillStyle = 'rgba(7, 11, 20, 0.92)';
+          ctx.fillRect(bx, y - 6, tw, 12);
+          ctx.strokeStyle = badgeCol;
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(bx, y - 6, tw, 12);
+          ctx.fillStyle = badgeCol;
+          ctx.textAlign = 'center';
+          ctx.fillText(badgeText, bx + tw / 2, y + 3);
+        }
+      }
+      ctx.restore();
+    }
+
     // 8. Draw EMA 9 / EMA 21 / EMA 50 Curves
     if (this.csShowEMA && candles.length > 1) {
       const drawCurve = (arr, col, width) => {
@@ -3312,55 +3585,13 @@ class FootprintRenderer {
       drawCurve(ema9,  'rgba(255, 214, 10, 0.92)', 1.6);  // EMA 9 Gold
     }
 
-    // 9. Draw OHLC Candlesticks + Internal POC Dot + Institutional 5-Layer Confluence A+ Signals
-    // Compile Institutional Reference Levels (Layer 1)
-    const instLevels = [];
-    if (snapshot.sessions) {
-      const s = snapshot.sessions;
-      if (s.h8_res > 0) instLevels.push({ name: 'H8 RES', type: 'RES', price: s.h8_res });
-      if (s.h8_sup > 0) instLevels.push({ name: 'H8 SUP', type: 'SUP', price: s.h8_sup });
-      if (s.h4_res > 0) instLevels.push({ name: 'H4 RES', type: 'RES', price: s.h4_res });
-      if (s.h4_sup > 0) instLevels.push({ name: 'H4 SUP', type: 'SUP', price: s.h4_sup });
-      if (s.h1_res > 0) instLevels.push({ name: 'H1 RES', type: 'RES', price: s.h1_res });
-      if (s.h1_sup > 0) instLevels.push({ name: 'H1 SUP', type: 'SUP', price: s.h1_sup });
-      if (s.m30_res > 0) instLevels.push({ name: 'M30 RES', type: 'RES', price: s.m30_res });
-      if (s.m30_sup > 0) instLevels.push({ name: 'M30 SUP', type: 'SUP', price: s.m30_sup });
-      if (s.m15_res > 0) instLevels.push({ name: 'M15 RES', type: 'RES', price: s.m15_res });
-      if (s.m15_sup > 0) instLevels.push({ name: 'M15 SUP', type: 'SUP', price: s.m15_sup });
-      if (s.asian_high > 0) instLevels.push({ name: 'ASIAN HIGH', type: 'RES', price: s.asian_high });
-      if (s.asian_low > 0)  instLevels.push({ name: 'ASIAN LOW',  type: 'SUP', price: s.asian_low });
-      if (s.london_high > 0) instLevels.push({ name: 'LONDON HIGH', type: 'RES', price: s.london_high });
-      if (s.london_low > 0)  instLevels.push({ name: 'LONDON LOW',  type: 'SUP', price: s.london_low });
-      if (s.pdh > 0)        instLevels.push({ name: 'PDH',        type: 'RES', price: s.pdh });
-      if (s.pdl > 0)        instLevels.push({ name: 'PDL',        type: 'SUP', price: s.pdl });
-    }
-    if (snapshot.session_vp) {
-      if (snapshot.session_vp.dpoc > 0) instLevels.push({ name: 'dPOC', type: 'PIVOT', price: snapshot.session_vp.dpoc });
-      if (snapshot.session_vp.vah > 0)  instLevels.push({ name: 'VAH',  type: 'RES',   price: snapshot.session_vp.vah });
-      if (snapshot.session_vp.val > 0)  instLevels.push({ name: 'VAL',  type: 'SUP',   price: snapshot.session_vp.val });
-    }
-    if (snapshot.vwap && snapshot.vwap.value > 0) {
-      instLevels.push({ name: 'VWAP', type: 'PIVOT', price: snapshot.vwap.value });
-      if (snapshot.vwap.std1_up > 0)   instLevels.push({ name: 'VWAP +1σ', type: 'RES', price: snapshot.vwap.std1_up });
-      if (snapshot.vwap.std1_down > 0) instLevels.push({ name: 'VWAP -1σ', type: 'SUP', price: snapshot.vwap.std1_down });
-      if (snapshot.vwap.std2_up > 0)   instLevels.push({ name: 'VWAP +2σ', type: 'RES', price: snapshot.vwap.std2_up });
-      if (snapshot.vwap.std2_down > 0) instLevels.push({ name: 'VWAP -2σ', type: 'SUP', price: snapshot.vwap.std2_down });
-    }
-
-    // 8.5 Institutional 5-Strategy Signal Engine & Permanent Frozen Cache
-    // Supports 5 Independent Techniques (Toggleable ON/OFF):
-    // 1. SMC Liquidity Sweep (Asian/London/PDH/PDL)
-    // 2. Order Flow Delta Absorption & Wick Divergence
-    // 3. VWAP ±2σ Extreme Band Bounce (Mean Reversion)
-    // 4. EMA Ribbon Momentum Pullback (Trend Following)
-    // 5. Volume Profile dPOC & Value Area Retest
+    // 8.5 Institutional 7-Strategy Signal Engine & Permanent Frozen Cache
     if (!this._confirmedSignalsCache) {
       this._confirmedSignalsCache = new Map();
     }
 
-    const techs = this.csTechniques || { smc: true, of_absorb: true, vwap_band: true, ema_trend: true, vp_retest: true };
+    const techs = this.csTechniques || { smc: true, of_absorb: true, vwap_band: true, ema_trend: true, vp_retest: true, snr: true, snd: true };
 
-    // Compute full continuous EMAs across all rawCandles for Trend Pullback detection
     const calcFullEMA = (arr, period) => {
       const k = 2 / (period + 1);
       const out = [];
@@ -3378,7 +3609,6 @@ class FootprintRenderer {
     let lastCachedSignalTime = 0;
     let lastCachedSignalDir = null;
 
-    // Scan existing cache to find the most recent confirmed signal for anti-spam cooldown
     for (let i = 0; i < rawCandles.length - 1; i++) {
       const past = this._confirmedSignalsCache.get(rawCandles[i].time);
       if (past && past.aPlusSignal) {
@@ -3387,19 +3617,17 @@ class FootprintRenderer {
       }
     }
 
-    // Evaluate any un-cached completed candles (i < rawCandles.length - 1)
     const candleInterval = snapshot.candle_interval || 60;
     for (let i = 0; i < rawCandles.length - 1; i++) {
       const rc = rawCandles[i];
       if (this._confirmedSignalsCache.has(rc.time)) {
-        continue; // Already permanently frozen!
+        continue;
       }
 
       const totalRange = Math.max(0.05, rc.high - rc.low);
       const upperWick = rc.high - Math.max(rc.open, rc.close);
       const lowerWick = Math.min(rc.open, rc.close) - rc.low;
       const isBull = rc.close >= rc.open;
-      const prevC = i > 0 ? rawCandles[i - 1] : null;
       const hasBearDivergence = isBull && (rc.delta || 0) < -1.8;
       const hasBullDivergence = !isBull && (rc.delta || 0) > 1.8;
 
@@ -3407,44 +3635,25 @@ class FootprintRenderer {
       let signalBadge = null;
       let signalCol = '#00e676';
 
-      // Anti-Spam: Minimum 3 candles or direction flip
       const timeDiff = rc.time - lastCachedSignalTime;
       const canEmitBuy = (timeDiff >= candleInterval * 3) || (lastCachedSignalDir === 'SELL');
       const canEmitSell = (timeDiff >= candleInterval * 3) || (lastCachedSignalDir === 'BUY');
 
-      // -------------------------------------------------------------
-      // TEKNIK 1: SMC Liquidity Sweep (Asian, London, PDH, PDL)
-      // -------------------------------------------------------------
+      // TEKNIK 1: SMC Liquidity Sweep
       if (!aPlusSignal && techs.smc && totalRange >= 0.35) {
         let smcSupport = null;
         let smcResistance = null;
         if (snapshot.sessions) {
           const s = snapshot.sessions;
-          const supLevels = [
-            { name: 'ASIAN LOW', price: s.asian_low },
-            { name: 'LONDON LOW', price: s.london_low },
-            { name: 'PDL', price: s.pdl }
-          ].filter(l => l.price > 0);
-          const resLevels = [
-            { name: 'ASIAN HIGH', price: s.asian_high },
-            { name: 'LONDON HIGH', price: s.london_high },
-            { name: 'PDH', price: s.pdh }
-          ].filter(l => l.price > 0);
-
+          const supLevels = [{ name: 'ASIAN LOW', price: s.asian_low }, { name: 'LONDON LOW', price: s.london_low }, { name: 'PDL', price: s.pdl }].filter(l => l.price > 0);
+          const resLevels = [{ name: 'ASIAN HIGH', price: s.asian_high }, { name: 'LONDON HIGH', price: s.london_high }, { name: 'PDH', price: s.pdh }].filter(l => l.price > 0);
           for (const l of supLevels) {
-            if (rc.low <= l.price + 0.15 && rc.low >= l.price - 0.90 && rc.close >= l.price) {
-              smcSupport = l;
-              break;
-            }
+            if (rc.low <= l.price + 0.15 && rc.low >= l.price - 0.90 && rc.close >= l.price) { smcSupport = l; break; }
           }
           for (const l of resLevels) {
-            if (rc.high >= l.price - 0.15 && rc.high <= l.price + 0.90 && rc.close <= l.price) {
-              smcResistance = l;
-              break;
-            }
+            if (rc.high >= l.price - 0.15 && rc.high <= l.price + 0.90 && rc.close <= l.price) { smcResistance = l; break; }
           }
         }
-
         const buyAbsorb = (lowerWick / totalRange >= 0.38 && (rc.delta || 0) > 0) || (hasBullDivergence && lowerWick / totalRange >= 0.22);
         const sellAbsorb = (upperWick / totalRange >= 0.38 && (rc.delta || 0) < 0) || (hasBearDivergence && upperWick / totalRange >= 0.22);
 
@@ -3453,17 +3662,7 @@ class FootprintRenderer {
           const sl = Math.min(rc.low, smcSupport.price) - 0.35;
           const risk = Math.max(0.80, entry - sl);
           const tp = entry + (risk * 2.5);
-          aPlusSignal = {
-            direction: 'BUY',
-            technique: 'SMC Sweep',
-            techKey: 'smc',
-            badge: `⭐ [SMC] BUY [${smcSupport.name}]`,
-            badgeCol: '#ffd60a',
-            level: smcSupport.name,
-            levelPrice: smcSupport.price,
-            entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5,
-            reason: `Sapuan kecairan ${smcSupport.name} ($${smcSupport.price.toFixed(2)}) + Orderflow Absorption`
-          };
+          aPlusSignal = { direction: 'BUY', technique: 'SMC Sweep', techKey: 'smc', badge: `⭐ [SMC] BUY [${smcSupport.name}]`, level: smcSupport.name, levelPrice: smcSupport.price, entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#00e676';
         } else if (smcResistance && sellAbsorb && canEmitSell) {
@@ -3471,44 +3670,22 @@ class FootprintRenderer {
           const sl = Math.max(rc.high, smcResistance.price) + 0.35;
           const risk = Math.max(0.80, sl - entry);
           const tp = entry - (risk * 2.5);
-          aPlusSignal = {
-            direction: 'SELL',
-            technique: 'SMC Sweep',
-            techKey: 'smc',
-            badge: `⭐ [SMC] SELL [${smcResistance.name}]`,
-            badgeCol: '#ffd60a',
-            level: smcResistance.name,
-            levelPrice: smcResistance.price,
-            entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5,
-            reason: `Sapuan kecairan ${smcResistance.name} ($${smcResistance.price.toFixed(2)}) + Orderflow Absorption`
-          };
+          aPlusSignal = { direction: 'SELL', technique: 'SMC Sweep', techKey: 'smc', badge: `⭐ [SMC] SELL [${smcResistance.name}]`, level: smcResistance.name, levelPrice: smcResistance.price, entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#ff3366';
         }
       }
 
-      // -------------------------------------------------------------
-      // TEKNIK 2: Order Flow Delta Absorption & Divergence
-      // -------------------------------------------------------------
+      // TEKNIK 2: Order Flow Delta Absorption
       if (!aPlusSignal && techs.of_absorb && totalRange >= 0.35) {
         const strongBullAbsorb = (hasBullDivergence && lowerWick / totalRange >= 0.30) || (lowerWick / totalRange >= 0.48 && (rc.delta || 0) > 4);
         const strongBearAbsorb = (hasBearDivergence && upperWick / totalRange >= 0.30) || (upperWick / totalRange >= 0.48 && (rc.delta || 0) < -4);
-
         if (strongBullAbsorb && canEmitBuy) {
           const entry = rc.close;
           const risk = Math.max(0.80, entry - rc.low + 0.35);
           const sl = entry - risk;
           const tp = entry + (risk * 2.0);
-          aPlusSignal = {
-            direction: 'BUY',
-            technique: 'OF Absorption',
-            techKey: 'of_absorb',
-            badge: `⚡ [OF] BUY [ABSORPSI]`,
-            badgeCol: '#38bdf8',
-            level: 'Delta Absorption Floor',
-            entry, sl, tp, risk, reward: tp - entry, rr: 2.0,
-            reason: `Absorpsi jualan runcit di lantai + Delta Divergence (Δ ${(rc.delta || 0) > 0 ? '+' : ''}${(rc.delta || 0).toFixed(1)}L)`
-          };
+          aPlusSignal = { direction: 'BUY', technique: 'OF Absorption', techKey: 'of_absorb', badge: `⚡ [OF] BUY [ABSORPSI]`, level: 'Delta Floor', entry, sl, tp, risk, reward: tp - entry, rr: 2.0 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#00e676';
         } else if (strongBearAbsorb && canEmitSell) {
@@ -3516,24 +3693,13 @@ class FootprintRenderer {
           const risk = Math.max(0.80, rc.high + 0.35 - entry);
           const sl = entry + risk;
           const tp = entry - (risk * 2.0);
-          aPlusSignal = {
-            direction: 'SELL',
-            technique: 'OF Absorption',
-            techKey: 'of_absorb',
-            badge: `⚡ [OF] SELL [ABSORPSI]`,
-            badgeCol: '#38bdf8',
-            level: 'Delta Absorption Ceiling',
-            entry, sl, tp, risk, reward: entry - tp, rr: 2.0,
-            reason: `Absorpsi belian runcit di siling + Delta Divergence (Δ ${(rc.delta || 0).toFixed(1)}L)`
-          };
+          aPlusSignal = { direction: 'SELL', technique: 'OF Absorption', techKey: 'of_absorb', badge: `⚡ [OF] SELL [ABSORPSI]`, level: 'Delta Ceiling', entry, sl, tp, risk, reward: entry - tp, rr: 2.0 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#ff3366';
         }
       }
 
-      // -------------------------------------------------------------
-      // TEKNIK 3: VWAP ±2σ Extreme Band Bounce (Mean Reversion)
-      // -------------------------------------------------------------
+      // TEKNIK 3: VWAP ±2σ Bounce
       if (!aPlusSignal && techs.vwap_band && snapshot.vwap && totalRange >= 0.35) {
         const v = snapshot.vwap;
         if (v.std2_down > 0 && rc.low <= v.std2_down + 0.25 && rc.close >= v.std2_down - 0.10 && ((rc.delta || 0) > 0 || hasBullDivergence) && canEmitBuy) {
@@ -3541,16 +3707,7 @@ class FootprintRenderer {
           const risk = Math.max(0.80, entry - v.std2_down + 0.40);
           const sl = entry - risk;
           const tp = v.value > entry ? v.value : entry + (risk * 2.0);
-          aPlusSignal = {
-            direction: 'BUY',
-            technique: 'VWAP ±2σ Bounce',
-            techKey: 'vwap_band',
-            badge: `🌐 [VWAP] BUY [-2σ BOUNCE]`,
-            badgeCol: '#00f0ff',
-            level: 'VWAP -2σ Extreme',
-            entry, sl, tp, risk, reward: tp - entry, rr: 2.0,
-            reason: `Pantulan diskaun melampau pada jalur VWAP -2σ ($${v.std2_down.toFixed(2)}) kembali ke Nilai Sesi`
-          };
+          aPlusSignal = { direction: 'BUY', technique: 'VWAP ±2σ Bounce', techKey: 'vwap_band', badge: `🌐 [VWAP] BUY [-2σ]`, level: 'VWAP -2σ', entry, sl, tp, risk, reward: tp - entry, rr: 2.0 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#00e676';
         } else if (v.std2_up > 0 && rc.high >= v.std2_up - 0.25 && rc.close <= v.std2_up + 0.10 && ((rc.delta || 0) < 0 || hasBearDivergence) && canEmitSell) {
@@ -3558,43 +3715,22 @@ class FootprintRenderer {
           const risk = Math.max(0.80, v.std2_up + 0.40 - entry);
           const sl = entry + risk;
           const tp = v.value < entry ? v.value : entry - (risk * 2.0);
-          aPlusSignal = {
-            direction: 'SELL',
-            technique: 'VWAP ±2σ Bounce',
-            techKey: 'vwap_band',
-            badge: `🌐 [VWAP] SELL [+2σ BOUNCE]`,
-            badgeCol: '#00f0ff',
-            level: 'VWAP +2σ Extreme',
-            entry, sl, tp, risk, reward: entry - tp, rr: 2.0,
-            reason: `Tolakan premium melampau pada jalur VWAP +2σ ($${v.std2_up.toFixed(2)}) kembali ke Nilai Sesi`
-          };
+          aPlusSignal = { direction: 'SELL', technique: 'VWAP ±2σ Bounce', techKey: 'vwap_band', badge: `🌐 [VWAP] SELL [+2σ]`, level: 'VWAP +2σ', entry, sl, tp, risk, reward: entry - tp, rr: 2.0 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#ff3366';
         }
       }
 
-      // -------------------------------------------------------------
-      // TEKNIK 4: EMA Ribbon Trend Pullback (Trend Following)
-      // -------------------------------------------------------------
+      // TEKNIK 4: EMA Ribbon Trend Pullback
       if (!aPlusSignal && techs.ema_trend && i >= 5 && rawEma50 && rawEma50[i] && totalRange >= 0.35) {
         const isUptrend = rawEma9[i] > rawEma21[i] && rawEma21[i] > rawEma50[i];
         const isDowntrend = rawEma9[i] < rawEma21[i] && rawEma21[i] < rawEma50[i];
-
         if (isUptrend && rc.low <= rawEma21[i] + 0.25 && rc.close >= rawEma21[i] - 0.15 && isBull && (rc.delta || 0) > 0 && canEmitBuy) {
           const entry = rc.close;
           const risk = Math.max(0.80, entry - rawEma50[i] + 0.35);
           const sl = entry - risk;
           const tp = entry + (risk * 3.0);
-          aPlusSignal = {
-            direction: 'BUY',
-            technique: 'EMA Trend Pullback',
-            techKey: 'ema_trend',
-            badge: `🚀 [TREND] BUY [EMA PULLBACK]`,
-            badgeCol: '#c084fc',
-            level: 'EMA 21/50 Support',
-            entry, sl, tp, risk, reward: tp - entry, rr: 3.0,
-            reason: `Pengunduran sihat ke EMA 21 ($${rawEma21[i].toFixed(2)}) dalam struktur aliran menaik institusi kukuh`
-          };
+          aPlusSignal = { direction: 'BUY', technique: 'EMA Pullback', techKey: 'ema_trend', badge: `🚀 [TREND] BUY [EMA]`, level: 'EMA 21/50', entry, sl, tp, risk, reward: tp - entry, rr: 3.0 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#00e676';
         } else if (isDowntrend && rc.high >= rawEma21[i] - 0.25 && rc.close <= rawEma21[i] + 0.15 && !isBull && (rc.delta || 0) < 0 && canEmitSell) {
@@ -3602,48 +3738,23 @@ class FootprintRenderer {
           const risk = Math.max(0.80, rawEma50[i] + 0.35 - entry);
           const sl = entry + risk;
           const tp = entry - (risk * 3.0);
-          aPlusSignal = {
-            direction: 'SELL',
-            technique: 'EMA Trend Pullback',
-            techKey: 'ema_trend',
-            badge: `🚀 [TREND] SELL [EMA PULLBACK]`,
-            badgeCol: '#c084fc',
-            level: 'EMA 21/50 Resistance',
-            entry, sl, tp, risk, reward: entry - tp, rr: 3.0,
-            reason: `Ujian pengunduran ke EMA 21 ($${rawEma21[i].toFixed(2)}) dalam struktur aliran menurun institusi kukuh`
-          };
+          aPlusSignal = { direction: 'SELL', technique: 'EMA Pullback', techKey: 'ema_trend', badge: `🚀 [TREND] SELL [EMA]`, level: 'EMA 21/50', entry, sl, tp, risk, reward: entry - tp, rr: 3.0 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#ff3366';
         }
       }
 
-      // -------------------------------------------------------------
       // TEKNIK 5: Volume Profile dPOC & Value Area Retest
-      // -------------------------------------------------------------
       if (!aPlusSignal && techs.vp_retest && snapshot.session_vp && totalRange >= 0.35) {
         const svp = snapshot.session_vp;
-        const vpLevels = [
-          { name: 'dPOC', price: svp.dpoc },
-          { name: 'VAH', price: svp.vah },
-          { name: 'VAL', price: svp.val }
-        ].filter(l => l.price > 0);
-
+        const vpLevels = [{ name: 'dPOC', price: svp.dpoc }, { name: 'VAH', price: svp.vah }, { name: 'VAL', price: svp.val }].filter(l => l.price > 0);
         for (const l of vpLevels) {
           if (rc.low <= l.price + 0.18 && rc.close >= l.price && (rc.delta || 0) > 0 && canEmitBuy) {
             const entry = rc.close;
             const risk = Math.max(0.80, entry - l.price + 0.35);
             const sl = entry - risk;
             const tp = entry + (risk * 2.5);
-            aPlusSignal = {
-              direction: 'BUY',
-              technique: 'VP Retest',
-              techKey: 'vp_retest',
-              badge: `🏛️ [VP] BUY [${l.name}]`,
-              badgeCol: '#fbbf24',
-              level: l.name,
-              entry, sl, tp, risk, reward: tp - entry, rr: 2.5,
-              reason: `Ujian semula paras profil volum ${l.name} ($${l.price.toFixed(2)}) dengan lantunan belian aktif`
-            };
+            aPlusSignal = { direction: 'BUY', technique: 'VP Retest', techKey: 'vp_retest', badge: `🏛️ [VP] BUY [${l.name}]`, level: l.name, entry, sl, tp, risk, reward: tp - entry, rr: 2.5 };
             signalBadge = aPlusSignal.badge;
             signalCol = '#00e676';
             break;
@@ -3652,16 +3763,7 @@ class FootprintRenderer {
             const risk = Math.max(0.80, l.price + 0.35 - entry);
             const sl = entry + risk;
             const tp = entry - (risk * 2.5);
-            aPlusSignal = {
-              direction: 'SELL',
-              technique: 'VP Retest',
-              techKey: 'vp_retest',
-              badge: `🏛️ [VP] SELL [${l.name}]`,
-              badgeCol: '#fbbf24',
-              level: l.name,
-              entry, sl, tp, risk, reward: entry - tp, rr: 2.5,
-              reason: `Tolakan rintangan profil volum ${l.name} ($${l.price.toFixed(2)}) dengan asakan jualan aktif`
-            };
+            aPlusSignal = { direction: 'SELL', technique: 'VP Retest', techKey: 'vp_retest', badge: `🏛️ [VP] SELL [${l.name}]`, level: l.name, entry, sl, tp, risk, reward: entry - tp, rr: 2.5 };
             signalBadge = aPlusSignal.badge;
             signalCol = '#ff3366';
             break;
@@ -3669,57 +3771,36 @@ class FootprintRenderer {
         }
       }
 
-      // -------------------------------------------------------------
-      // TEKNIK 6: SNR (Classic Support & Resistance + RBS / SBR)
-      // -------------------------------------------------------------
+      // TEKNIK 6: SNR Classic
       if (!aPlusSignal && techs.snr && i >= 6 && totalRange >= 0.35) {
-        let bestSup = null;
-        let bestRes = null;
+        let bestSup = null, bestRes = null;
         const lookback = Math.min(i - 2, 35);
-
         for (let k = i - 2; k >= i - lookback; k--) {
           const pastC = rawCandles[k];
           const pastPrev = rawCandles[k - 1];
           const pastNext = rawCandles[k + 1];
           if (!pastPrev || !pastNext) continue;
-
-          // Swing Low (Support)
           if (pastC.low < pastPrev.low && pastC.low < pastNext.low) {
             if (rc.low <= pastC.low + 0.22 && rc.low >= pastC.low - 0.45 && rc.close >= pastC.low) {
-              const isRbs = rc.close > pastC.high;
-              bestSup = { price: pastC.low, name: isRbs ? 'RBS' : 'SUPPORT' };
+              bestSup = { price: pastC.low, name: rc.close > pastC.high ? 'RBS' : 'SUPPORT' };
               break;
             }
           }
-
-          // Swing High (Resistance)
           if (pastC.high > pastPrev.high && pastC.high > pastNext.high) {
             if (rc.high >= pastC.high - 0.22 && rc.high <= pastC.high + 0.45 && rc.close <= pastC.high) {
-              const isSbr = rc.close < pastC.low;
-              bestRes = { price: pastC.high, name: isSbr ? 'SBR' : 'RESISTANCE' };
+              bestRes = { price: pastC.high, name: rc.close < pastC.low ? 'SBR' : 'RESISTANCE' };
               break;
             }
           }
         }
-
         const buyAbsorb = (lowerWick / totalRange >= 0.35 && (rc.delta || 0) > 0) || (hasBullDivergence && lowerWick / totalRange >= 0.20);
         const sellAbsorb = (upperWick / totalRange >= 0.35 && (rc.delta || 0) < 0) || (hasBearDivergence && upperWick / totalRange >= 0.20);
-
         if (bestSup && buyAbsorb && canEmitBuy) {
           const entry = rc.close;
           const sl = Math.min(rc.low, bestSup.price) - 0.35;
           const risk = Math.max(0.80, entry - sl);
           const tp = entry + (risk * 2.5);
-          aPlusSignal = {
-            direction: 'BUY',
-            technique: 'SNR Classic',
-            techKey: 'snr',
-            badge: `🎯 [SNR] BUY [${bestSup.name}]`,
-            badgeCol: '#10b981',
-            level: bestSup.name,
-            entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5,
-            reason: `Lantunan kemas pada paras ${bestSup.name} ($${bestSup.price.toFixed(2)}) + Wick Rejection`
-          };
+          aPlusSignal = { direction: 'BUY', technique: 'SNR Classic', techKey: 'snr', badge: `🎯 [SNR] BUY [${bestSup.name}]`, level: bestSup.name, entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#00e676';
         } else if (bestRes && sellAbsorb && canEmitSell) {
@@ -3727,72 +3808,44 @@ class FootprintRenderer {
           const sl = Math.max(rc.high, bestRes.price) + 0.35;
           const risk = Math.max(0.80, sl - entry);
           const tp = entry - (risk * 2.5);
-          aPlusSignal = {
-            direction: 'SELL',
-            technique: 'SNR Classic',
-            techKey: 'snr',
-            badge: `🎯 [SNR] SELL [${bestRes.name}]`,
-            badgeCol: '#f43f5e',
-            level: bestRes.name,
-            entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5,
-            reason: `Tolakan rintangan pada paras ${bestRes.name} ($${bestRes.price.toFixed(2)}) + Wick Rejection`
-          };
+          aPlusSignal = { direction: 'SELL', technique: 'SNR Classic', techKey: 'snr', badge: `🎯 [SNR] SELL [${bestRes.name}]`, level: bestRes.name, entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#ff3366';
         }
       }
 
-      // -------------------------------------------------------------
-      // TEKNIK 7: SND (Supply & Demand Zones: DBR/RBR & RBD/DBD)
-      // -------------------------------------------------------------
+      // TEKNIK 7: SND Base
       if (!aPlusSignal && techs.snd && i >= 6 && totalRange >= 0.35) {
-        let demandZone = null;
-        let supplyZone = null;
+        let demandZone = null, supplyZone = null;
         const lookback = Math.min(i - 2, 28);
-
         for (let k = i - 2; k >= i - lookback; k--) {
           const base = rawCandles[k];
           const impulse = rawCandles[k + 1];
           if (!base || !impulse) continue;
-
           const impulseBody = Math.abs(impulse.close - impulse.open);
-
-          // Demand Base: Explosive Bullish Move away (DBR / RBR)
           if (impulse.close > impulse.open && impulseBody >= 0.55 && (impulse.delta || 0) > 3) {
             const dHigh = Math.max(base.open, base.close);
             const dLow = base.low;
             if (rc.low <= dHigh + 0.18 && rc.low >= dLow - 0.40 && rc.close >= dHigh - 0.15) {
-              demandZone = { high: dHigh, low: dLow, name: 'DEMAND (FTB)' };
+              demandZone = { high: dHigh, low: dLow, name: 'DEMAND' };
               break;
             }
           }
-
-          // Supply Base: Explosive Bearish Move away (RBD / DBD)
           if (impulse.close < impulse.open && impulseBody >= 0.55 && (impulse.delta || 0) < -3) {
             const sLow = Math.min(base.open, base.close);
             const sHigh = base.high;
             if (rc.high >= sLow - 0.18 && rc.high <= sHigh + 0.40 && rc.close <= sLow + 0.15) {
-              supplyZone = { high: sHigh, low: sLow, name: 'SUPPLY (FTB)' };
+              supplyZone = { high: sHigh, low: sLow, name: 'SUPPLY' };
               break;
             }
           }
         }
-
         if (demandZone && lowerWick / totalRange >= 0.30 && ((rc.delta || 0) > 0 || hasBullDivergence) && canEmitBuy) {
           const entry = rc.close;
           const sl = demandZone.low - 0.35;
           const risk = Math.max(0.80, entry - sl);
           const tp = entry + (risk * 2.5);
-          aPlusSignal = {
-            direction: 'BUY',
-            technique: 'SND Zone',
-            techKey: 'snd',
-            badge: `📦 [SND] BUY [DEMAND]`,
-            badgeCol: '#06b6d4',
-            level: 'Demand Base',
-            entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5,
-            reason: `Ujian pertama (FTB) ke Zon Demand ($${demandZone.low.toFixed(2)} - $${demandZone.high.toFixed(2)}) + Delta Buyer`
-          };
+          aPlusSignal = { direction: 'BUY', technique: 'SND Zone', techKey: 'snd', badge: `📦 [SND] BUY [DEMAND]`, level: 'Demand Base', entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#00e676';
         } else if (supplyZone && upperWick / totalRange >= 0.30 && ((rc.delta || 0) < 0 || hasBearDivergence) && canEmitSell) {
@@ -3800,16 +3853,7 @@ class FootprintRenderer {
           const sl = supplyZone.high + 0.35;
           const risk = Math.max(0.80, sl - entry);
           const tp = entry - (risk * 2.5);
-          aPlusSignal = {
-            direction: 'SELL',
-            technique: 'SND Zone',
-            techKey: 'snd',
-            badge: `📦 [SND] SELL [SUPPLY]`,
-            badgeCol: '#e11d48',
-            level: 'Supply Base',
-            entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5,
-            reason: `Ujian pertama (FTB) ke Zon Supply ($${supplyZone.low.toFixed(2)} - $${supplyZone.high.toFixed(2)}) + Delta Seller`
-          };
+          aPlusSignal = { direction: 'SELL', technique: 'SND Zone', techKey: 'snd', badge: `📦 [SND] SELL [SUPPLY]`, level: 'Supply Base', entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
           signalBadge = aPlusSignal.badge;
           signalCol = '#ff3366';
         }
@@ -3831,7 +3875,6 @@ class FootprintRenderer {
       this._confirmedSignalsCache.set(rc.time, { aPlusSignal, signalBadge, signalCol });
     }
 
-    // Prune cache to maintain max 300 candles
     if (this._confirmedSignalsCache.size > 300) {
       const keys = Array.from(this._confirmedSignalsCache.keys());
       for (let k = 0; k < keys.length - 200; k++) {
@@ -3847,13 +3890,11 @@ class FootprintRenderer {
     for (let i = candles.length - 1; i >= 0; i--) {
       const c = candles[i];
       const cx = getBarX(i);
-      // Hover detection
       if (hoveredCandleIdx === -1 &&
           this.mousePos.x >= cx - slotW / 2 && this.mousePos.x <= cx + slotW / 2 &&
           this.mousePos.y >= mainChartTop && this.mousePos.y <= this.height - bottomTimeH) {
         hoveredCandleIdx = i;
       }
-      // Latest active signal detection across visible completed candles
       if (latestSignalCandleIdx === -1 && i < candles.length - 1 && this._confirmedSignalsCache) {
         const past = this._confirmedSignalsCache.get(c.time);
         if (past && past.aPlusSignal) {
@@ -3862,6 +3903,7 @@ class FootprintRenderer {
       }
     }
 
+    // 9. Modern Rounded Vector Candlesticks & Internal POC Dots
     for (let i = 0; i < candles.length; i++) {
       const c = candles[i];
       const cx = getBarX(i);
@@ -3873,45 +3915,49 @@ class FootprintRenderer {
       const yOpen = pToY(c.open);
       const yClose = pToY(c.close);
       const bodyTop = Math.min(yOpen, yClose);
-      const bodyH = Math.max(2, Math.abs(yClose - yOpen));
+      const bodyH = Math.max(2.5, Math.abs(yClose - yOpen));
 
-      // High-Low Wick
+      // Clean Anti-Aliased High-Low Wick
+      ctx.save();
       ctx.strokeStyle = isBull ? '#00e676' : '#ff3366';
       ctx.lineWidth = isLive ? 1.6 : 1.2;
+      ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(cx, yHigh);
       ctx.lineTo(cx, yLow);
       ctx.stroke();
+      ctx.restore();
 
-      // Candle Body (Delta-Dominant Body Tinting for Hidden Institutional Absorption)
+      // Candle Body: Modern Rounded Vector Candlestick with Delta-Dominant Tinting
       const hasBearDivergence = isBull && (c.delta || 0) < -1.8;
       const hasBullDivergence = !isBull && (c.delta || 0) > 1.8;
 
+      const bodyX = cx - bodyW / 2;
+      const radius = Math.min(2.0, bodyW / 3);
+
       if (hasBearDivergence) {
-        ctx.fillStyle = '#15803d';
-        ctx.fillRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.65)';
-        ctx.fillRect(cx - bodyW / 2 + 1, bodyTop + 1, Math.max(1, bodyW - 2), Math.max(1, bodyH - 2));
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 1.3;
-        ctx.strokeRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
+        // Hidden Bearish Absorption
+        drawRoundedRect(bodyX, bodyTop, bodyW, bodyH, radius, '#15803d', '#f59e0b', 1.2);
+        drawRoundedRect(bodyX + 1, bodyTop + 1, Math.max(1, bodyW - 2), Math.max(1, bodyH - 2), radius, 'rgba(239, 68, 68, 0.65)', null, 0);
       } else if (hasBullDivergence) {
-        ctx.fillStyle = '#b91c1c';
-        ctx.fillRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.65)';
-        ctx.fillRect(cx - bodyW / 2 + 1, bodyTop + 1, Math.max(1, bodyW - 2), Math.max(1, bodyH - 2));
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1.3;
-        ctx.strokeRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
+        // Hidden Bullish Absorption
+        drawRoundedRect(bodyX, bodyTop, bodyW, bodyH, radius, '#b91c1c', '#38bdf8', 1.2);
+        drawRoundedRect(bodyX + 1, bodyTop + 1, Math.max(1, bodyW - 2), Math.max(1, bodyH - 2), radius, 'rgba(16, 185, 129, 0.65)', null, 0);
       } else {
-        ctx.fillStyle = isBull ? '#00c853' : '#ff1744';
-        ctx.fillRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
-        ctx.strokeStyle = isBull ? '#69f0ae' : '#ff8a80';
-        ctx.lineWidth = 0.9;
-        ctx.strokeRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
+        // Normal TradingView Vector Candle with subtle vertical micro-gradient
+        const candleGrad = ctx.createLinearGradient(0, bodyTop, 0, bodyTop + bodyH);
+        if (isBull) {
+          candleGrad.addColorStop(0, '#00e676');
+          candleGrad.addColorStop(1, '#00b050');
+          drawRoundedRect(bodyX, bodyTop, bodyW, bodyH, radius, candleGrad, '#69f0ae', 0.8);
+        } else {
+          candleGrad.addColorStop(0, '#ff3366');
+          candleGrad.addColorStop(1, '#d50000');
+          drawRoundedRect(bodyX, bodyTop, bodyW, bodyH, radius, candleGrad, '#ff8a80', 0.8);
+        }
       }
 
-      // Internal Orderflow POC Golden Dot on each candlestick
+      // Internal Order Flow POC Golden Dot
       if (this.csShowLevels && c.poc && bodyW >= 6) {
         const yPoc = pToY(c.poc);
         if (yPoc >= yHigh - 2 && yPoc <= yLow + 2) {
@@ -3925,21 +3971,18 @@ class FootprintRenderer {
         }
       }
 
-      // Retrieve Permanent Locked Signal from Cache (100% frozen, never flickers)
+      // Permanent Frozen Signal Rendering
       const cachedSig = (!isLive && this._confirmedSignalsCache) ? this._confirmedSignalsCache.get(c.time) : null;
       const aPlusSignal = cachedSig ? cachedSig.aPlusSignal : null;
       const signalBadge = cachedSig ? cachedSig.signalBadge : null;
       const signalCol   = cachedSig ? cachedSig.signalCol : '#00e676';
 
-      // Render Visual Signals & Institutional SL/TP Projections on Canvas
       if (this.csShowSignals && (aPlusSignal || signalBadge)) {
         if (aPlusSignal) {
           const isBuy = aPlusSignal.direction === 'BUY';
           const isFocus = (i === latestSignalCandleIdx) || (i === hoveredCandleIdx);
 
           ctx.save();
-
-          // Triangular Anchor Chevron (Points directly at candle wick)
           ctx.fillStyle = signalCol;
           ctx.beginPath();
           if (isBuy) {
@@ -3956,7 +3999,6 @@ class FootprintRenderer {
           ctx.closePath();
           ctx.fill();
 
-          // Badge Pill Position
           const badgeY = isBuy ? Math.min(mainChartBottom - 11, yLow + 17) : Math.max(mainChartTop + 14, yHigh - 17);
           const badgeText = isFocus ? aPlusSignal.badge : (isBuy ? `▲ ${aPlusSignal.technique || 'BUY'}` : `▼ ${aPlusSignal.technique || 'SELL'}`);
 
@@ -3966,7 +4008,6 @@ class FootprintRenderer {
           const btx = cx - btw / 2;
           const bty = badgeY - bth / 2;
 
-          // Institutional Glow Box
           ctx.fillStyle = isBuy ? 'rgba(6, 78, 59, 0.94)' : 'rgba(136, 19, 55, 0.94)';
           ctx.fillRect(btx, bty, btw, bth);
           ctx.strokeStyle = isFocus ? '#ffd60a' : (isBuy ? '#10b981' : '#f43f5e');
@@ -3978,13 +4019,11 @@ class FootprintRenderer {
           ctx.textBaseline = 'middle';
           ctx.fillText(badgeText, cx, badgeY);
 
-          // ONLY DRAW SL & TP PROJECTIONS FOR LATEST ACTIVE SIGNAL OR HOVERED SIGNAL!
           if (isFocus) {
             const pegW = Math.min(slotW * 3.2, 85);
             const ySl = pToY(aPlusSignal.sl);
             const yTp = pToY(aPlusSignal.tp);
 
-            // Stop Loss Peg (Red Dashed)
             if (ySl >= mainChartTop && ySl <= mainChartBottom) {
               ctx.strokeStyle = '#ff3366';
               ctx.setLineDash([4, 3]);
@@ -4007,7 +4046,6 @@ class FootprintRenderer {
               ctx.fillText(slTxt, cx + pegW + slTw / 2, ySl + 3);
             }
 
-            // Take Profit Peg (Green Dashed)
             if (yTp >= mainChartTop && yTp <= mainChartBottom) {
               ctx.strokeStyle = '#00e676';
               ctx.setLineDash([4, 3]);
@@ -4040,7 +4078,6 @@ class FootprintRenderer {
         }
       }
 
-      // Check Mouse Hover over this candle column
       if (i === hoveredCandleIdx) {
         const d = new Date(c.time * 1000);
         hoveredCandle = {
@@ -4060,10 +4097,9 @@ class FootprintRenderer {
       }
     }
 
-    // Active displayed candle for telemetries
     const dispC = hoveredCandle || candles[candles.length - 1];
 
-    // 10. Bottom Volume + Order Flow Delta Sub-Pane + CVD Line
+    // 10. Bottom Volume + Order Flow Delta Sub-Pane + CVD Curve
     const volTop = mainChartBottom;
     ctx.fillStyle = '#060a12';
     ctx.fillRect(0, volTop, chartW, volPaneH);
@@ -4097,7 +4133,6 @@ class FootprintRenderer {
       cvdPoints.push({ x: cx, v: runCvd });
     }
 
-    // Mid Baseline for CVD
     const cvdMidY = volTop + volPaneH / 2;
     ctx.save();
     ctx.setLineDash([2, 4]);
@@ -4129,7 +4164,7 @@ class FootprintRenderer {
       ctx.fill();
     }
 
-    // Sub-pane Mini Header Tag (Institutional Clean Layout)
+    // Sub-pane Header Tag & Collision-Free Responsive Telemetry
     ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
     ctx.fillRect(6, volTop + 3, 142, 14);
     ctx.strokeStyle = '#334155';
@@ -4140,16 +4175,20 @@ class FootprintRenderer {
     ctx.textAlign = 'left';
     ctx.fillText('📊 VOLUM & DELTA FLOW', 10, volTop + 13);
 
-    // Live Sub-Pane Telemetry on the right edge
-    const subTeleTxt = `Vol:${(dispC.volume || 0).toFixed(0)}L  Δ:${(dispC.delta || 0) >= 0 ? '+' : ''}${(dispC.delta || 0).toFixed(1)}L  CVD:${runCvd >= 0 ? '+' : ''}${runCvd.toFixed(1)}L`;
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '8px "JetBrains Mono", monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText(subTeleTxt, chartW - 8, volTop + 13);
+    // Responsive telemetry: Adjust detail based on chart width
+    if (chartW > 360) {
+      const subTeleTxt = chartW > 520
+        ? `Vol:${(dispC.volume || 0).toFixed(0)}L  Δ:${(dispC.delta || 0) >= 0 ? '+' : ''}${(dispC.delta || 0).toFixed(1)}L  CVD:${runCvd >= 0 ? '+' : ''}${runCvd.toFixed(1)}L`
+        : `Δ:${(dispC.delta || 0) >= 0 ? '+' : ''}${(dispC.delta || 0).toFixed(1)}L CVD:${runCvd >= 0 ? '+' : ''}${runCvd.toFixed(1)}L`;
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(subTeleTxt, chartW - 8, volTop + 13);
+    }
 
-    // 10.5. Feature 4: Visual S/R Rays from Previous 3 Candle POCs
+    // 10.5. Visual S/R Rays from Previous 3 Candle POCs
     if (this.csShowLevels && candles.length >= 3) {
-      const recentCandles = candles.slice(-4, -1); // 3 completed candles before active candle
+      const recentCandles = candles.slice(-4, -1);
       const pocColors = ['#f59e0b', '#38bdf8', '#c084fc'];
 
       recentCandles.forEach((rc, rIdx) => {
@@ -4160,7 +4199,7 @@ class FootprintRenderer {
         const cOrigIdx = candles.length - 4 + rIdx;
         const startX = getBarX(Math.max(0, cOrigIdx));
         const col = pocColors[rIdx % pocColors.length];
-        const offsetNum = recentCandles.length - rIdx; // POC-3, POC-2, POC-1
+        const offsetNum = recentCandles.length - rIdx;
 
         ctx.save();
         ctx.setLineDash([4, 3]);
@@ -4172,7 +4211,6 @@ class FootprintRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Ray Label Pill on Right Edge
         const tagText = `POC-${offsetNum} $${rc.poc.toFixed(2)}`;
         ctx.font = 'bold 8px "JetBrains Mono", monospace';
         const tw = ctx.measureText(tagText).width + 8;
@@ -4188,7 +4226,7 @@ class FootprintRenderer {
       });
     }
 
-    // 11. Live Price Dashed Ray + Right Axis Price Pill + Countdown Timer
+    // 11. Live Price Dashed Ray + Countdown Timer
     const liveY = pToY(lastPrice);
     if (liveY >= mainChartTop && liveY <= mainChartBottom) {
       const liveCandle = candles[candles.length - 1];
@@ -4205,7 +4243,6 @@ class FootprintRenderer {
       ctx.stroke();
       ctx.restore();
 
-      // Price Badge on Right Axis
       ctx.fillStyle = badgeCol;
       ctx.fillRect(chartW + 1, liveY - 9, rightAxisW - 2, 18);
       ctx.fillStyle = '#04101e';
@@ -4213,7 +4250,6 @@ class FootprintRenderer {
       ctx.textAlign = 'center';
       ctx.fillText(lastPrice.toFixed(2), chartW + rightAxisW / 2, liveY + 3.5);
 
-      // Live Candle Countdown Timer right below Live Price Badge
       const tfSecMap = { 'M1': 60, 'M5': 300, 'M15': 900, 'M30': 1800, 'H1': 3600, 'H4': 14400 };
       const intervalSec = tfSecMap[this.timeframe || 'M1'] || 60;
       const nowSec = Math.floor(Date.now() / 1000);
@@ -4249,10 +4285,10 @@ class FootprintRenderer {
       ctx.fillStyle = '#04101e';
       ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(cursorP.toFixed(2), chartW + rightAxisW / 2, this.mousePos.y + 3);
+      ctx.fillText(cursorP.toFixed(2), chartW + rightAxisW / 2, this.mousePos.y + 3.5);
     }
 
-    // 13. Top Interactive Candlestick Telemetry & Indicator Strip (Clean & Uncluttered Dual-Zone)
+    // 13. Top Interactive Candlestick Telemetry Strip & Quick Action Trade HUD
     ctx.fillStyle = '#0b1220';
     ctx.fillRect(0, 0, this.width, topBarH);
     ctx.strokeStyle = '#1e293b';
@@ -4261,49 +4297,69 @@ class FootprintRenderer {
     ctx.lineTo(this.width, topBarH);
     ctx.stroke();
 
-    // Define interactive pills first to measure exact required width
+    // Define interactive pills: Feature Toggles + Navigation + Quick Action Trade HUD
     const pills = [
+      // Quick Action Trade HUD
+      { label: '⚡ BUY', active: true, col: '#059669', isTrade: true, fn: () => {
+        if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('BUY');
+      }},
+      { label: '⚡ SELL', active: true, col: '#dc2626', isTrade: true, fn: () => {
+        if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('SELL');
+      }},
+      { label: '🎯 BE', active: false, col: '#0284c7', isTrade: true, fn: () => {
+        fetch('/api/breakeven_all', { method: 'POST' }).then(r => r.json()).then(res => {
+          if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
+        });
+      }},
+      { label: '❌ CLOSE', active: false, col: '#e11d48', isTrade: true, fn: () => {
+        fetch('/api/close_all', { method: 'POST' }).then(r => r.json()).then(res => {
+          if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
+        });
+      }},
+      // Indicator & Analysis Toggles
       { label: '📈 EMA', active: this.csShowEMA, col: '#ffd60a', fn: () => { this.csShowEMA = !this.csShowEMA; } },
       { label: '🌐 VWAP', active: this.csShowVWAP, col: '#00f0ff', fn: () => { this.csShowVWAP = !this.csShowVWAP; } },
       { label: '⭐ Sesi', active: this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
-      { label: this.csShowSignals ? '🎯 Signal: ON' : '🎯 Signal: OFF', active: this.csShowSignals, col: '#00e676', fn: () => { this.csShowSignals = !this.csShowSignals; } },
+      { label: this.csShowFvgOb !== false ? '📦 FVG/OB' : '📦 FVG: OFF', active: this.csShowFvgOb !== false, col: '#34d399', fn: () => { this.csShowFvgOb = !(this.csShowFvgOb !== false); } },
+      { label: this.csShowStructure !== false ? '🏛️ BOS' : '🏛️ BOS: OFF', active: this.csShowStructure !== false, col: '#c084fc', fn: () => { this.csShowStructure = !(this.csShowStructure !== false); } },
+      { label: this.csShowSignals ? '🎯 Signal' : '🎯 Signal: OFF', active: this.csShowSignals, col: '#00e676', fn: () => { this.csShowSignals = !this.csShowSignals; } },
       { label: '◀', active: false, col: '#38bdf8', fn: () => { this.panHorizontal(-1); } },
       { label: '▶', active: false, col: '#38bdf8', fn: () => { this.panHorizontal(1); } },
       { label: '▲', active: false, col: '#38bdf8', fn: () => { this.panVertical(1); } },
       { label: '▼', active: false, col: '#38bdf8', fn: () => { this.panVertical(-1); } }
     ];
     if (Math.abs(this.priceOffset || 0) > 0.05 || (this.barOffset || 0) > 0) {
-      pills.push({ label: '🎯', active: true, col: '#fbbf24', fn: () => { this.centerVertical(); } });
+      pills.push({ label: '🎯 Cent', active: true, col: '#fbbf24', fn: () => { this.centerVertical(); } });
     }
-    pills.push({ label: '➖', active: false, col: '#38bdf8', fn: () => { this.csVisibleBars = Math.min(48, (this.csVisibleBars || 34) + 4); } });
+    pills.push({ label: '➖', active: false, col: '#38bdf8', fn: () => { this.csVisibleBars = Math.min(50, (this.csVisibleBars || 34) + 4); } });
     pills.push({ label: '➕', active: false, col: '#38bdf8', fn: () => { this.csVisibleBars = Math.max(14, (this.csVisibleBars || 34) - 4); } });
 
-    // Calculate pill widths
+    // Measure pill widths
     ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
     let totalPillsW = 0;
     const pillMetrics = pills.map(p => {
-      const w = Math.ceil(ctx.measureText(p.label).width) + 9;
+      const w = Math.ceil(ctx.measureText(p.label).width) + 10;
       totalPillsW += (w + 4);
       return { ...p, w };
     });
 
-    // Pill start position anchored from the right edge
-    const pillStartX = Math.max(260, this.width - totalPillsW - 6);
+    // Anchor pills from right edge
+    const pillStartX = Math.max(240, this.width - totalPillsW - 6);
     let curPx = pillStartX;
 
     // Render Pills
     for (const p of pillMetrics) {
-      const y = 7;
-      const h = 16;
+      const y = 6;
+      const h = 20;
       if (curPx + p.w > this.width - 4) break;
       ctx.fillStyle = p.active ? p.col : '#162238';
       ctx.fillRect(curPx, y, p.w, h);
-      ctx.strokeStyle = p.active ? '#ffffff' : '#334155';
-      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = p.active ? (p.isTrade ? '#ffffff' : p.col) : '#334155';
+      ctx.lineWidth = p.isTrade ? 1.0 : 0.8;
       ctx.strokeRect(curPx, y, p.w, h);
-      ctx.fillStyle = p.active ? '#04101e' : '#94a3b8';
+      ctx.fillStyle = p.active ? '#ffffff' : '#94a3b8';
       ctx.textAlign = 'center';
-      ctx.fillText(p.label, curPx + p.w / 2, y + 11);
+      ctx.fillText(p.label, curPx + p.w / 2, y + 13.5);
       this.cdToolbarHitboxes.push({ x: curPx, y, w: p.w, h, onClick: p.fn });
       curPx += p.w + 4;
     }
@@ -4316,7 +4372,7 @@ class FootprintRenderer {
     ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffd60a';
-    ctx.fillText(`🕯️ XAUUSD [${this.timeframe || 'M1'}]`, 8, 19);
+    ctx.fillText(`🕯️ XAUUSD [${this.timeframe || 'M1'}]`, 8, 20);
 
     if (availTeleW > 160) {
       let ohlcTxt = '';
@@ -4328,7 +4384,7 @@ class FootprintRenderer {
         ohlcTxt = `C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`;
       }
       ctx.fillStyle = isUpC ? '#4ade80' : '#fb7185';
-      ctx.fillText(ohlcTxt, 114, 19);
+      ctx.fillText(ohlcTxt, 114, 20);
     }
 
     ctx.restore();
