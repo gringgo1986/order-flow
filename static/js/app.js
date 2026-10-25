@@ -12,6 +12,9 @@ class App {
     // Trading state
     this.selectedLot = 0.01;
     this.latestSnapshot = null;
+    this.needsRedraw = true;
+    this._lastInsightsHTML = "";
+    this._lastTapeHTML = "";
     
     // Components
     this.bookmap = new BookmapRenderer('bookmapCanvas');
@@ -762,6 +765,70 @@ class App {
     });
   }
 
+
+    // Institutional Global Hotkeys (B, S, Space, X, 1-5)
+    window.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) {
+        return;
+      }
+
+      // 1-5 View Switching
+      if (e.key === '1') { e.preventDefault(); this.setView('bookmap'); this.showToast('Mod Paparan: Bookmap Heatmap (Kekunci [1])'); return; }
+      if (e.key === '2') { e.preventDefault(); this.setView('clusterdelta'); this.showToast('Mod Paparan: ClusterDelta (Kekunci [2])'); return; }
+      if (e.key === '3') { e.preventDefault(); this.setView('footprint'); this.showToast('Mod Paparan: Footprint (Kekunci [3])'); return; }
+      if (e.key === '4') { e.preventDefault(); this.setView('candlestick'); this.showToast('Mod Paparan: Carta Candle (Kekunci [4])'); return; }
+      if (e.key === '5') { e.preventDefault(); this.setView('split'); this.showToast('Mod Paparan: Split View (Kekunci [5])'); return; }
+
+      // B: Quick Buy Market
+      if (e.code === 'KeyB') {
+        e.preventDefault();
+        const btnFastBuy = document.getElementById('btnFastBuy');
+        if (btnFastBuy) {
+          btnFastBuy.classList.add('active');
+          setTimeout(() => btnFastBuy.classList.remove('active'), 200);
+          btnFastBuy.click();
+        }
+        return;
+      }
+
+      // S: Quick Sell Market
+      if (e.code === 'KeyS') {
+        e.preventDefault();
+        const btnFastSell = document.getElementById('btnFastSell');
+        if (btnFastSell) {
+          btnFastSell.classList.add('active');
+          setTimeout(() => btnFastSell.classList.remove('active'), 200);
+          btnFastSell.click();
+        }
+        return;
+      }
+
+      // Spacebar: Breakeven All
+      if (e.code === 'Space') {
+        e.preventDefault();
+        const btnFastBE = document.getElementById('btnFastBE');
+        if (btnFastBE) {
+          btnFastBE.classList.add('active');
+          setTimeout(() => btnFastBE.classList.remove('active'), 200);
+          btnFastBE.click();
+        }
+        return;
+      }
+
+      // X: Close All
+      if (e.code === 'KeyX') {
+        e.preventDefault();
+        const btnFastCloseAll = document.getElementById('btnFastCloseAll');
+        if (btnFastCloseAll) {
+          btnFastCloseAll.classList.add('active');
+          setTimeout(() => btnFastCloseAll.classList.remove('active'), 200);
+          btnFastCloseAll.click();
+        }
+        return;
+      }
+    });
+
   _handleCanvasClickForDrawing(cx, cy, targetCanvas) {
     if (!this.drawingMode) return false;
     let price = null;
@@ -777,6 +844,8 @@ class App {
       if (this.bookmap && this.bookmap.addDrawing) this.bookmap.addDrawing(rayObj);
       if (this.footprint && this.footprint.addDrawing) this.footprint.addDrawing(rayObj);
       this.showToast(`📏 Horizontal Ray ditambah pada $${rayObj.price.toFixed(2)}`);
+      this.drawingMode = null;
+      if (document.getElementById('btnDrawRay')) document.getElementById('btnDrawRay').classList.remove('active');
       return true;
     } else if (this.drawingMode === 'trend') {
       if (!this._trendStart) {
@@ -793,6 +862,8 @@ class App {
         if (this.footprint && this.footprint.addDrawing) this.footprint.addDrawing(trendObj);
         this.showToast(`📐 Trendline dilukis ($${this._trendStart.price.toFixed(2)} → $${trendObj.p2.price.toFixed(2)})`);
         this._trendStart = null;
+        this.drawingMode = null;
+        if (document.getElementById('btnDrawTrend')) document.getElementById('btnDrawTrend').classList.remove('active');
       }
       return true;
     }
@@ -862,6 +933,7 @@ class App {
 
   setView(view) {
     this.currentView = view;
+    this.needsRedraw = true;
     this._updateContextToolbar(view);
     if (view === 'bookmap') {
       this.bookmapCanvas.style.display = 'block';
@@ -972,6 +1044,7 @@ class App {
       try {
         const snapshot = JSON.parse(event.data);
         this.latestSnapshot = snapshot;
+        this.needsRedraw = true;
         this._updateUI(snapshot);
       } catch (err) {
         console.error('[WS] Parse error:', err);
@@ -1533,7 +1606,10 @@ class App {
         </tr>
       `;
     }
-    this.tapeTableBody.innerHTML = html;
+    if (this._lastTapeHTML !== html) {
+      this._lastTapeHTML = html;
+      this.tapeTableBody.innerHTML = html;
+    }
   }
 
   _detectInsights(s) {
@@ -1659,7 +1735,10 @@ class App {
     if (!html) {
       html = '<div style="color:var(--text-dark); padding:10px;">Mengimbas aliran pesanan Order Flow & Bookmap...</div>';
     }
-    list.innerHTML = html;
+    if (this._lastInsightsHTML !== html) {
+      this._lastInsightsHTML = html;
+      list.innerHTML = html;
+    }
   }
 
   showToast(msg) {
@@ -1678,7 +1757,8 @@ class App {
 
   _startRenderLoop() {
     const loop = () => {
-      if (this.latestSnapshot) {
+      if (this.latestSnapshot && this.needsRedraw) {
+        this.needsRedraw = false;
         if (this.currentView === 'bookmap' || this.currentView === 'split') {
           this.bookmap.render(this.latestSnapshot);
         }
