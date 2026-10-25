@@ -29,6 +29,9 @@ class FootprintRenderer {
     // ClusterDelta Pro Sub-Settings (Adjustable 20-50 Jalur / Columns & Price Rows)
     this.cdCellMode = 'volume'; // 'volume' | 'delta' | 'bid_ask' | 'imbalance'
     this.cdShowPocLine = true;
+    this.cdShowPocMigration = true; // Stepped POC Migration Flow Line (Value Acceptance)
+    this.cdShowStackedImb = true;   // Stacked 3x Diagonal Imbalances Highlighter
+    this.cdShowClimax = true;       // Delta Climax & Exhaustion Absorption Callouts
     this.cdShowZoneRays = true;
     this.cdShowBenchmarks = true;
     this.cdShowSignals = true;
@@ -1683,11 +1686,29 @@ class FootprintRenderer {
     };
 
     // Title tag
-    ctx.font = 'bold 10px "JetBrains Mono", monospace';
+    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
     ctx.fillStyle = '#fbbf24';
     ctx.textAlign = 'left';
     ctx.fillText('⚡ CLUSTERDELTA PRO:', pillX, 15.5);
-    pillX += 126;
+    pillX += 122;
+
+    // Feature: On-Canvas Quick Action Trade HUD
+    drawPill('⚡ BUY', true, '#059669', () => {
+      if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('BUY');
+    });
+    drawPill('⚡ SELL', true, '#dc2626', () => {
+      if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('SELL');
+    });
+    drawPill('🎯 BE', false, '#38bdf8', () => {
+      fetch('/api/breakeven_all', { method: 'POST' }).then(r => r.json()).then(res => {
+        if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
+      });
+    });
+    drawPill('❌ CLOSE', false, '#f43f5e', () => {
+      fetch('/api/close_all', { method: 'POST' }).then(r => r.json()).then(res => {
+        if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
+      });
+    });
 
     // 4 Brick Mode Pills
     drawPill('Bata: VOL', this.cdCellMode === 'volume', '#fde047', () => { this.cdCellMode = 'volume'; });
@@ -1695,20 +1716,26 @@ class FootprintRenderer {
     drawPill('Bata: BIDxASK', this.cdCellMode === 'bid_ask', '#4ade80', () => { this.cdCellMode = 'bid_ask'; });
     drawPill('Bata: IMB PRO', this.cdCellMode === 'imbalance', '#c084fc', () => { this.cdCellMode = 'imbalance'; });
 
-    pillX += 6;
-    drawPill(`📈 Garis POC: ${this.cdShowPocLine ? 'ON' : 'OFF'}`, this.cdShowPocLine, '#facc15', () => {
-      this.cdShowPocLine = !this.cdShowPocLine;
+    pillX += 4;
+    drawPill(`📈 Aliran POC: ${this.cdShowPocMigration !== false ? 'ON' : 'OFF'}`, this.cdShowPocMigration !== false, '#facc15', () => {
+      this.cdShowPocMigration = this.cdShowPocMigration === false;
+    });
+    drawPill(`⚡ 3x Imb: ${this.cdShowStackedImb !== false ? 'ON' : 'OFF'}`, this.cdShowStackedImb !== false, '#00f0ff', () => {
+      this.cdShowStackedImb = this.cdShowStackedImb === false;
+    });
+    drawPill(`🛡️ Klimaks: ${this.cdShowClimax !== false ? 'ON' : 'OFF'}`, this.cdShowClimax !== false, '#c084fc', () => {
+      this.cdShowClimax = this.cdShowClimax === false;
     });
     drawPill(`🎯 Ray Zon 3x: ${this.cdShowZoneRays ? 'ON' : 'OFF'}`, this.cdShowZoneRays, '#34d399', () => {
       this.cdShowZoneRays = !this.cdShowZoneRays;
     });
-    drawPill(`🏛️ VWAP & Sesi: ${this.cdShowBenchmarks ? 'ON' : 'OFF'}`, this.cdShowBenchmarks, '#38bdf8', () => {
+    drawPill(`🏛️ Sesi: ${this.cdShowBenchmarks ? 'ON' : 'OFF'}`, this.cdShowBenchmarks, '#38bdf8', () => {
       this.cdShowBenchmarks = !this.cdShowBenchmarks;
     });
-    drawPill(`📐 SNR H1/H4/H8: ${this.cdShowSNR ? 'ON' : 'OFF'}`, this.cdShowSNR, '#ec4899', () => {
+    drawPill(`📐 SNR: ${this.cdShowSNR ? 'ON' : 'OFF'}`, this.cdShowSNR, '#ec4899', () => {
       this.cdShowSNR = !this.cdShowSNR;
     });
-    drawPill(this.cdShowSignals ? '🎯 Isyarat: ON' : '🎯 Isyarat: OFF', this.cdShowSignals, '#00e676', () => {
+    drawPill(this.cdShowSignals ? '🎯 SGNL: ON' : '🎯 SGNL: OFF', this.cdShowSignals, '#00e676', () => {
       this.cdShowSignals = !this.cdShowSignals;
     });
 
@@ -1975,6 +2002,38 @@ class FootprintRenderer {
         }
       }
 
+      // Feature: Detect 3+ Stacked Diagonal Imbalances (Institutional Order Flow Zones)
+      let curStackedBuy = [];
+      let curStackedSell = [];
+      let stackedBuyZone = null;
+      let stackedSellZone = null;
+      for (let k = 0; k < sortedKeys.length; k++) {
+        const cl = grouped[sortedKeys[k]];
+        if (cl.isBuyImb) {
+          curStackedBuy.push(cl.price);
+        } else {
+          if (curStackedBuy.length >= 3) {
+            stackedBuyZone = { minP: curStackedBuy[0], maxP: curStackedBuy[curStackedBuy.length - 1] + step, count: curStackedBuy.length };
+          }
+          curStackedBuy = [];
+        }
+
+        if (cl.isSellImb) {
+          curStackedSell.push(cl.price);
+        } else {
+          if (curStackedSell.length >= 3) {
+            stackedSellZone = { minP: curStackedSell[0], maxP: curStackedSell[curStackedSell.length - 1] + step, count: curStackedSell.length };
+          }
+          curStackedSell = [];
+        }
+      }
+      if (curStackedBuy.length >= 3) {
+        stackedBuyZone = { minP: curStackedBuy[0], maxP: curStackedBuy[curStackedBuy.length - 1] + step, count: curStackedBuy.length };
+      }
+      if (curStackedSell.length >= 3) {
+        stackedSellZone = { minP: curStackedSell[0], maxP: curStackedSell[curStackedSell.length - 1] + step, count: curStackedSell.length };
+      }
+
       let pocPrice = null;
       let maxVol = -1;
       for (const cl of Object.values(grouped)) {
@@ -2002,12 +2061,29 @@ class FootprintRenderer {
         }
       }
 
+      // Feature: Delta Climax & Exhaustion Absorption Callouts
+      let climaxSignal = null;
+      const cDelta = c.delta || 0;
+      const cVol = Math.max(1, c.volume || 1);
+      const wickTop = c.high - Math.max(c.open, c.close);
+      const wickBot = Math.min(c.open, c.close) - c.low;
+      const cRange = Math.max(0.1, c.high - c.low);
+
+      if (cDelta > 8.0 && (cDelta / cVol >= 0.38) && (wickTop / cRange >= 0.38)) {
+        climaxSignal = { type: 'BUY_CLIMAX', label: '⚡ BUY CLIMAX', col: '#00f0ff' };
+      } else if (cDelta < -8.0 && (Math.abs(cDelta) / cVol >= 0.38) && (wickBot / cRange >= 0.38)) {
+        climaxSignal = { type: 'SELL_CLIMAX', label: '⚡ SELL CLIMAX', col: '#f43f5e' };
+      }
+
       return {
         raw: c,
         grouped,
         pocPrice,
         maxVol,
         trapSignal,
+        stackedBuyZone,
+        stackedSellZone,
+        climaxSignal,
         cdSignal,
         isLatest: idx === candles.length - 1
       };
@@ -2080,8 +2156,8 @@ class FootprintRenderer {
       }
     }
 
-    // 8. Draw Top 4-Row Institutional Table Background (y: topControlH .. topHeaderH)
-    ctx.fillStyle = '#d1d5db';
+    // 8. Draw Top 4-Row Institutional Table Background (y: topControlH .. topHeaderH) - OLED Dark Slate
+    ctx.fillStyle = '#0b1322';
     ctx.fillRect(0, topControlH, this.width, topTableH);
 
     // 9. Render Each Candle Column + Top 4-Row Telemetry Table + Brick Matrix
@@ -2093,54 +2169,58 @@ class FootprintRenderer {
       const x = startX + i * colW;
       const isBull = c.close >= c.open;
 
-      // --- TOP ROW 1 (y: topControlH + 0..17): Total Candle Volume (Green Heatmap Cell + Mini Bar) ---
+      // --- TOP ROW 1 (y: topControlH + 0..17): Total Candle Volume (Dark Emerald Glow) ---
       const r1Y = topControlH;
       const volRatio = Math.min(1, (c.volume || 0) / maxCandleVol);
       ctx.fillStyle = pc.isLatest
-        ? '#4ade80'
-        : `rgb(${Math.round(215 - volRatio * 110)}, ${Math.round(248 - volRatio * 25)}, ${Math.round(215 - volRatio * 110)})`;
+        ? 'rgba(74, 222, 128, 0.28)'
+        : `rgba(16, 185, 129, ${0.08 + volRatio * 0.35})`;
       ctx.fillRect(x, r1Y, colW, 17);
-      // Subtle bottom progress bar inside Volume cell
-      ctx.fillStyle = 'rgba(22, 101, 52, 0.25)';
-      ctx.fillRect(x + 1, r1Y + 14, (colW - 2) * volRatio, 2.5);
-      ctx.strokeStyle = '#6b7280';
-      ctx.lineWidth = 1;
+
+      // Bottom progress line inside Volume cell
+      ctx.fillStyle = pc.isLatest ? '#4ade80' : 'rgba(74, 222, 128, 0.45)';
+      ctx.fillRect(x + 1, r1Y + 14.5, (colW - 2) * volRatio, 2.0);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 0.8;
       ctx.strokeRect(x, r1Y, colW, 17);
 
-      ctx.fillStyle = '#064e3b';
+      ctx.fillStyle = pc.isLatest ? '#4ade80' : '#86efac';
       ctx.font = `bold ${hdrFontPx}px "JetBrains Mono", monospace`;
       ctx.textAlign = colW >= 26 ? 'right' : 'center';
-      ctx.fillText(Math.round((c.volume || 0) * 10).toString(), colW >= 26 ? (x + colW - 3) : (x + colW / 2), r1Y + 12);
+      const volDisp = Math.round((c.volume || 0) * 10);
+      const volDispStr = (colW < 26 && volDisp >= 1000) ? ((volDisp / 1000).toFixed(1) + 'k') : volDisp.toString();
+      ctx.fillText(volDispStr, colW >= 26 ? (x + colW - 3) : (x + colW / 2), r1Y + 12);
 
-      // --- TOP ROW 2 (y: topControlH + 17..34): Net Candle Delta (Cyan / Pink Cell) ---
+      // --- TOP ROW 2 (y: topControlH + 17..34): Net Candle Delta (Neon Cyan / Pink Cell) ---
       const r2Y = topControlH + 17;
       const dVal = Math.round((c.delta || 0) * 10);
       const dRatio = Math.min(1, Math.abs(c.delta || 0) / maxCandleDeltaAbs);
       if (dVal >= 0) {
-        ctx.fillStyle = `rgb(${Math.round(210 - dRatio * 85)}, ${Math.round(238 - dRatio * 25)}, 255)`;
+        ctx.fillStyle = `rgba(14, 165, 233, ${0.10 + dRatio * 0.38})`;
       } else {
-        ctx.fillStyle = `rgb(255, ${Math.round(220 - dRatio * 70)}, ${Math.round(225 - dRatio * 70)})`;
+        ctx.fillStyle = `rgba(244, 63, 94, ${0.10 + dRatio * 0.38})`;
       }
       ctx.fillRect(x, r2Y, colW, 17);
-      ctx.strokeStyle = '#6b7280';
+      ctx.strokeStyle = '#1e293b';
       ctx.strokeRect(x, r2Y, colW, 17);
 
-      ctx.fillStyle = dVal >= 0 ? '#0c4a6e' : '#991b1b';
+      ctx.fillStyle = dVal >= 0 ? '#38bdf8' : '#fb7185';
       ctx.font = `bold ${hdrFontPx}px "JetBrains Mono", monospace`;
       ctx.textAlign = colW >= 26 ? 'right' : 'center';
-      const dStr = colW >= 24 ? ((dVal > 0 ? '+' : '') + dVal.toString()) : dVal.toString();
+      let dStr = (dVal > 0 ? '+' : '') + dVal.toString();
+      if (colW < 26 && Math.abs(dVal) >= 1000) dStr = (dVal / 1000).toFixed(1) + 'k';
       ctx.fillText(dStr, colW >= 26 ? (x + colW - 3) : (x + colW / 2), r2Y + 12);
 
       // --- TOP ROW 3 (y: topControlH + 34..50): Delta % & Divergence Detector ---
       const r3Y = topControlH + 34;
       const deltaPct = (c.volume || 0) > 0 ? Math.round(((c.delta || 0) / c.volume) * 100) : 0;
       const isDivergent = (isBull && c.delta < -1.5) || (!isBull && c.delta > 1.5);
-      ctx.fillStyle = isDivergent ? '#fef08a' : '#9ca3af';
+      ctx.fillStyle = isDivergent ? 'rgba(251, 191, 36, 0.22)' : '#101a2c';
       ctx.fillRect(x, r3Y, colW, 16);
-      ctx.strokeStyle = '#6b7280';
+      ctx.strokeStyle = isDivergent ? '#facc15' : '#1e293b';
       ctx.strokeRect(x, r3Y, colW, 16);
 
-      ctx.fillStyle = isDivergent ? '#b45309' : (deltaPct >= 0 ? '#065f46' : '#7f1d1d');
+      ctx.fillStyle = isDivergent ? '#fde047' : (deltaPct >= 0 ? '#4ade80' : '#f87171');
       ctx.font = `bold ${Math.max(6.8, hdrFontPx - 0.5)}px "JetBrains Mono", monospace`;
       ctx.textAlign = 'center';
       const pctText = colW >= 34
@@ -2150,9 +2230,9 @@ class FootprintRenderer {
 
       // --- TOP ROW 4 (y: topControlH + 50..68): Candle Time Label (HH:MM) ---
       const r4Y = topControlH + 50;
-      ctx.fillStyle = pc.isLatest ? '#bbf7d0' : '#cbd5e1';
+      ctx.fillStyle = pc.isLatest ? 'rgba(56, 189, 248, 0.20)' : '#0d1527';
       ctx.fillRect(x, r4Y, colW, 18);
-      ctx.strokeStyle = '#6b7280';
+      ctx.strokeStyle = '#1e293b';
       ctx.strokeRect(x, r4Y, colW, 18);
 
       const dObj = new Date((c.time || 0) * 1000);
@@ -2161,7 +2241,7 @@ class FootprintRenderer {
       const ampm = rawH >= 12 ? 'pm' : 'am';
       const hh = String(h12).padStart(2, '0');
       const mm = String(dObj.getMinutes()).padStart(2, '0');
-      ctx.fillStyle = '#111827';
+      ctx.fillStyle = pc.isLatest ? '#38bdf8' : '#94a3b8';
       ctx.font = `bold ${hdrFontPx}px "JetBrains Mono", monospace`;
       ctx.textAlign = 'center';
       if (colW >= 42) {
@@ -2349,11 +2429,83 @@ class FootprintRenderer {
       ctx.fillStyle = isBull ? '#16a34a' : '#dc2626';
       ctx.fillRect(x + 0.5, bodyTop, 4.5, bodyH);
 
+      const cx = x + colW / 2;
+
+      // Feature: Stacked Diagonal Imbalance Zone (3+ consecutive levels)
+      if (this.cdShowStackedImb !== false) {
+        if (pc.stackedBuyZone) {
+          const zTop = priceToRowY(pc.stackedBuyZone.maxP);
+          const zBot = priceToRowY(pc.stackedBuyZone.minP);
+          const zH = Math.max(8, zBot - zTop);
+          ctx.save();
+          ctx.fillStyle = 'rgba(6, 182, 212, 0.16)';
+          ctx.fillRect(x, zTop, colW, zH);
+          ctx.strokeStyle = '#00f0ff';
+          ctx.lineWidth = 1.6;
+          ctx.strokeRect(x, zTop, colW, zH);
+
+          if (i >= processedCandles.length - 6) {
+            ctx.setLineDash([4, 3]);
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(x + colW, zTop + zH / 2);
+            ctx.lineTo(chartW - 4, zTop + zH / 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          ctx.restore();
+        }
+
+        if (pc.stackedSellZone) {
+          const zTop = priceToRowY(pc.stackedSellZone.maxP);
+          const zBot = priceToRowY(pc.stackedSellZone.minP);
+          const zH = Math.max(8, zBot - zTop);
+          ctx.save();
+          ctx.fillStyle = 'rgba(244, 63, 94, 0.16)';
+          ctx.fillRect(x, zTop, colW, zH);
+          ctx.strokeStyle = '#ff0055';
+          ctx.lineWidth = 1.6;
+          ctx.strokeRect(x, zTop, colW, zH);
+
+          if (i >= processedCandles.length - 6) {
+            ctx.setLineDash([4, 3]);
+            ctx.strokeStyle = '#ff0055';
+            ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(x + colW, zTop + zH / 2);
+            ctx.lineTo(chartW - 4, zTop + zH / 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          ctx.restore();
+        }
+      }
+
+      // Feature: Delta Climax & Exhaustion Absorption Callout Badge
+      if (this.cdShowClimax !== false && pc.climaxSignal) {
+        ctx.save();
+        const sig = pc.climaxSignal;
+        const isBuyClimax = sig.type === 'BUY_CLIMAX';
+        const tagY = isBuyClimax ? (yHigh - 16) : (yLow + 6);
+        ctx.fillStyle = isBuyClimax ? 'rgba(8, 47, 73, 0.95)' : 'rgba(76, 5, 25, 0.95)';
+        ctx.strokeStyle = sig.col;
+        ctx.lineWidth = 1.1;
+        const tagW = Math.max(colW - 2, 42);
+        const tagX = cx - tagW / 2;
+        ctx.fillRect(tagX, tagY, tagW, 13);
+        ctx.strokeRect(tagX, tagY, tagW, 13);
+        ctx.fillStyle = sig.col;
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(colW >= 32 ? sig.label : (isBuyClimax ? '⚡CLIMAX' : '⚡EXHAUST'), cx, tagY + 9.5);
+        ctx.restore();
+      }
+
       // --- INSTITUTIONAL CLUSTERDELTA SIGNALS (BUY / SELL BADGES & ARROWS) ---
       if (this.cdShowSignals && pc.cdSignal) {
         const sig = pc.cdSignal;
         const isBuy = sig.direction === 'BUY';
-        const cx = x + colW / 2;
 
         ctx.save();
         if (isBuy) {
@@ -2512,26 +2664,54 @@ class FootprintRenderer {
       }
     }
 
-    // 10. Draw POC Migration Trajectory Line across Candles
-    if (this.cdShowPocLine && pocPoints.length > 1) {
+    // 10. Draw Stepped Orthogonal POC Migration Staircase (Value Acceptance & Flow Tracking)
+    if ((this.cdShowPocLine || this.cdShowPocMigration !== false) && pocPoints.length > 1) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-      ctx.lineWidth = 3.6;
+      // Outer shadow contrast stroke
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.90)';
+      ctx.lineWidth = 3.8;
       ctx.beginPath();
-      pocPoints.forEach((pt, idx) => {
-        if (idx === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      });
+      for (let k = 0; k < pocPoints.length; k++) {
+        const pt = pocPoints[k];
+        if (k === 0) {
+          ctx.moveTo(pt.x, pt.y);
+        } else {
+          const prev = pocPoints[k - 1];
+          ctx.lineTo(pt.x, prev.y);
+          ctx.lineTo(pt.x, pt.y);
+        }
+      }
       ctx.stroke();
 
+      // Glowing Neon Gold Stepped Staircase
       ctx.strokeStyle = '#facc15';
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = 2.0;
+      ctx.shadowColor = '#facc15';
+      ctx.shadowBlur = 5;
       ctx.beginPath();
-      pocPoints.forEach((pt, idx) => {
-        if (idx === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      });
+      for (let k = 0; k < pocPoints.length; k++) {
+        const pt = pocPoints[k];
+        if (k === 0) {
+          ctx.moveTo(pt.x, pt.y);
+        } else {
+          const prev = pocPoints[k - 1];
+          ctx.lineTo(pt.x, prev.y);
+          ctx.lineTo(pt.x, pt.y);
+        }
+      }
       ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Glowing nodes on each POC
+      for (const pt of pocPoints) {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 3.0, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
@@ -2624,47 +2804,50 @@ class FootprintRenderer {
     const deltaColW = 54;
     const priceColW = 66;
 
-    // Top-right corner status box (y: topControlH .. topHeaderH)
-    ctx.fillStyle = '#d1d5db';
+    // Top-right corner status box (y: topControlH .. topHeaderH) - OLED Charcoal Slate
+    ctx.fillStyle = '#0b1322';
     ctx.fillRect(panelX, topControlH, rightPanelW, topTableH);
-    ctx.strokeStyle = '#6b7280';
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
     ctx.strokeRect(panelX, topControlH, rightPanelW, topTableH);
 
     // Green checkmark circle + Live Session Totals
     ctx.beginPath();
     ctx.arc(panelX + 22, topControlH + 24, 9, 0, Math.PI * 2);
-    ctx.fillStyle = '#dcfce7';
+    ctx.fillStyle = '#064e3b';
     ctx.fill();
-    ctx.strokeStyle = '#16a34a';
+    ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 1.8;
     ctx.stroke();
-    ctx.fillStyle = '#15803d';
+    ctx.fillStyle = '#4ade80';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('✓', panelX + 22, topControlH + 28);
 
-    ctx.fillStyle = '#111827';
+    ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillText(`SESI CVD: ${(snapshot.cvd || 0) >= 0 ? '+' : ''}${(snapshot.cvd || 0).toFixed(0)}L`, panelX + 38, topControlH + 20);
-    ctx.fillStyle = '#374151';
+    ctx.fillStyle = '#94a3b8';
     ctx.font = 'bold 9px "JetBrains Mono", monospace';
     ctx.fillText(`BLOK: $${step.toFixed(2)}`, panelX + 38, topControlH + 34);
 
     // Sub-column headers at y: topControlH + 50 .. topHeaderH
     const hdrSubY = topControlH + 50;
-    ctx.fillStyle = '#9ca3af';
+    ctx.fillStyle = '#111827';
     ctx.fillRect(panelX, hdrSubY, rightPanelW, 18);
-    ctx.strokeStyle = '#4b5563';
+    ctx.strokeStyle = '#1e293b';
     ctx.strokeRect(panelX, hdrSubY, volColW, 18);
     ctx.strokeRect(panelX + volColW, hdrSubY, deltaColW, 18);
     ctx.strokeRect(panelX + volColW + deltaColW, hdrSubY, priceColW, 18);
 
-    ctx.fillStyle = '#111827';
     ctx.font = 'bold 9px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
+    ctx.fillStyle = '#facc15';
     ctx.fillText('VOL + VA70%', panelX + volColW / 2, hdrSubY + 12.5);
+    ctx.fillStyle = '#38bdf8';
     ctx.fillText('DELTA', panelX + volColW + deltaColW / 2, hdrSubY + 12.5);
+    ctx.fillStyle = '#ffffff';
     ctx.fillText('HARGA', panelX + volColW + deltaColW + priceColW / 2, hdrSubY + 12.5);
 
     // Compute Composite Session POC and 70% Value Area (VAH / VAL) across visible rows
@@ -2713,7 +2896,7 @@ class FootprintRenderer {
       }
     }
 
-    // Draw rows for Volume Histogram, Session Delta, and Price Scale
+    // Draw rows for Volume Histogram, Session Delta, and Price Scale (OLED Dark Style)
     for (let r = 0; r < numRows; r++) {
       const rp = rowProfiles[r];
       const p = rp.p;
@@ -2721,61 +2904,61 @@ class FootprintRenderer {
       const isCompPOC = r === compPocRowIdx && rp.total > 0;
       const isLivePriceRow = Math.abs(lastPrice - p) < step * 0.55;
 
-      // Column 1: Grey background + Orange horizontal histogram (Bright inside VA 70%, Vivid on POC)
-      ctx.fillStyle = rp.inVA ? '#9ca3af' : '#7c8594';
+      // Column 1: Dark Slate background + Orange/Gold horizontal histogram (Bright on VA 70%, Vivid on POC)
+      ctx.fillStyle = rp.inVA ? 'rgba(245, 158, 11, 0.12)' : 'rgba(15, 23, 42, 0.65)';
       ctx.fillRect(panelX, rowY, volColW, rowH);
 
       if (rp.total > 0) {
         const barW = Math.min(volColW - 2, (rp.total / maxCompVol) * (volColW - 4));
-        ctx.fillStyle = isCompPOC ? '#ea580c' : (rp.inVA ? '#f59e0b' : '#475569');
+        ctx.fillStyle = isCompPOC ? '#ea580c' : (rp.inVA ? '#f59e0b' : '#334155');
         ctx.fillRect(panelX + 1, rowY + 1, barW, Math.max(2, rowH - 2));
       }
 
-      ctx.strokeStyle = '#6b7280';
+      ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 0.8;
       ctx.strokeRect(panelX, rowY, volColW, rowH);
 
       if (rowH >= 7.8 && rp.total > 0) {
-        ctx.fillStyle = isCompPOC ? '#ffffff' : '#111827';
+        ctx.fillStyle = isCompPOC ? '#ffffff' : (rp.inVA ? '#fef08a' : '#94a3b8');
         ctx.font = `${isCompPOC ? 'bold ' : ''}${Math.min(10, Math.max(7.2, Math.floor(rowH - 1.2)))}px "JetBrains Mono", monospace`;
         ctx.textAlign = 'right';
         ctx.fillText(Math.round(rp.total * 10).toString(), panelX + volColW - 4, rowY + rowH / 2 + 3);
       }
 
-      // Column 2: Light-Blue Session Delta Column (#bae6fd) with Bidirectional Green/Red Bars
+      // Column 2: Dark Blue-Slate Session Delta Column with Bidirectional Green/Red Bars
       const dispDelta = Math.round(rp.delta * 10);
-      ctx.fillStyle = '#bae6fd';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
       ctx.fillRect(panelX + volColW, rowY, deltaColW, rowH);
 
       if (Math.abs(rp.delta) > 0) {
         const dBarW = Math.min(deltaColW - 4, (Math.abs(rp.delta) / maxCompDeltaAbs) * (deltaColW - 6));
-        ctx.fillStyle = dispDelta >= 0 ? '#4ade80' : '#fda4af';
+        ctx.fillStyle = dispDelta >= 0 ? '#10b981' : '#f43f5e';
         ctx.fillRect(panelX + volColW + deltaColW - dBarW - 1, rowY + 1, dBarW, Math.max(2, rowH - 2));
       }
 
-      ctx.strokeStyle = '#6b7280';
+      ctx.strokeStyle = '#1e293b';
       ctx.strokeRect(panelX + volColW, rowY, deltaColW, rowH);
 
       if (rowH >= 7.8 && rp.total > 0) {
-        ctx.fillStyle = dispDelta < 0 ? '#991b1b' : '#0f172a';
+        ctx.fillStyle = dispDelta < 0 ? '#fb7185' : '#4ade80';
         ctx.font = `${Math.abs(dispDelta) > 50 ? 'bold ' : ''}${Math.min(10, Math.max(7.2, Math.floor(rowH - 1.2)))}px "JetBrains Mono", monospace`;
         ctx.textAlign = 'right';
         ctx.fillText((dispDelta > 0 ? '+' : '') + dispDelta.toString(), panelX + volColW + deltaColW - 4, rowY + rowH / 2 + 3);
       }
 
-      // Column 3: Price Axis Column (#9ca3af) with Live Price Pill, SNR Highlight & POC Highlight
+      // Column 3: Price Axis Column with Live Price Pill, SNR Highlight & POC Highlight
       let matchedSnr = null;
       if (this.cdShowSNR && cdLevels && cdLevels.length > 0) {
         matchedSnr = cdLevels.find(lv => Math.abs(lv.price - p) < step * 0.55);
       }
 
-      ctx.fillStyle = isLivePriceRow ? '#065f46' : (matchedSnr ? matchedSnr.bg : (isCompPOC ? '#78350f' : '#9ca3af'));
+      ctx.fillStyle = isLivePriceRow ? '#065f46' : (matchedSnr ? matchedSnr.bg : (isCompPOC ? '#78350f' : '#0f172a'));
       ctx.fillRect(panelX + volColW + deltaColW, rowY, priceColW, rowH);
-      ctx.strokeStyle = isLivePriceRow ? '#4ade80' : (matchedSnr ? matchedSnr.col : '#6b7280');
+      ctx.strokeStyle = isLivePriceRow ? '#4ade80' : (matchedSnr ? matchedSnr.col : '#1e293b');
       ctx.strokeRect(panelX + volColW + deltaColW, rowY, priceColW, rowH);
 
       if (rowH >= 7.8) {
-        ctx.fillStyle = isLivePriceRow ? '#ffffff' : (matchedSnr ? '#ffffff' : (isCompPOC ? '#fef08a' : '#111827'));
+        ctx.fillStyle = isLivePriceRow ? '#ffffff' : (matchedSnr ? '#ffffff' : (isCompPOC ? '#fef08a' : '#cbd5e1'));
         ctx.font = `bold ${Math.min(10, Math.max(7.2, Math.floor(rowH - 1.2)))}px "JetBrains Mono", monospace`;
         ctx.textAlign = 'right';
         const dispPrice = matchedSnr ? `${matchedSnr.code}` : p.toFixed(2);
@@ -2849,13 +3032,15 @@ class FootprintRenderer {
       }
     }
 
-    // Right-bottom ClusterDelta Pro status badge
-    ctx.fillStyle = '#0284c7';
+    // Right-bottom ClusterDelta Pro status badge - OLED Dark Neon
+    ctx.fillStyle = '#0f172a';
     ctx.fillRect(chartW, stripY, rightPanelW, bottomStripH);
-    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#1e293b';
+    ctx.strokeRect(chartW, stripY, rightPanelW, bottomStripH);
+    ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`CLUSTERDELTA PRO • ${this.cdCellMode.toUpperCase()}`, chartW + rightPanelW / 2, stripY + 16);
+    ctx.fillText(`⚡ CLUSTERDELTA PRO • ${this.cdCellMode.toUpperCase()}`, chartW + rightPanelW / 2, stripY + 16.5);
 
     ctx.restore();
   }
