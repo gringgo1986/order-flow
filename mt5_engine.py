@@ -1711,6 +1711,64 @@ class OrderFlowEngine:
                 closed += 1
         return {"status": "success", "message": f"Closed {closed} positions"}
 
+    def _is_near_institutional_level(self, price: float, side: str, tolerance: float = 1.35):
+        """
+        Enforces Strict Institutional Golden Rule:
+        BUY is ONLY allowed at Demand / Support.
+        SELL is ONLY allowed at Supply / Resistance.
+        Returns: (is_valid, level_name_or_warning)
+        """
+        side = side.upper()
+        s = self.sessions_data or {}
+        svp = self.session_vp_summary or {}
+        vwap = self.current_vwap or price
+
+        if side == "BUY":
+            demand_levels = [
+                ("ASIAN LOW", s.get("asian_low", 0.0)),
+                ("LONDON LOW", s.get("london_low", 0.0)),
+                ("PDL", s.get("pdl", 0.0)),
+                ("SESSION VAL", svp.get("val", 0.0)),
+                ("dPOC", svp.get("dpoc", 0.0)),
+                ("VWAP -1σ", self.vwap_std1_down),
+                ("VWAP -2σ", self.vwap_std2_down),
+                ("M15 SUP", s.get("m15_sup", 0.0)),
+                ("M30 SUP", s.get("m30_sup", 0.0)),
+                ("H1 SUP", s.get("h1_sup", 0.0)),
+                ("H4 SUP", s.get("h4_sup", 0.0)),
+                ("H8 SUP", s.get("h8_sup", 0.0)),
+            ]
+            valid_lvls = [(name, p) for name, p in demand_levels if p and p > 0 and abs(price - p) <= tolerance]
+            if valid_lvls:
+                closest = min(valid_lvls, key=lambda x: abs(price - x[1]))
+                return True, f"{closest[0]} (${closest[1]:.2f})"
+            else:
+                return False, "TIADA ZON DEMAND / SOKONGAN"
+
+        elif side == "SELL":
+            supply_levels = [
+                ("ASIAN HIGH", s.get("asian_high", 0.0)),
+                ("LONDON HIGH", s.get("london_high", 0.0)),
+                ("PDH", s.get("pdh", 0.0)),
+                ("SESSION VAH", svp.get("vah", 0.0)),
+                ("dPOC", svp.get("dpoc", 0.0)),
+                ("VWAP +1σ", self.vwap_std1_up),
+                ("VWAP +2σ", self.vwap_std2_up),
+                ("M15 RES", s.get("m15_res", 0.0)),
+                ("M30 RES", s.get("m30_res", 0.0)),
+                ("H1 RES", s.get("h1_res", 0.0)),
+                ("H4 RES", s.get("h4_res", 0.0)),
+                ("H8 RES", s.get("h8_res", 0.0)),
+            ]
+            valid_lvls = [(name, p) for name, p in supply_levels if p and p > 0 and abs(price - p) <= tolerance]
+            if valid_lvls:
+                closest = min(valid_lvls, key=lambda x: abs(price - x[1]))
+                return True, f"{closest[0]} (${closest[1]:.2f})"
+            else:
+                return False, "TIADA ZON SUPPLY / RINTANGAN"
+
+        return False, "ARAH TIDAK SAH"
+
     def _evaluate_cvd_divergence(self, price: float, now_ms: int):
         """
         Detects Order Flow Cumulative Volume Delta divergence:
@@ -1728,24 +1786,28 @@ class OrderFlowEngine:
         min_p = min(prices)
         cur_cvd = self.cvd
 
-        # Bearish Divergence near recent highs
+        # Bearish Divergence near recent highs (Strict Supply Filter)
         if price >= max_p - 0.20 and cur_cvd < max(cvds) - 12.0:
-            self.detected_divergence = {
-                "type": "bearish",
-                "title": "CVD BEARISH DIVERGENCE",
-                "desc": f"Penyerapan jualan pada paras tinggi (${price:.2f})",
-                "price": price,
-                "timestamp": now_ms
-            }
-        # Bullish Divergence near recent lows
+            is_valid, zone_desc = self._is_near_institutional_level(price, "SELL")
+            if is_valid:
+                self.detected_divergence = {
+                    "type": "bearish",
+                    "title": "CVD BEARISH DIVERGENCE",
+                    "desc": f"Penyerapan jualan institusi di zon Supply {zone_desc}",
+                    "price": price,
+                    "timestamp": now_ms
+                }
+        # Bullish Divergence near recent lows (Strict Demand Filter)
         elif price <= min_p + 0.20 and cur_cvd > min(cvds) + 12.0:
-            self.detected_divergence = {
-                "type": "bullish",
-                "title": "CVD BULLISH DIVERGENCE",
-                "desc": f"Penyerapan belian pada paras rendah (${price:.2f})",
-                "price": price,
-                "timestamp": now_ms
-            }
+            is_valid, zone_desc = self._is_near_institutional_level(price, "BUY")
+            if is_valid:
+                self.detected_divergence = {
+                    "type": "bullish",
+                    "title": "CVD BULLISH DIVERGENCE",
+                    "desc": f"Penyerapan belian institusi di zon Demand {zone_desc}",
+                    "price": price,
+                    "timestamp": now_ms
+                }
 
     def _evaluate_trapped_traders(self, now_ms: int):
         """
@@ -1779,20 +1841,22 @@ class OrderFlowEngine:
 
         if top_ask_vol >= 7.0 and top_ask_vol > (top_bid_vol * 1.6):
             if c["close"] <= c["high"] - (candle_range * 0.40):
-                self._last_trapped_candle_time = c["time"]
-                trapped_event = {
-                    "type": "TRAPPED_BUYERS",
-                    "badge": "🪤 TRAPPED BUYERS",
-                    "price": c["high"],
-                    "volume": round(top_ask_vol, 1),
-                    "desc": f"Pembeli terperangkap pada puncak ${c['high']:.2f} (+{top_ask_vol:.1f} Lots). Isyarat Reversal JUALAN (SELL).",
-                    "action": "SELL",
-                    "timestamp": now_ms
-                }
-                self.trapped_traders.append(trapped_event)
-                if len(self.trapped_traders) > 10:
-                    self.trapped_traders.pop(0)
-                return
+                is_valid, zone_desc = self._is_near_institutional_level(c["high"], "SELL")
+                if is_valid:
+                    self._last_trapped_candle_time = c["time"]
+                    trapped_event = {
+                        "type": "TRAPPED_BUYERS",
+                        "badge": "🪤 TRAPPED BUYERS",
+                        "price": c["high"],
+                        "volume": round(top_ask_vol, 1),
+                        "desc": f"Pembeli terperangkap di zon Supply {zone_desc} (+{top_ask_vol:.1f} Lots). Isyarat Reversal SELL Sah.",
+                        "action": "SELL",
+                        "timestamp": now_ms
+                    }
+                    self.trapped_traders.append(trapped_event)
+                    if len(self.trapped_traders) > 10:
+                        self.trapped_traders.pop(0)
+                    return
 
         # Check bottom levels (lower 25% of candle range)
         bottom_threshold = c["low"] + (candle_range * 0.25)
@@ -1801,19 +1865,21 @@ class OrderFlowEngine:
 
         if bot_bid_vol >= 7.0 and bot_bid_vol > (bot_ask_vol * 1.6):
             if c["close"] >= c["low"] + (candle_range * 0.40):
-                self._last_trapped_candle_time = c["time"]
-                trapped_event = {
-                    "type": "TRAPPED_SELLERS",
-                    "badge": "🪤 TRAPPED SELLERS",
-                    "price": c["low"],
-                    "volume": round(bot_bid_vol, 1),
-                    "desc": f"Penjual terperangkap pada lantai ${c['low']:.2f} (-{bot_bid_vol:.1f} Lots). Isyarat Reversal BELIAN (BUY).",
-                    "action": "BUY",
-                    "timestamp": now_ms
-                }
-                self.trapped_traders.append(trapped_event)
-                if len(self.trapped_traders) > 10:
-                    self.trapped_traders.pop(0)
+                is_valid, zone_desc = self._is_near_institutional_level(c["low"], "BUY")
+                if is_valid:
+                    self._last_trapped_candle_time = c["time"]
+                    trapped_event = {
+                        "type": "TRAPPED_SELLERS",
+                        "badge": "🪤 TRAPPED SELLERS",
+                        "price": c["low"],
+                        "volume": round(bot_bid_vol, 1),
+                        "desc": f"Penjual terperangkap di zon Demand {zone_desc} (-{bot_bid_vol:.1f} Lots). Isyarat Reversal BUY Sah.",
+                        "action": "BUY",
+                        "timestamp": now_ms
+                    }
+                    self.trapped_traders.append(trapped_event)
+                    if len(self.trapped_traders) > 10:
+                        self.trapped_traders.pop(0)
 
     def _evaluate_market_radar(self) -> Dict[str, Any]:
         """
@@ -2442,7 +2508,7 @@ class OrderFlowEngine:
             "market_radar": self._evaluate_market_radar(),
             "account": self.account_info,
             "positions": self.positions,
-            "trades": self.recent_trades[-280:],
+            "trades": self.recent_trades[-60:],
             "heatmap": self.heatmap_history[-260:],
             "candles": self.candles[-120:] + ([self.current_candle] if self.current_candle else []),
             "current_candle": self.current_candle,
