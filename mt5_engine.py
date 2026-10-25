@@ -1198,7 +1198,7 @@ class OrderFlowEngine:
         # Fetch real MT5 historical candles if connected
         if self.is_connected and not self.simulation_mode:
             try:
-                rates = mt5.copy_rates_from_pos(self.symbol, mt5_tf, 0, 120)
+                rates = mt5.copy_rates_from_pos(self.symbol, mt5_tf, 0, 1000)
                 if rates is not None and len(rates) > 0:
                     # Align MT5 broker server time to true UTC timestamp (eliminating broker UTC+2/UTC+3 offset)
                     now_utc = int(time.time())
@@ -1324,22 +1324,25 @@ class OrderFlowEngine:
         self._calculate_imbalances(candle_obj)
         return candle_obj
 
-    def _seed_candles_for_timeframe(self, interval_sec: int):
-        """Pre-populate 120 connected OHLCV + Order Flow candles ending smoothly at current price (for horizontal left/right panning)"""
+    def _seed_candles_for_timeframe(self, interval_sec: int, count: int = 1000):
+        """Pre-populate 1000 connected OHLCV + Order Flow candles ending smoothly at current price (for deep lookback and backtesting)"""
         now = int(time.time())
         target_end = self.last_price if self.last_price > 0 else (self.current_bid if self.current_bid > 0 else 4120.0)
         base_time = now - (now % interval_sec)
         tf_scale = max(0.5, min(3.5, (interval_sec / 60.0) ** 0.38))
 
-        # Build backward walk from target_end so the last historical candle closes right at target_end
+        # Build backward multi-wave walk from target_end (capturing macro trend, swing cycles and noise)
         closes = [target_end]
-        for i in range(1, 121):
-            step_delta = (math.sin(i * 0.55) * 0.85 + math.cos(i * 1.25) * 0.55) * tf_scale
+        for i in range(1, count + 1):
+            macro_wave = math.sin(i * 0.015) * 1.75
+            medium_wave = math.cos(i * 0.075) * 1.15
+            micro_wave = (math.sin(i * 0.55) * 0.75 + math.cos(i * 1.25) * 0.45)
+            step_delta = (macro_wave + medium_wave + micro_wave) * 0.42 * tf_scale
             closes.append(round(closes[-1] - step_delta, 2))
         closes.reverse()
 
-        for idx in range(120):
-            i = 120 - idx
+        for idx in range(count):
+            i = count - idx
             c_time = base_time - (i * interval_sec)
             c_open = closes[idx]
             c_close = closes[idx + 1]
@@ -1347,7 +1350,7 @@ class OrderFlowEngine:
             wick_dn = round((0.25 + abs(math.cos(i * 0.82)) * 0.90) * tf_scale, 2)
             c_high = round(max(c_open, c_close) + wick_up, 2)
             c_low = round(min(c_open, c_close) - wick_dn, 2)
-            vol = round(28.0 + abs(math.sin(i * 0.7)) * 75.0 * tf_scale, 0)
+            vol = round(32.0 + abs(math.sin(i * 0.28)) * 68.0 * tf_scale + (18.0 if idx % 7 == 0 else 0.0), 0)
 
             c_obj = self._generate_footprint_from_ohlc(c_time, c_open, c_high, c_low, c_close, vol)
             self.candles.append(c_obj)
@@ -1360,7 +1363,7 @@ class OrderFlowEngine:
         if not self.current_candle or candle_start > self.current_candle["time"]:
             if self.current_candle:
                 self.candles.append(self.current_candle)
-                if len(self.candles) > 150:
+                if len(self.candles) > 1500:
                     self.candles.pop(0)
             self.current_candle = {
                 "time": candle_start,
@@ -2449,6 +2452,16 @@ class OrderFlowEngine:
             return {"status": "success", "feed_source": self.feed_source, "message": f"Sumber harga ditukar ke {self.feed_source.upper()}"}
         return {"status": "error", "message": "Sumber tidak sah (pilih 'swissquote' atau 'mt5')"}
 
+    def get_historical_candles(self, limit: int = 1000) -> List[Dict[str, Any]]:
+        """Retrieve up to limit historical order flow candles for deep lookback and backtesting"""
+        if limit <= 0 or limit >= len(self.candles):
+            res = list(self.candles)
+        else:
+            res = self.candles[-limit:]
+        if self.current_candle:
+            res.append(self.current_candle)
+        return res
+
     def get_full_snapshot(self) -> Dict[str, Any]:
         """Returns the full state payload to send to the browser UI"""
         now = time.time()
@@ -2511,6 +2524,7 @@ class OrderFlowEngine:
             "trades": self.recent_trades[-60:],
             "heatmap": self.heatmap_history[-260:],
             "candles": self.candles[-120:] + ([self.current_candle] if self.current_candle else []),
+            "total_candles_count": len(self.candles) + (1 if self.current_candle else 0),
             "current_candle": self.current_candle,
             "spoof_events": self.spoof_events[-6:],
             "mtf_confluence": self._evaluate_mtf_confluence(),
