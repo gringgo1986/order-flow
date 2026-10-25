@@ -37,6 +37,8 @@ class App {
     }
     // Pre-load deep 1,000 historical candles
     this.loadHistoricalCandles();
+    // Initialize user authentication & admin status
+    this.initAuthAndAdmin();
   }
 
   _initElements() {
@@ -778,6 +780,39 @@ class App {
     });
 
     // Wire Replay / Backtesting Player Controls
+    // Wire User Profile & Admin SaaS Management
+    const btnOpenAdmin = document.getElementById('btnOpenAdminModal');
+    if (btnOpenAdmin) {
+      btnOpenAdmin.addEventListener('click', () => this.openAdminModal());
+    }
+    const btnCloseAdmin = document.getElementById('btnCloseAdminModal');
+    if (btnCloseAdmin) {
+      btnCloseAdmin.addEventListener('click', () => this.closeAdminModal());
+    }
+    const btnRefreshUsers = document.getElementById('btnRefreshUsers');
+    if (btnRefreshUsers) {
+      btnRefreshUsers.addEventListener('click', () => this.loadAdminUsers());
+    }
+    const btnLogoutTop = document.getElementById('btnLogoutTop');
+    if (btnLogoutTop) {
+      btnLogoutTop.addEventListener('click', () => this.logout());
+    }
+    const formCreateUser = document.getElementById('formCreateUser');
+    if (formCreateUser) {
+      formCreateUser.addEventListener('submit', (e) => this.handleCreateUser(e));
+    }
+    const btnCopyReceipt = document.getElementById('btnCopyReceipt');
+    if (btnCopyReceipt) {
+      btnCopyReceipt.addEventListener('click', () => {
+        const txt = document.getElementById('receiptText');
+        if (txt) {
+          navigator.clipboard.writeText(txt.value).then(() => {
+            this.showToast('📋 Mesej WhatsApp berjaya disalin ke clipboard!');
+          });
+        }
+      });
+    }
+
     const btnToggleReplay = document.getElementById('btnToggleReplay');
     if (btnToggleReplay) {
       btnToggleReplay.addEventListener('click', () => this.toggleReplayMode());
@@ -2010,6 +2045,265 @@ class App {
     } else if (action === 'SELL') {
       const btn = document.getElementById('btnFastSell');
       if (btn) btn.click();
+    }
+  }
+
+  // --- SaaS Authentication & Customer Admin Panel Logic ---
+
+  async initAuthAndAdmin() {
+    try {
+      const res = await fetch('/api/me');
+      if (res.status === 401) {
+        window.location.href = '/login?error=unauthorized';
+        return;
+      }
+      const data = await res.json();
+      if (data && data.user) {
+        const u = data.user;
+        this.currentUser = u;
+        const elU = document.getElementById('lblUsername');
+        const elP = document.getElementById('lblPlanBadge');
+        const btnAdmin = document.getElementById('btnOpenAdminModal');
+
+        if (elU) elU.textContent = u.full_name || u.username;
+        if (elP) {
+          const daysText = u.expires_at === 'never' ? 'SEUMUR HIDUP' : `${u.remaining_days}H`;
+          elP.textContent = `${u.plan || 'VIP'} (${daysText})`;
+          elP.style.borderColor = u.remaining_days > 5 ? '#38bdf8' : '#f59e0b';
+        }
+        if (btnAdmin && u.role === 'admin') {
+          btnAdmin.style.display = 'inline-flex';
+        }
+      }
+    } catch (e) {
+      console.warn('[Auth] Error fetching user profile:', e);
+    }
+  }
+
+  openAdminModal() {
+    const modal = document.getElementById('adminModal');
+    if (modal) {
+      modal.style.display = 'flex';
+      this.loadAdminUsers();
+    }
+  }
+
+  closeAdminModal() {
+    const modal = document.getElementById('adminModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  async logout() {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch (e) {}
+    window.location.href = '/login';
+  }
+
+  async loadAdminUsers() {
+    const tbody = document.getElementById('usersTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px; color:#94a3b8;">Memuatkan senarai pengguna...</td></tr>';
+
+    try {
+      const res = await fetch('/api/admin/users');
+      if (!res.ok) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px; color:#ef4444;">Gagal memuatkan senarai pengguna. Sila log masuk semula sebagai Admin.</td></tr>';
+        return;
+      }
+      const data = await res.json();
+      const users = data.users || [];
+
+      // Update stat cards
+      let total = users.length;
+      let active = 0;
+      let expired = 0;
+      let lifetime = 0;
+
+      users.forEach(u => {
+        if (u.expires_at === 'never') lifetime++;
+        if (u.status_label === 'AKTIF') active++;
+        else if (u.status_label === 'TAMAT TEMPOH') expired++;
+      });
+
+      const elTotal = document.getElementById('statTotalUsers');
+      const elActive = document.getElementById('statActiveUsers');
+      const elExpired = document.getElementById('statExpiredUsers');
+      const elLifetime = document.getElementById('statLifetimeUsers');
+
+      if (elTotal) elTotal.textContent = total;
+      if (elActive) elActive.textContent = active;
+      if (elExpired) elExpired.textContent = expired;
+      if (elLifetime) elLifetime.textContent = lifetime;
+
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px; color:#94a3b8;">Tiada pengguna ditemui.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      users.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #1e293b';
+
+        const daysStr = u.expires_at === 'never' ? '<span style="color:#fbbf24; font-weight:700;">∞ Seumur Hidup</span>' : (u.remaining_days > 0 ? `<b style="color:#38bdf8;">${u.remaining_days} Hari</b>` : '<b style="color:#ef4444;">Tamat</b>');
+
+        tr.innerHTML = `
+          <td style="padding:8px 8px; color:#fff; font-weight:700;">
+            ${u.role === 'admin' ? '👑 ' : '👤 '}${u.username}
+          </td>
+          <td style="padding:8px 8px; color:#cbd5e1;">
+            ${u.full_name} ${u.notes ? `<span style="color:#64748b; font-size:9.5px;">(${u.notes})</span>` : ''}
+          </td>
+          <td style="padding:8px 8px; color:#a5b4fc;">
+            ${u.plan}
+          </td>
+          <td style="padding:8px 8px;">
+            ${daysStr}
+          </td>
+          <td style="padding:8px 8px;">
+            <span style="display:inline-block; padding:1px 6px; border-radius:3px; font-size:9px; font-weight:800; background:rgba(0,0,0,0.4); border:1px solid ${u.status_color}; color:${u.status_color};">
+              ${u.status_label}
+            </span>
+          </td>
+          <td style="padding:8px 8px; text-align:right;">
+            <div style="display:inline-flex; gap:3px; justify-content:flex-end;">
+              ${u.role !== 'admin' ? `
+                <button class="btn-user-action" data-action="renew" data-id="${u.id}" style="background:#0284c7; color:#fff; border:none; border-radius:3px; padding:2px 6px; font-size:9.5px; cursor:pointer; font-weight:700;" title="Tambah 30 Hari Langganan">+30H</button>
+                <button class="btn-user-action" data-action="toggle" data-id="${u.id}" data-active="${u.is_active}" style="background:${u.is_active ? '#e11d48' : '#059669'}; color:#fff; border:none; border-radius:3px; padding:2px 6px; font-size:9.5px; cursor:pointer; font-weight:700;">${u.is_active ? 'Gantung' : 'Aktifkan'}</button>
+                <button class="btn-user-action" data-action="delete" data-id="${u.id}" data-username="${u.username}" style="background:#475569; color:#fca5a5; border:none; border-radius:3px; padding:2px 6px; font-size:9.5px; cursor:pointer; font-weight:700;" title="Padam Akaun">🗑️</button>
+              ` : '<span style="font-size:9.5px; color:#fbbf24; font-weight:700;">Pentadbir Sistem</span>'}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Bind action buttons
+      tbody.querySelectorAll('.btn-user-action').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const action = btn.dataset.action;
+          const id = btn.dataset.id;
+          if (action === 'renew') {
+            await this.updateUser(id, { add_days: 30 });
+          } else if (action === 'toggle') {
+            const currentActive = parseInt(btn.dataset.active) === 1;
+            await this.updateUser(id, { is_active: currentActive ? 0 : 1 });
+          } else if (action === 'delete') {
+            const uname = btn.dataset.username;
+            if (confirm(`Adakah anda pasti ingin memadamkan pengguna '${uname}'?`)) {
+              await this.deleteUser(id);
+            }
+          }
+        });
+      });
+
+    } catch (e) {
+      console.error('[Admin] Error loading users:', e);
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px; color:#ef4444;">Ralat memuatkan data.</td></tr>';
+    }
+  }
+
+  async updateUser(userId, data) {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const resData = await res.json();
+      if (res.ok) {
+        this.showToast(`✅ ${resData.message}`);
+        this.loadAdminUsers();
+      } else {
+        this.showToast(`❌ ${resData.detail || resData.message}`);
+      }
+    } catch (e) {
+      this.showToast(`❌ Ralat kemas kini: ${e.message}`);
+    }
+  }
+
+  async deleteUser(userId) {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      const resData = await res.json();
+      if (res.ok) {
+        this.showToast(`✅ ${resData.message}`);
+        this.loadAdminUsers();
+      } else {
+        this.showToast(`❌ ${resData.detail || resData.message}`);
+      }
+    } catch (e) {
+      this.showToast(`❌ Ralat padam: ${e.message}`);
+    }
+  }
+
+  async handleCreateUser(e) {
+    e.preventDefault();
+    const username = document.getElementById('newUsername').value.trim();
+    const password = document.getElementById('newPassword').value.trim();
+    const fullName = document.getElementById('newFullName').value.trim();
+    const planVal = document.getElementById('newPlanDuration').value;
+    const [daysStr, planTitle] = planVal.split('|');
+    const durationDays = parseInt(daysStr);
+
+    const btnSubmit = document.getElementById('btnSubmitCreateUser');
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Menjana ID...';
+
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          full_name: fullName,
+          role: 'member',
+          plan: planTitle,
+          duration_days: durationDays,
+          notes: fullName
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        this.showToast(`✅ ID Pembeli '${username}' berjaya diaktifkan!`);
+
+        // Generate ready-to-send WhatsApp receipt
+        const receiptBox = document.getElementById('receiptBox');
+        const receiptText = document.getElementById('receiptText');
+        const daysLabel = durationDays === -1 ? 'SEUMUR HIDUP (VIP LIFETIME)' : `${durationDays} HARI`;
+
+        const waMessage = `Salam ${fullName}!
+Tahniah, akses Terminal XAUUSD.FLOW PRO anda telah diaktifkan secara rasmi:
+
+🔗 Laman Web: https://gringgo-orderflow.onrender.com
+👤 ID Pengguna: ${username}
+🔑 Kata Laluan: ${password}
+📅 Pakej Akses: ${planTitle} (${daysLabel})
+
+Selamat berdagang dan semoga beroleh profit konsisten!`;
+
+        if (receiptBox && receiptText) {
+          receiptText.value = waMessage;
+          receiptBox.style.display = 'block';
+        }
+
+        // Reset form inputs except receipt
+        document.getElementById('newUsername').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('newFullName').value = '';
+
+        this.loadAdminUsers();
+      } else {
+        this.showToast(`❌ ${data.detail || data.message}`);
+      }
+    } catch (err) {
+      this.showToast(`❌ Ralat pelayan: ${err.message}`);
+    } finally {
+      btnSubmit.disabled = false;
+      btnSubmit.textContent = '➕ Cipta ID & Aktifkan';
     }
   }
 }
