@@ -24,6 +24,8 @@ class App {
     
     this._initElements();
     this._bindEvents();
+    setTimeout(() => this.toggleBottomDock(true), 100);
+
     this._updateContextToolbar(this.currentView);
     this._updateRRPreview();
     this._connectWebSocket();
@@ -121,6 +123,8 @@ class App {
     if (this.btnToggleDock) {
       this.btnToggleDock.addEventListener('click', () => {
         this.toggleBottomDock(!this.isDockCollapsed);
+      const btd = document.getElementById('btnToggleDock');
+      if (btd) btd.textContent = this.isDockCollapsed ? '▲ Buka Insights & Tape' : '▼ Kecilkan Dock';
       });
     }
 
@@ -896,6 +900,25 @@ class App {
       this.showToast(`❌ Ralat tempahan: ${err.message}`);
     }
   }
+
+
+    // Sleek Indicator Layers Dropdown Toggle
+    const btnLayersDropdown = document.getElementById('btnLayersDropdown');
+    const layersDropdownMenu = document.getElementById('layersDropdownMenu');
+    if (btnLayersDropdown && layersDropdownMenu) {
+      btnLayersDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = layersDropdownMenu.style.display === 'flex';
+        layersDropdownMenu.style.display = isOpen ? 'none' : 'flex';
+        btnLayersDropdown.classList.toggle('active', !isOpen);
+      });
+      document.addEventListener('click', (e) => {
+        if (!layersDropdownMenu.contains(e.target) && e.target !== btnLayersDropdown) {
+          layersDropdownMenu.style.display = 'none';
+          btnLayersDropdown.classList.remove('active');
+        }
+      });
+    }
 
   _updateContextToolbar(view) {
     const fpTools = document.getElementById('fpSpecificTools');
