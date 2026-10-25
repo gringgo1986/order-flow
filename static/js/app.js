@@ -911,10 +911,7 @@ class App {
           return;
         }
       }
-      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) {
-        return;
-      }
+
 
       // 1-5 View Switching
       if (e.key === '1') { e.preventDefault(); this.setView('bookmap'); this.showToast('Mod Paparan: Bookmap Heatmap (Kekunci [1])'); return; }
@@ -1475,10 +1472,12 @@ class App {
 
     // Evaluate 4 Sensors
     // Sensor 1: Bookmap (DOM Resting Limits, Icebergs, Spoofs)
-    const bids = (s.order_book && s.order_book.bids) ? s.order_book.bids : [];
-    const asks = (s.order_book && s.order_book.asks) ? s.order_book.asks : [];
-    const totalBidVol = bids.slice(0, 10).reduce((acc, b) => acc + (b.volume || 1), 0);
-    const totalAskVol = asks.slice(0, 10).reduce((acc, a) => acc + (a.volume || 1), 0);
+    const rawBids = (s.order_book && s.order_book.bids) || {};
+    const rawAsks = (s.order_book && s.order_book.asks) || {};
+    const bidVals = Array.isArray(rawBids) ? rawBids : Object.values(rawBids);
+    const askVals = Array.isArray(rawAsks) ? rawAsks : Object.values(rawAsks);
+    const totalBidVol = bidVals.slice(0, 10).reduce((acc, b) => acc + (typeof b === 'number' ? b : (b.volume || 1)), 0);
+    const totalAskVol = askVals.slice(0, 10).reduce((acc, a) => acc + (typeof a === 'number' ? a : (a.volume || 1)), 0);
     const hasIceberg = s.icebergs && s.icebergs.length > 0;
     const s1Pass = totalBidVol >= totalAskVol * 0.85 || hasIceberg;
 
@@ -1751,7 +1750,7 @@ class App {
   }
 
   _renderTape(trades) {
-    if (!trades || trades.length === 0) return;
+    if (!this.tapeTableBody || !trades || trades.length === 0) return;
     const minLot = this.tapeMinLot || 0.0;
     const filtered = minLot > 0 ? trades.filter(t => (t.volume || 0) >= minLot) : trades;
     const slice = filtered.slice(-25).reverse();
