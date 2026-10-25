@@ -177,6 +177,7 @@ class OrderFlowEngine:
         }
 
         self._worker_started = False
+        self._seed_initial_data()
         self._start_background_workers()
         
     def _start_background_workers(self):
@@ -257,6 +258,8 @@ class OrderFlowEngine:
         if not MT5_AVAILABLE or mt5 is None:
             print("[MT5] MetaTrader5 not available on this platform. Using Swissquote Cloud feed.")
             self.feed_source = "swissquote"
+            if len(self.candles) == 0:
+                self._seed_initial_data()
             return False
 
         try:
