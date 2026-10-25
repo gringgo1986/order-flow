@@ -958,27 +958,27 @@ class BookmapRenderer {
           ctx.stroke();
           ctx.restore();
 
-          // 2. High-Contrast "🦈 JERUNG" Badge showing exact lot size & price level
-          const icon = isMega ? '🦈 JERUNG BESAR' : '🦈 DINDING JERUNG';
-          const sideLbl = isAsk ? 'SELL LIMIT' : 'BUY LIMIT';
-          const badgeTxt = `${icon} (${sideLbl}): ${wall.v.toFixed(1)} LOT @ $${wall.p.toFixed(2)}`;
-          ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-          const tw = ctx.measureText(badgeTxt).width + 14;
-          const bh = 16;
-          // Place badge near right side of historical heatmap or inside projection zone
-          const bx = Math.max(this.CHART_LEFT + 12, this.NOW_X - tw - 10);
-          const by = wy - bh / 2;
+          // 2. Sleek Compact Shark Wall Tag (Only draw full pill for #1 Wall, compact tag for others)
+          if (rankIdx === 0) {
+            const sideLbl = isAsk ? 'SELL LIMIT' : 'BUY LIMIT';
+            const badgeTxt = `🦈 ${Math.round(wall.v)}L ${sideLbl} @ $${wall.p.toFixed(2)}`;
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            const tw = ctx.measureText(badgeTxt).width + 10;
+            const bh = 14;
+            const bx = Math.max(this.CHART_LEFT + 12, this.NOW_X - tw - 8);
+            const by = wy - bh / 2;
 
-          ctx.fillStyle = isAsk ? 'rgba(28, 6, 14, 0.92)' : 'rgba(4, 24, 16, 0.92)';
-          ctx.fillRect(bx, by, tw, bh);
-          ctx.strokeStyle = col;
-          ctx.lineWidth = isMega ? 1.5 : 1.1;
-          ctx.strokeRect(bx, by, tw, bh);
+            ctx.fillStyle = isAsk ? 'rgba(28, 6, 14, 0.88)' : 'rgba(4, 24, 16, 0.88)';
+            ctx.fillRect(bx, by, tw, bh);
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 1.0;
+            ctx.strokeRect(bx, by, tw, bh);
 
-          ctx.fillStyle = col;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(badgeTxt, bx + 7, wy + 0.5);
+            ctx.fillStyle = col;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(badgeTxt, bx + 5, wy);
+          }
 
           // 3. Compact tag inside Projection Zone (NOW_X -> CHART_RIGHT)
           if (rankIdx < 2) {
