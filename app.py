@@ -3,10 +3,12 @@ FastAPI Server & WebSocket Hub for XAUUSD Bookmap & Order Flow
 """
 import asyncio
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from typing import Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
+import auth_db
 
 from mt5_engine import OrderFlowEngine
 
@@ -29,6 +31,42 @@ engine = OrderFlowEngine(symbol="XAUUSD.m")
 connected_clients = set()
 
 # Models
+# Authentication Request Models
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    role: str = "member"
+    plan: str = "Bulanan 30 Hari"
+    duration_days: int = 30
+    notes: str = ""
+
+class UpdateUserRequest(BaseModel):
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+    role: Optional[str] = None
+    plan: Optional[str] = None
+    is_active: Optional[int] = None
+    add_days: Optional[int] = None
+    set_lifetime: Optional[bool] = None
+    notes: Optional[str] = None
+
+def get_current_user(request: Request) -> Optional[dict]:
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            session_id = auth_hdr[7:].strip()
+        elif request.headers.get("X-Session-ID"):
+            session_id = request.headers.get("X-Session-ID").strip()
+    if not session_id:
+        return None
+    return auth_db.validate_session(session_id)
+
 class TradeRequest(BaseModel):
     action: str  # 'BUY' or 'SELL'
     volume: float = 0.01
@@ -81,8 +119,136 @@ async def background_tick_stream():
             
         await asyncio.sleep(0.12) # ~8-10 updates per second for ultra smooth Bookmap visual
 
+# --- Authentication & Membership SaaS Endpoints ---
+
+@app.get("/login")
+def login_page(request: Request):
+    user = get_current_user(request)
+    if user:
+        return RedirectResponse(url="/")
+    login_candidates = [
+        static_dir / "login.html",
+        base_dir / "login.html",
+        Path("/app/static/login.html"),
+        Path("/app/login.html"),
+    ]
+    for c in login_candidates:
+        if c.exists():
+            return FileResponse(str(c))
+    return {"status": "error", "message": "login.html not found"}
+
+@app.post("/api/login")
+def api_login(req: LoginRequest):
+    ok, user, err = auth_db.authenticate(req.username, req.password)
+    if not ok:
+        raise HTTPException(status_code=401, detail=err or "ID atau Kata Laluan tidak sah.")
+    session_id = auth_db.create_session(user["id"], duration_days=14)
+    res = JSONResponse({
+        "status": "success",
+        "message": "Log masuk berjaya!",
+        "user": user,
+        "session_id": session_id
+    })
+    res.set_cookie(
+        key="session_id",
+        value=session_id,
+        max_age=86400 * 14,
+        httponly=True,
+        samesite="lax",
+        path="/"
+    )
+    return res
+
+@app.post("/api/logout")
+def api_logout(request: Request):
+    session_id = request.cookies.get("session_id")
+    if session_id:
+        auth_db.destroy_session(session_id)
+    res = JSONResponse({"status": "success", "message": "Log keluar berjaya."})
+    res.delete_cookie(key="session_id", path="/")
+    return res
+
+@app.get("/api/me")
+def api_me(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"status": "success", "user": user}
+
+# --- Admin Panel Endpoints (Restricted to Admin Only) ---
+
+@app.get("/api/admin/users")
+def admin_list_users(request: Request):
+    user = get_current_user(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Akses ditolak. Kebenaran Admin diperlukan.")
+    return {
+        "status": "success",
+        "users": auth_db.list_users()
+    }
+
+@app.post("/api/admin/users")
+def admin_create_user(req: CreateUserRequest, request: Request):
+    user = get_current_user(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Akses ditolak. Kebenaran Admin diperlukan.")
+    ok, user_id, err = auth_db.create_user(
+        username=req.username,
+        password=req.password,
+        full_name=req.full_name,
+        role=req.role,
+        plan=req.plan,
+        duration_days=req.duration_days,
+        notes=req.notes
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    return {
+        "status": "success",
+        "message": f"Akaun pembeli '{req.username}' berjaya dicipta!",
+        "user_id": user_id
+    }
+
+@app.put("/api/admin/users/{user_id}")
+def admin_update_user(user_id: int, req: UpdateUserRequest, request: Request):
+    user = get_current_user(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Akses ditolak. Kebenaran Admin diperlukan.")
+    data = req.dict(exclude_unset=True)
+    ok, err = auth_db.update_user(user_id, **data)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    return {
+        "status": "success",
+        "message": "Akaun pembeli berjaya dikemaskini!"
+    }
+
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(user_id: int, request: Request):
+    user = get_current_user(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Akses ditolak. Kebenaran Admin diperlukan.")
+    ok, err = auth_db.delete_user(user_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    return {
+        "status": "success",
+        "message": "Akaun berjaya dipadam."
+    }
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    # Authenticate WebSocket connection
+    session_id = websocket.cookies.get("session_id")
+    user = auth_db.validate_session(session_id) if session_id else None
+    if not user:
+        token = websocket.query_params.get("token")
+        if token:
+            user = auth_db.validate_session(token)
+    if not user:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
     await websocket.accept()
     connected_clients.add(websocket)
     try:
@@ -223,7 +389,7 @@ static_dir.mkdir(parents=True, exist_ok=True)
 (static_dir / "css").mkdir(parents=True, exist_ok=True)
 
 # Auto-copy flat root files into static structure
-for fname in ["index.html"]:
+for fname in ["index.html", "login.html"]:
     src = base_dir / fname
     dst = static_dir / fname
     if src.exists() and not dst.exists():
@@ -247,7 +413,10 @@ for fname in ["bookmap.js", "footprint.js", "dom.js", "app.js"]:
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/")
-def index():
+def index(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login")
     candidates = [
         static_dir / "index.html",
         base_dir / "index.html",
