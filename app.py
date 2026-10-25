@@ -201,13 +201,23 @@ def status_endpoint():
     }
 
 # Mount static folder
-static_dir = Path(__file__).parent / "static"
+base_dir = Path(__file__).parent
+static_dir = base_dir / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/")
 def index():
-    return FileResponse(str(static_dir / "index.html"))
+    candidates = [
+        static_dir / "index.html",
+        base_dir / "index.html",
+        Path("/app/static/index.html"),
+        Path("/app/index.html"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return FileResponse(str(c))
+    return {"status": "error", "message": "index.html not found. Sila pastikan folder 'static' dimuat naik ke GitHub."}
 
 if __name__ == "__main__":
     import uvicorn
