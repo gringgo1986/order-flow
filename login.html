@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log Masuk | XAUUSD.FLOW PRO — Institutional Order Flow Cockpit</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #060911;
+      --card-bg: rgba(11, 18, 32, 0.92);
+      --card-border: rgba(56, 189, 248, 0.22);
+      --gold: #f59e0b;
+      --gold-glow: rgba(245, 158, 11, 0.25);
+      --cyan: #38bdf8;
+      --cyan-glow: rgba(56, 189, 248, 0.25);
+      --green: #10b981;
+      --red: #f43f5e;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 50% 10%, rgba(56, 189, 248, 0.08) 0%, transparent 60%),
+        radial-gradient(circle at 80% 90%, rgba(245, 158, 11, 0.06) 0%, transparent 50%),
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    .login-container {
+      width: 100%;
+      max-width: 440px;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Glow backdrop element */
+    .glow-aura {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, rgba(56, 189, 248, 0.12) 40%, transparent 70%);
+      filter: blur(40px);
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* Header Brand */
+    .brand-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .brand-logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.45);
+    }
+
+    .brand-title {
+      font-family: var(--font-mono);
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+    }
+
+    .brand-title span {
+      color: var(--cyan);
+    }
+
+    .brand-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 2px 8px;
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
+      border-radius: 20px;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .brand-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Main Card */
+    .login-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 32px 28px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 30px rgba(56, 189, 248, 0.08);
+      position: relative;
+    }
+
+    .card-top-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-top-tag::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      background: var(--cyan);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    /* Form Fields */
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.3px;
+    }
+
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      font-size: 14px;
+      color: #64748b;
+      pointer-events: none;
+    }
+
+    .form-input {
+      width: 100%;
+      background: rgba(6, 10, 20, 0.85);
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 11px 40px 11px 36px;
+      font-size: 13px;
+      color: #ffffff;
+      font-family: var(--font-mono);
+      transition: all 0.2s ease;
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+      background: rgba(10, 16, 32, 0.95);
+    }
+
+    .btn-toggle-pwd {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px;
+    }
+
+    .btn-toggle-pwd:hover {
+      color: #cbd5e1;
+    }
+
+    /* Submit Button */
+    .btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      border: 1px solid #38bdf8;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 800;
+      color: #ffffff;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(2, 132, 199, 0.4);
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .btn-submit:hover {
+      background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(14, 165, 233, 0.55);
+    }
+
+    .btn-submit:active {
+      transform: translateY(0);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Error Alert */
+    .error-alert {
+      display: none;
+      background: rgba(239, 68, 68, 0.14);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      border-radius: 7px;
+      padding: 10px 12px;
+      font-size: 11.5px;
+      color: #fca5a5;
+      margin-bottom: 18px;
+      animation: shake 0.35s ease;
+      font-family: var(--font-mono);
+      line-height: 1.4;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-4px); }
+      40%, 80% { transform: translateX(4px); }
+    }
+
+    /* Membership Perks List */
+    .features-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid #1e293b;
+    }
+
+    .feature-item {
+      font-size: 10px;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-mono);
+    }
+
+    .feature-item span {
+      color: var(--green);
+    }
+
+    /* Sales / Contact Admin Strip */
+    .sales-box {
+      margin-top: 22px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+
+    .sales-text {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-bottom: 10px;
+    }
+
+    .btn-contact {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      color: #34d399;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 7px 14px;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .btn-contact:hover {
+      background: rgba(16, 185, 129, 0.28);
+      border-color: #10b981;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+    }
+
+    .footer-copy {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 10.5px;
+      color: #475569;
+      font-family: var(--font-mono);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="login-container">
+    <div class="glow-aura"></div>
+
+    <!-- Header Brand -->
+    <div class="brand-header">
+      <div class="brand-logo">
+        <div class="brand-icon">⚡</div>
+        <div class="brand-title">XAUUSD<span>.FLOW</span></div>
+      </div>
+      <div>
+        <span class="brand-badge">INSTITUTIONAL TERMINAL PRO</span>
+      </div>
+      <p class="brand-desc">Platform Analisis Order Flow, Bookmap & Footprint Berketepatan Tinggi</p>
+    </div>
+
+    <!-- Main Card -->
+    <div class="login-card">
+      <div class="card-top-tag">LOG MASUK AKAUN BERDAFTAR</div>
+
+      <!-- Error Alert Box -->
+      <div class="error-alert" id="errorAlert"></div>
+
+      <form id="loginForm" autocomplete="off">
+        <div class="form-group">
+          <label class="form-label" for="inputUsername">ID PENGGUNA / USERNAME</label>
+          <div class="input-wrap">
+            <span class="input-icon">👤</span>
+            <input type="text" id="inputUsername" class="form-input" placeholder="Masukkan ID anda" required autofocus>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputPassword">KATA LALUAN / PASSWORD</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="inputPassword" class="form-input" placeholder="••••••••" required>
+            <button type="button" class="btn-toggle-pwd" id="btnTogglePwd" title="Papar/Sembunyi Password">👁</button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit" id="btnSubmit">
+          <span>⚡ LOG MASUK KE TERMINAL</span>
+        </button>
+      </form>
+
+      <!-- Institutional Features Checklist -->
+      <div class="features-list">
+        <div class="feature-item"><span>✓</span> 1000 Lilin Backtest</div>
+        <div class="feature-item"><span>✓</span> Bookmap Heatmap Live</div>
+        <div class="feature-item"><span>✓</span> Footprint Bid × Ask</div>
+        <div class="feature-item"><span>✓</span> Iceberg & Absorption</div>
+        <div class="feature-item"><span>✓</span> 7 Teknik Order Flow</div>
+        <div class="feature-item"><span>✓</span> Volume Profile (SVP)</div>
+      </div>
+    </div>
+
+    <!-- Sales / WhatsApp Contact Box for Potential Buyers -->
+    <div class="sales-box">
+      <div class="sales-text">Belum mempunyai ID akses atau ingin memperbaharui langganan?</div>
+      <a href="https://wa.me/?text=Salam%20Admin,%20saya%20berminat%20untuk%20melanggan%20ID%20Akses%20XAUUSD.FLOW%20Pro" target="_blank" class="btn-contact" id="linkWhatsApp">
+        <span>💬</span> Hubungi Admin untuk Beli ID Akses
+      </a>
+    </div>
+
+    <div class="footer-copy">
+      © 2026 XAUUSD.FLOW Pro • Hak Cipta Terpelihara • Akses Eksklusif Ahli Sah
+    </div>
+  </div>
+
+  <script>
+    // Reveal password toggle
+    const inputPwd = document.getElementById('inputPassword');
+    const btnToggle = document.getElementById('btnTogglePwd');
+    btnToggle.addEventListener('click', () => {
+      if (inputPwd.type === 'password') {
+        inputPwd.type = 'text';
+        btnToggle.textContent = '🔒';
+      } else {
+        inputPwd.type = 'password';
+        btnToggle.textContent = '👁';
+      }
+    });
+
+    // Handle Login Submit
+    const loginForm = document.getElementById('loginForm');
+    const btnSubmit = document.getElementById('btnSubmit');
+    const errorAlert = document.getElementById('errorAlert');
+
+    // Parse URL error params if redirected
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('error') === 'expired') {
+      showError('⚠️ Tempoh langganan akaun anda telah tamat. Sila hubungi admin untuk menyambung akses.');
+    } else if (urlParams.get('error') === 'unauthorized') {
+      showError('🔒 Sila log masuk terlebih dahulu untuk mengakses terminal.');
+    } else if (urlParams.get('error') === 'suspended') {
+      showError('🚫 Akaun ini telah digantung. Sila hubungi admin.');
+    }
+
+    function showError(msg) {
+      errorAlert.textContent = msg;
+      errorAlert.style.display = 'block';
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorAlert.style.display = 'none';
+
+      const username = document.getElementById('inputUsername').value.trim();
+      const password = inputPwd.value;
+
+      if (!username || !password) {
+        showError('Sila masukkan ID Pengguna dan Kata Laluan.');
+        return;
+      }
+
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = '<span>⏳ Memeriksa ID...</span>';
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.status === 'success') {
+          btnSubmit.innerHTML = '<span>✅ Akses Diberikan! Membuka Terminal...</span>';
+          btnSubmit.style.background = '#10b981';
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 450);
+        } else {
+          showError(data.detail || data.message || 'ID Pengguna atau Kata Laluan tidak sah.');
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = '<span>⚡ LOG MASUK KE TERMINAL</span>';
+        }
+      } catch (err) {
+        showError('Gagal menyambung ke pelayan pengesahan. Sila cuba sebentar lagi.');
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '<span>⚡ LOG MASUK KE TERMINAL</span>';
+      }
+    });
+  </script>
+</body>
+</html>
