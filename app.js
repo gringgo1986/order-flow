@@ -30,6 +30,13 @@ class App {
     this._updateRRPreview();
     this._connectWebSocket();
     this._startRenderLoop();
+
+    // Hook footprint replay update callback
+    if (this.footprint) {
+      this.footprint.onReplayUpdate = () => this._updateReplayHUD();
+    }
+    // Pre-load deep 1,000 historical candles
+    this.loadHistoricalCandles();
   }
 
   _initElements() {
@@ -762,14 +769,113 @@ class App {
           });
           const data = await res.json();
           this.showToast(data.message || `Timeframe: ${tf}`);
+          // Load 1,000 deep historical candles for new timeframe
+          await this.loadHistoricalCandles(tf);
         } catch (e) {
           console.error('[TF Error]', e);
         }
       });
     });
 
-    // Institutional Global Hotkeys (B, S, Space, X, 1-5)
+    // Wire Replay / Backtesting Player Controls
+    const btnToggleReplay = document.getElementById('btnToggleReplay');
+    if (btnToggleReplay) {
+      btnToggleReplay.addEventListener('click', () => this.toggleReplayMode());
+    }
+    const btnPlayPause = document.getElementById('btnReplayPlayPause');
+    if (btnPlayPause) {
+      btnPlayPause.addEventListener('click', () => {
+        if (this.footprint) this.footprint.toggleReplayPlay();
+      });
+    }
+    const btnStepBack = document.getElementById('btnReplayStepBack');
+    if (btnStepBack) {
+      btnStepBack.addEventListener('click', () => {
+        if (this.footprint) this.footprint.replayStepBack(1);
+      });
+    }
+    const btnStepForward = document.getElementById('btnReplayStepForward');
+    if (btnStepForward) {
+      btnStepForward.addEventListener('click', () => {
+        if (this.footprint) this.footprint.replayStepForward(1);
+      });
+    }
+    const btnReplayStart = document.getElementById('btnReplayStart');
+    if (btnReplayStart) {
+      btnReplayStart.addEventListener('click', () => {
+        if (this.footprint) this.footprint.replayJumpTo(20);
+      });
+    }
+    const replayScrubber = document.getElementById('replayScrubber');
+    if (replayScrubber) {
+      replayScrubber.addEventListener('input', (e) => {
+        if (this.footprint) this.footprint.replayJumpTo(parseInt(e.target.value));
+      });
+    }
+    const selectSpeed = document.getElementById('selectReplaySpeed');
+    if (selectSpeed) {
+      selectSpeed.addEventListener('change', (e) => {
+        if (this.footprint) {
+          this.footprint.replaySpeed = parseFloat(e.target.value) || 5;
+          if (this.footprint.replayPlaying) this.footprint.replayPlay();
+        }
+      });
+    }
+    const btnReplayBuy = document.getElementById('btnReplayBuy');
+    if (btnReplayBuy) {
+      btnReplayBuy.addEventListener('click', () => {
+        if (this.footprint) {
+          const t = this.footprint.executeReplayTrade('BUY', this.selectedLot || 0.01);
+          if (t) this.showToast(`⚡ Backtest BUY @ $${t.entryPrice.toFixed(2)} (SL: $${t.sl.toFixed(2)}, TP: $${t.tp.toFixed(2)})`);
+        }
+      });
+    }
+    const btnReplaySell = document.getElementById('btnReplaySell');
+    if (btnReplaySell) {
+      btnReplaySell.addEventListener('click', () => {
+        if (this.footprint) {
+          const t = this.footprint.executeReplayTrade('SELL', this.selectedLot || 0.01);
+          if (t) this.showToast(`⚡ Backtest SELL @ $${t.entryPrice.toFixed(2)} (SL: $${t.sl.toFixed(2)}, TP: $${t.tp.toFixed(2)})`);
+        }
+      });
+    }
+    const btnReplayExit = document.getElementById('btnReplayExit');
+    if (btnReplayExit) {
+      btnReplayExit.addEventListener('click', () => this.exitReplayMode());
+    }
+
+    // Institutional Global Hotkeys (B, S, Space, X, 1-5, R for Replay)
     window.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) {
+        return;
+      }
+
+      // R: Toggle Replay Mode
+      if (e.code === 'KeyR') {
+        e.preventDefault();
+        this.toggleReplayMode();
+        return;
+      }
+
+      // In Replay Mode: Space = Play/Pause, Right/Left = Step Forward/Back
+      if (this.footprint && this.footprint.isReplayMode) {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          this.footprint.toggleReplayPlay();
+          return;
+        }
+        if (e.code === 'ArrowRight') {
+          e.preventDefault();
+          this.footprint.replayStepForward(1);
+          return;
+        }
+        if (e.code === 'ArrowLeft') {
+          e.preventDefault();
+          this.footprint.replayStepBack(1);
+          return;
+        }
+      }
       const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) {
         return;
@@ -1799,6 +1905,116 @@ class App {
   }
 }
 
+  async loadHistoricalCandles(tf) {
+    try {
+      const activeTf = tf || this.currentTimeframe || 'M1';
+      const res = await fetch(`/api/history?limit=1000&tf=${activeTf}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.candles && this.footprint) {
+        this.footprint.setHistoricalCandles(data.candles);
+        this._updateReplayHUD();
+      }
+    } catch (e) {
+      console.warn('[History] Error loading candles:', e);
+    }
+  }
+
+  toggleReplayMode() {
+    if (!this.footprint) return;
+    if (this.footprint.isReplayMode) {
+      this.exitReplayMode();
+    } else {
+      this.enterReplayMode();
+    }
+  }
+
+  enterReplayMode(targetIndex) {
+    if (!this.footprint) return;
+    if (this.currentView === 'bookmap') {
+      this.setView('candlestick');
+    }
+    this.footprint.enterReplayMode(targetIndex);
+    const player = document.getElementById('replayPlayerBar');
+    if (player) player.style.display = 'flex';
+    const btn = document.getElementById('btnToggleReplay');
+    if (btn) {
+      btn.classList.add('active');
+      btn.style.background = '#4f46e5';
+      btn.style.color = '#ffffff';
+    }
+    this.showToast('⏪ Mod Replay Backtest diaktifkan! Tekan [▶ PLAY] atau [⏭] untuk uji lilin lepas.');
+    this._updateReplayHUD();
+  }
+
+  exitReplayMode() {
+    if (!this.footprint) return;
+    this.footprint.exitReplayMode();
+    const player = document.getElementById('replayPlayerBar');
+    if (player) player.style.display = 'none';
+    const btn = document.getElementById('btnToggleReplay');
+    if (btn) {
+      btn.classList.remove('active');
+      btn.style.background = '#1e1b4b';
+      btn.style.color = '#c7d2fe';
+    }
+    this.showToast('✅ Kembali ke pasaran LIVE.');
+  }
+
+  _updateReplayHUD() {
+    if (!this.footprint) return;
+    const fp = this.footprint;
+    const totalBars = fp.allCandles ? fp.allCandles.length : 0;
+    const currentIdx = fp.replayIndex || 0;
+    const currentBar = (fp.allCandles && currentIdx > 0) ? fp.allCandles[currentIdx - 1] : null;
+
+    const elCurrent = document.getElementById('replayCurrentBar');
+    const elTotal = document.getElementById('replayTotalBars');
+    const elTime = document.getElementById('replayBarTime');
+    const elPrice = document.getElementById('replayBarPrice');
+    const scrubber = document.getElementById('replayScrubber');
+    const btnPlay = document.getElementById('btnReplayPlayPause');
+    const pnlBadge = document.getElementById('replayPnlBadge');
+
+    if (elCurrent) elCurrent.textContent = currentIdx;
+    if (elTotal) elTotal.textContent = totalBars;
+    if (scrubber) {
+      scrubber.min = Math.min(10, totalBars);
+      scrubber.max = totalBars;
+      scrubber.value = currentIdx;
+    }
+    if (currentBar) {
+      if (elTime) {
+        const d = new Date(currentBar.time * 1000);
+        elTime.textContent = `${d.toLocaleDateString('ms-MY', { month:'short', day:'numeric' })} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      }
+      if (elPrice) elPrice.textContent = `$${currentBar.close.toFixed(2)}`;
+    }
+    if (btnPlay) {
+      btnPlay.textContent = fp.replayPlaying ? '⏸ JEDA' : '▶ PLAY';
+      btnPlay.style.background = fp.replayPlaying ? '#d97706' : '#4f46e5';
+    }
+    if (pnlBadge && fp.replayTrades) {
+      let totalPnl = 0;
+      for (const t of fp.replayTrades) totalPnl += t.pnl;
+      totalPnl = Math.round(totalPnl * 100) / 100;
+      pnlBadge.textContent = `P&L: ${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)}`;
+      pnlBadge.style.color = totalPnl >= 0 ? '#34d399' : '#f87171';
+      pnlBadge.style.borderColor = totalPnl >= 0 ? '#059669' : '#dc2626';
+    }
+  }
+
+  sendTrade(action) {
+    if (action === 'BUY') {
+      const btn = document.getElementById('btnFastBuy');
+      if (btn) btn.click();
+    } else if (action === 'SELL') {
+      const btn = document.getElementById('btnFastSell');
+      if (btn) btn.click();
+    }
+  }
+
 window.addEventListener('DOMContentLoaded', () => {
   window.app = new App();
+  window.orderFlowApp = window.app;
 });
