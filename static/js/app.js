@@ -767,8 +767,6 @@ class App {
         }
       });
     });
-  }
-
 
     // Institutional Global Hotkeys (B, S, Space, X, 1-5)
     window.addEventListener('keydown', (e) => {
@@ -832,6 +830,27 @@ class App {
         return;
       }
     });
+    // Sleek Indicator Layers Dropdown Toggle
+    const btnLayersDropdown = document.getElementById('btnLayersDropdown');
+    const layersDropdownMenu = document.getElementById('layersDropdownMenu');
+    if (btnLayersDropdown && layersDropdownMenu) {
+      btnLayersDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = layersDropdownMenu.style.display === 'flex';
+        layersDropdownMenu.style.display = isOpen ? 'none' : 'flex';
+        btnLayersDropdown.classList.toggle('active', !isOpen);
+      });
+      document.addEventListener('click', (e) => {
+        if (!layersDropdownMenu.contains(e.target) && e.target !== btnLayersDropdown) {
+          layersDropdownMenu.style.display = 'none';
+          btnLayersDropdown.classList.remove('active');
+        }
+      });
+    }
+  }
+
+
+
 
   _handleCanvasClickForDrawing(cx, cy, targetCanvas) {
     if (!this.drawingMode) return false;
@@ -902,23 +921,7 @@ class App {
   }
 
 
-    // Sleek Indicator Layers Dropdown Toggle
-    const btnLayersDropdown = document.getElementById('btnLayersDropdown');
-    const layersDropdownMenu = document.getElementById('layersDropdownMenu');
-    if (btnLayersDropdown && layersDropdownMenu) {
-      btnLayersDropdown.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isOpen = layersDropdownMenu.style.display === 'flex';
-        layersDropdownMenu.style.display = isOpen ? 'none' : 'flex';
-        btnLayersDropdown.classList.toggle('active', !isOpen);
-      });
-      document.addEventListener('click', (e) => {
-        if (!layersDropdownMenu.contains(e.target) && e.target !== btnLayersDropdown) {
-          layersDropdownMenu.style.display = 'none';
-          btnLayersDropdown.classList.remove('active');
-        }
-      });
-    }
+
 
   _updateContextToolbar(view) {
     const fpTools = document.getElementById('fpSpecificTools');
