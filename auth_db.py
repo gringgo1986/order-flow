@@ -1,3 +1,4 @@
+import json
 """
 SQLite Authentication, User Management, and Membership Subscription Engine for XAUUSD.FLOW PRO
 """
@@ -28,6 +29,75 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return secrets.compare_digest(actual_hash, expected_hash)
     except Exception:
         return False
+
+
+BACKUP_JSON_PATH = Path(__file__).parent / "users_backup.json"
+
+def export_backup_json() -> str:
+    """Exports all users (excluding sessions) to users_backup.json for persistence across deploys"""
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT username, password_hash, full_name, role, plan, created_at, expires_at, is_active, last_login, notes FROM users")
+        users = [dict(r) for r in c.fetchall()]
+        conn.close()
+
+        data = {
+            "version": 1,
+            "exported_at": datetime.datetime.utcnow().isoformat(),
+            "users": users
+        }
+        with open(BACKUP_JSON_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return str(BACKUP_JSON_PATH)
+    except Exception as e:
+        print(f"[Auth] Error exporting backup: {e}")
+        return ""
+
+def restore_backup_json() -> int:
+    """Restores users from users_backup.json if database is newly initialized"""
+    if not BACKUP_JSON_PATH.exists():
+        return 0
+    try:
+        with open(BACKUP_JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        users = data.get("users", [])
+        if not users:
+            return 0
+        return restore_from_dict_list(users)
+    except Exception as e:
+        print(f"[Auth] Error restoring backup JSON: {e}")
+        return 0
+
+def restore_from_dict_list(users: List[Dict[str, Any]]) -> int:
+    """Inserts or updates users from a list of dicts"""
+    conn = get_connection()
+    c = conn.cursor()
+    count = 0
+    for u in users:
+        if not u.get("username") or not u.get("password_hash"):
+            continue
+        c.execute("""
+        INSERT OR REPLACE INTO users (username, password_hash, full_name, role, plan, created_at, expires_at, is_active, last_login, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            u["username"],
+            u["password_hash"],
+            u.get("full_name", u["username"]),
+            u.get("role", "member"),
+            u.get("plan", "Bulanan 30 Hari"),
+            u.get("created_at", datetime.datetime.utcnow().isoformat()),
+            u.get("expires_at", "never"),
+            u.get("is_active", 1),
+            u.get("last_login"),
+            u.get("notes", "")
+        ))
+        count += 1
+    conn.commit()
+    conn.close()
+    export_backup_json()
+    print(f"[Auth] Successfully saved & restored {count} users!")
+    return count
 
 def init_db():
     conn = get_connection()
@@ -83,6 +153,9 @@ def init_db():
         conn.commit()
         print("[Auth] Default admin account created: admin / admin123#")
     conn.close()
+    # Restore persistent users from backup JSON if available
+    restore_backup_json()
+    export_backup_json()
 
 def calculate_remaining_days(expires_at: str) -> int:
     if expires_at == "never":
@@ -268,6 +341,7 @@ def create_user(
         conn.commit()
         user_id = c.lastrowid
         conn.close()
+        export_backup_json()
         return True, user_id, None
     except sqlite3.IntegrityError:
         conn.close()
@@ -328,6 +402,7 @@ def update_user(user_id: int, **kwargs) -> Tuple[bool, Optional[str]]:
     c.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
     conn.commit()
     conn.close()
+    export_backup_json()
     return True, None
 
 def delete_user(user_id: int) -> Tuple[bool, Optional[str]]:
@@ -349,6 +424,7 @@ def delete_user(user_id: int) -> Tuple[bool, Optional[str]]:
     c.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
+    export_backup_json()
     return True, None
 
 # Run table creation on import
