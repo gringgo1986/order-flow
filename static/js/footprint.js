@@ -3516,7 +3516,7 @@ class FootprintRenderer {
     const ema21 = calcEMA(rawUpToView, 21);
     const ema50 = calcEMA(rawUpToView, 50);
 
-    // 3. Determine Price Min/Max across visible candles (+ EMAs)
+    // 3. Determine Price Min/Max across visible candles (+ Bounded EMA Influence)
     let minP = Infinity;
     let maxP = -Infinity;
     let maxVol = 1;
@@ -3525,12 +3525,27 @@ class FootprintRenderer {
       if (c.low < minP) minP = c.low;
       if (c.high > maxP) maxP = c.high;
       if (c.volume > maxVol) maxVol = c.volume;
-      if (this.csShowEMA) {
-        minP = Math.min(minP, ema9[i] || minP, ema21[i] || minP);
-        maxP = Math.max(maxP, ema9[i] || maxP, ema21[i] || maxP);
+    }
+    if (minP === Infinity || maxP === -Infinity) {
+      minP = lastPrice - 2.5;
+      maxP = lastPrice + 2.5;
+    }
+
+    // Only allow EMAs close to live price (within $12) to influence scaling so distant spikes never blow up chart
+    if (this.csShowEMA && ema9.length > 0) {
+      for (let i = 0; i < candles.length; i++) {
+        if (ema9[i] && Math.abs(ema9[i] - lastPrice) < 12.0) {
+          minP = Math.min(minP, ema9[i]);
+          maxP = Math.max(maxP, ema9[i]);
+        }
+        if (ema21[i] && Math.abs(ema21[i] - lastPrice) < 12.0) {
+          minP = Math.min(minP, ema21[i]);
+          maxP = Math.max(maxP, ema21[i]);
+        }
       }
     }
-    const padP = Math.max(0.60, (maxP - minP) * 0.12);
+
+    const padP = Math.max(0.60, (maxP - minP) * 0.14);
     minP -= padP;
     maxP += padP;
     const rawRange = Math.max(1.0, maxP - minP);
@@ -3540,13 +3555,24 @@ class FootprintRenderer {
     maxP = midP + scaledRange / 2.0;
     const priceRange = Math.max(0.8, maxP - minP);
 
+    this.minPrice = minP;
+    this.maxPrice = maxP;
+
     const pToY = (p) => mainChartBottom - ((p - minP) / priceRange) * mainChartH;
     const yToP = (y) => minP + ((mainChartBottom - y) / mainChartH) * priceRange;
     this._lastCandlePToY = pToY;
 
-    // 4. Horizontal Price Grid & Right Price Axis Labels
-    const rawStep = priceRange / 8;
-    const gridStep = rawStep <= 0.3 ? 0.25 : (rawStep <= 0.7 ? 0.50 : (rawStep <= 1.5 ? 1.00 : 2.00));
+    // 4. Horizontal Price Grid & Right Price Axis Labels (Dynamic Clean Round Intervals)
+    const targetSteps = 8;
+    const rawStep = priceRange / targetSteps;
+    const niceSteps = [0.10, 0.20, 0.25, 0.50, 1.00, 2.00, 2.50, 5.00, 10.00, 20.00, 25.00, 50.00, 100.00];
+    let gridStep = 5.00;
+    for (const s of niceSteps) {
+      if (s >= rawStep * 0.85) {
+        gridStep = s;
+        break;
+      }
+    }
     const firstGridP = Math.ceil(minP / gridStep) * gridStep;
 
     ctx.fillStyle = '#090f1c';
@@ -4324,14 +4350,16 @@ class FootprintRenderer {
       const isDoji = rawBodyH < 1.0;
       const bodyH = isDoji ? 2.5 : Math.max(3.0, rawBodyH);
 
-      // Clean Anti-Aliased High-Low Wick with Pixel Alignment
+      // Clean Anti-Aliased High-Low Wick with Guaranteed Minimum Visibility
+      const wickTop = Math.min(yHigh, bodyTop - 1);
+      const wickBottom = Math.max(yLow, bodyTop + bodyH + 1);
       ctx.save();
       ctx.strokeStyle = isBull ? '#00e676' : '#ff3366';
-      ctx.lineWidth = isLive ? 1.6 : 1.2;
+      ctx.lineWidth = isLive ? 1.8 : 1.3;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(cx, yHigh);
-      ctx.lineTo(cx, yLow);
+      ctx.moveTo(cx, wickTop);
+      ctx.lineTo(cx, wickBottom);
       ctx.stroke();
       ctx.restore();
 
