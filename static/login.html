@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="ms">
 <head>
+  <!-- Android PWA & Mobile Web App Meta Tags -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#050a14">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="XAUUSD Flow">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Portal Pengguna & Pentadbir | XAUUSD.FLOW PRO</title>
@@ -479,6 +488,12 @@
           <span>⚡ LOG MASUK KE TERMINAL</span>
         </button>
       </form>
+      <!-- PWA Android Install Button on Login -->
+      <div style="text-align:center; margin-top:14px;">
+        <button id="btnInstallLogin" onclick="triggerPwaInstall()" style="display:inline-flex; align-items:center; gap:6px; background:rgba(16,185,129,0.14); border:1px solid #10b981; color:#34d399; font-weight:700; padding:6px 14px; font-size:11px; border-radius:6px; cursor:pointer;" title="Pasang ke Skrin Utama Telefon Android">
+          <span>📲</span> Pasang Aplikasi Android (Web App)
+        </button>
+      </div>
 
       <div style="margin-top:18px; padding-top:14px; border-top:1px solid #1e293b; text-align:center;">
         <span style="font-size:11px; color:#94a3b8; font-family:var(--font-mono);">Belum mempunyai ID akses? </span>
@@ -1123,6 +1138,44 @@
         await fetch('/api/logout', { method: 'POST' });
       } catch (e) {}
       window.location.href = '/login?msg=logged_out';
+    }
+  </script>
+  <!-- PWA Service Worker Registration & Android Install Prompt Handler -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+          console.log('[PWA] Service Worker aktif:', reg.scope);
+        }).catch(err => {
+          console.warn('[PWA] Service Worker ralat:', err);
+        });
+      });
+    }
+
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      const installBtn = document.getElementById('btnInstallAppPwa');
+      if (installBtn) installBtn.style.display = 'inline-flex';
+    });
+
+    function triggerPwaInstall() {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            console.log('[PWA] Pengguna memasang aplikasi Android');
+          }
+          deferredInstallPrompt = null;
+          const installBtn = document.getElementById('btnInstallAppPwa');
+          if (installBtn) installBtn.style.display = 'none';
+        });
+      } else {
+        alert("Untuk memasang aplikasi di Android:
+1. Tekan ikon 3-titik di bucu atas Chrome
+2. Pilih 'Install app' atau 'Add to Home screen'");
+      }
     }
   </script>
 </body>
