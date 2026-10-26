@@ -13,7 +13,7 @@ import auth_db
 
 from mt5_engine import OrderFlowEngine
 
-app = FastAPI(title="XAUUSD Order Flow & Bookmap Pro")
+app = FastAPI(title="Gringgo Orderflow")
 
 # Prevent static file & HTML aggressive browser caching during trading
 @app.middleware("http")
