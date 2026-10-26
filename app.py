@@ -105,7 +105,7 @@ async def background_tick_stream():
         try:
             engine.poll_feed()
             if connected_clients:
-                snapshot = engine.get_full_snapshot()
+                snapshot = engine.get_full_snapshot(initial=False)
                 # Broadcast to all active browser connections
                 dead_clients = set()
                 for client in connected_clients:
@@ -312,7 +312,7 @@ async def websocket_endpoint(websocket: WebSocket):
     connected_clients.add(websocket)
     try:
         # Send initial full state immediately
-        await websocket.send_json(engine.get_full_snapshot())
+        await websocket.send_json(engine.get_full_snapshot(initial=True))
         while True:
             # Keep alive & listen for client messages
             data = await websocket.receive_text()
