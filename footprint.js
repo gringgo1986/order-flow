@@ -100,8 +100,10 @@ class FootprintRenderer {
     this._fpLastSignalBarTime = 0;
     this._fpLastSignalDir = null;
     
-    this.minPrice = 4120.0;
-    this.maxPrice = 4130.0;
+    this.minPrice = 2700.0;
+    this.maxPrice = 2730.0;
+    this._boundsInitialized = false;
+    this.fpVisibleBars = 10;
     
     // Hover state
     this.hoverCell = null;
@@ -138,7 +140,7 @@ class FootprintRenderer {
       const cy = e.clientY - rect.top;
 
       // Ignore drag if clicking on top interactive header strip
-      if ((this.viewMode === 'clusterdelta' && cy <= 26) || (this.viewMode === 'candlestick' && cy <= 30)) {
+      if (cy <= 32) {
         return;
       }
 
@@ -294,6 +296,11 @@ class FootprintRenderer {
   setViewMode(mode) {
     if (['bid_ask', 'delta', 'volume', 'clusterdelta', 'candlestick'].includes(mode)) {
       this.viewMode = mode;
+      if (typeof document !== 'undefined') {
+        document.querySelectorAll('.fp-mode-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.mode === mode);
+        });
+      }
     }
   }
 
@@ -715,8 +722,16 @@ class FootprintRenderer {
       return;
     }
 
-    // Filter to 10 candles with horizontal pan support (barOffset)
-    const candles = this._sliceCandlesWithOffset(rawCandles, 10);
+    // Filter to dynamic visible candles with horizontal pan support (barOffset)
+    const candleCount = Math.max(6, Math.min(22, this.fpVisibleBars || 10));
+    const candles = this._sliceCandlesWithOffset(rawCandles, candleCount);
+    if (!candles || candles.length === 0) return;
+
+    // Responsive candle width based on screen width & count
+    const rightMargin = 80;
+    const availableWidth = this.width - rightMargin - 40;
+    const computedCandleW = Math.floor(availableWidth / Math.max(1, candles.length)) - this.candleSpacing;
+    this.candleWidth = Math.max(115, Math.min(185, computedCandleW));
 
     // Calculate auto vertical bounds
     let lowest = Infinity;
@@ -744,10 +759,18 @@ class FootprintRenderer {
       this.verticalZoom = 28 / rawBoxHeight;
     }
 
-    // Smooth lerp bounds
-    this.minPrice += (lowest - this.minPrice) * 0.15;
-    this.maxPrice += (highest - this.maxPrice) * 0.15;
+    // Auto vertical bounds initialization & fast-snap
+    if (!this._boundsInitialized || Math.abs(this.minPrice - lowest) > 35.0) {
+      this.minPrice = lowest;
+      this.maxPrice = highest;
+      this._boundsInitialized = true;
+    } else {
+      this.minPrice += (lowest - this.minPrice) * 0.18;
+      this.maxPrice += (highest - this.maxPrice) * 0.18;
+    }
 
+    ctx.save();
+    try {
     // Clear background with deep rich obsidian theme
     ctx.fillStyle = '#070a10';
     ctx.fillRect(0, 0, this.width, this.height);
@@ -789,6 +812,11 @@ class FootprintRenderer {
 
     // 3. Hover Tooltip
     this._handleHoverTooltip();
+    } catch (fpErr) {
+      console.error('[Footprint Render Error]', fpErr);
+    } finally {
+      ctx.restore();
+    }
   }
 
   _drawGrid(ctx) {
@@ -989,9 +1017,11 @@ class FootprintRenderer {
 
       if (bidLow > 0 && (askUp / bidLow) >= imbRatio && askUp >= 2.0) {
         grouped[upKey].isBuyImbalance = true;
+        grouped[upKey].buyRatio = (askUp / bidLow).toFixed(1);
       }
       if (askUp > 0 && (bidLow / askUp) >= imbRatio && bidLow >= 2.0) {
         grouped[lowKey].isSellImbalance = true;
+        grouped[lowKey].sellRatio = (bidLow / askUp).toFixed(1);
       }
     }
 
@@ -1210,12 +1240,14 @@ class FootprintRenderer {
           // Bid Text (Left) - Mini Directional Sweep Indicator
           ctx.textAlign = 'center';
           ctx.fillStyle = isSellImbalance ? '#ffffff' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
-          const bidStr = (isSellImbalance ? '↘ ' : '') + cl.bid.toFixed(1);
+          const bidRatioStr = (boxHeight >= 18 && cl.sellRatio) ? `↘${cl.sellRatio}x ` : (isSellImbalance ? '↘ ' : '');
+          const bidStr = bidRatioStr + cl.bid.toFixed(1);
           ctx.fillText(bidStr, x + halfW / 2, textY);
 
           // Ask Text (Right) - Mini Directional Sweep Indicator
           ctx.fillStyle = isBuyImbalance ? '#ffffff' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
-          const askStr = cl.ask.toFixed(1) + (isBuyImbalance ? ' ↗' : '');
+          const askRatioStr = (boxHeight >= 18 && cl.buyRatio) ? ` ↗${cl.buyRatio}x` : (isBuyImbalance ? ' ↗' : '');
+          const askStr = cl.ask.toFixed(1) + askRatioStr;
           ctx.fillText(askStr, x + halfW + halfW / 2, textY);
         }
 
@@ -1256,22 +1288,35 @@ class FootprintRenderer {
         }
 
       } else if (this.viewMode === 'volume') {
-        // --- MODE 3: VOLUME PROFILE FOOTPRINT ---
+        // --- MODE 3: VOLUME PROFILE FOOTPRINT (Two-Tone Buy/Sell Split) ---
         ctx.fillStyle = cl.inValueArea ? 'rgba(56, 189, 248, 0.08)' : 'rgba(15, 23, 42, 0.5)';
         ctx.fillRect(x, boxY, this.candleWidth, boxHeight);
 
-        // Volume Bar spanning across width
+        // Two-Tone Volume Bar spanning across width
         const volRatio = maxTotal > 0 ? (cl.total / maxTotal) : 0;
         const barW = Math.max(3, volRatio * (this.candleWidth - 10));
-        ctx.fillStyle = isPOC ? 'rgba(255, 183, 3, 0.4)' : 'rgba(56, 189, 248, 0.3)';
-        ctx.fillRect(x + 2, boxY + 2, barW, boxHeight - 4);
+        const askFraction = cl.total > 0 ? (cl.ask / cl.total) : 0.5;
+        const askW = barW * askFraction;
+        const bidW = barW - askW;
+
+        if (isPOC) {
+          ctx.fillStyle = 'rgba(255, 214, 10, 0.45)';
+          ctx.fillRect(x + 2, boxY + 2, barW, boxHeight - 4);
+        } else {
+          // Ask Buy Market Volume (Green)
+          ctx.fillStyle = 'rgba(0, 230, 118, 0.35)';
+          ctx.fillRect(x + 2, boxY + 2, askW, boxHeight - 4);
+          // Bid Sell Market Volume (Red)
+          ctx.fillStyle = 'rgba(255, 51, 102, 0.35)';
+          ctx.fillRect(x + 2 + askW, boxY + 2, bidW, boxHeight - 4);
+        }
 
         if (boxHeight >= 15) {
-          ctx.font = 'bold 11px "JetBrains Mono", monospace';
+          ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
           const textY = boxY + boxHeight / 2 + 4;
           ctx.textAlign = 'center';
-          ctx.fillStyle = isPOC ? '#ffb703' : '#f1f5f9';
-          ctx.fillText(`${cl.total.toFixed(1)} Lot`, centerX, textY);
+          ctx.fillStyle = isPOC ? '#ffd60a' : '#f1f5f9';
+          ctx.fillText(`${cl.total.toFixed(1)}L`, centerX, textY);
         }
       }
 
@@ -1320,9 +1365,9 @@ class FootprintRenderer {
       }
     }
 
-    // 5. Render Stacked Imbalances Highlights (Institutional Walls - Flush Design)
+    // 5. Render Stacked Imbalances Highlights (Institutional Walls + Unmitigated Extension Rays)
     if (this.showStackedImbalances) {
-      // Stacked Buy Imbalances (Cyan/Green Right Bracket)
+      // Stacked Buy Imbalances (Cyan/Green Right Bracket + Ray Extension)
       for (const stack of stackedBuyLevels) {
         const topP = Math.max(...stack) + step;
         const btmP = Math.min(...stack);
@@ -1336,14 +1381,25 @@ class FootprintRenderer {
 
         // Institutional Badge (Flush & Compact)
         ctx.fillStyle = '#00e676';
-        ctx.fillRect(x + this.candleWidth + 2, yTop + stackH / 2 - 8, 44, 15);
+        ctx.fillRect(x + this.candleWidth + 2, yTop + stackH / 2 - 8, 48, 16);
         ctx.fillStyle = '#000000';
         ctx.font = 'bold 8px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`⚡BUY ${stack.length}x`, x + this.candleWidth + 24, yTop + stackH / 2 + 3.5);
+        ctx.fillText(`⚡BUY ${stack.length}x`, x + this.candleWidth + 26, yTop + stackH / 2 + 3.5);
+
+        // Extend Support Zone Ray forward to the live candle
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(0, 230, 118, 0.40)';
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.moveTo(x + this.candleWidth + 50, (yTop + yBtm) / 2);
+        ctx.lineTo(this.width - 80, (yTop + yBtm) / 2);
+        ctx.stroke();
+        ctx.restore();
       }
 
-      // Stacked Sell Imbalances (Crimson/Red Left Bracket)
+      // Stacked Sell Imbalances (Crimson/Red Left Bracket + Ray Extension)
       for (const stack of stackedSellLevels) {
         const topP = Math.max(...stack) + step;
         const btmP = Math.min(...stack);
@@ -1357,11 +1413,22 @@ class FootprintRenderer {
 
         // Institutional Badge (Flush & Compact)
         ctx.fillStyle = '#ff3366';
-        ctx.fillRect(x - 46, yTop + stackH / 2 - 8, 44, 15);
+        ctx.fillRect(x - 50, yTop + stackH / 2 - 8, 48, 16);
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.font = 'bold 8px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`⚡SELL ${stack.length}x`, x - 24, yTop + stackH / 2 + 3.5);
+        ctx.fillText(`⚡SELL ${stack.length}x`, x - 26, yTop + stackH / 2 + 3.5);
+
+        // Extend Resistance Zone Ray forward to the live candle
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(255, 51, 102, 0.40)';
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.moveTo(x + this.candleWidth, (yTop + yBtm) / 2);
+        ctx.lineTo(this.width - 80, (yTop + yBtm) / 2);
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -1450,43 +1517,72 @@ class FootprintRenderer {
     ctx.lineWidth = 1.8;
     ctx.strokeRect(x - 2, bodyTop, this.candleWidth + 4, bodyHeight);
 
-    // 8. Sierra Chart / ATAS Style 4-Row Statistics Summary Table
-    const footerY = this.height - 62;
-    const footerH = 54;
+    // 8. Sierra Chart / ATAS Style 5-Row Statistics Summary Table
+    const footerH = 68;
+    const footerY = this.height - footerH - 4;
     const deltaColor = rawCandle.delta >= 0 ? '#00e676' : '#ff3366';
     const deltaSign = rawCandle.delta > 0 ? '+' : '';
-    const deltaPct = rawCandle.volume > 0 ? Math.round((rawCandle.delta / rawCandle.volume) * 100) : 0;
+    const candleVol = rawCandle.volume || 0;
+    const deltaPct = candleVol > 0 ? Math.round((rawCandle.delta / candleVol) * 100) : 0;
     const minD = rawCandle.min_delta !== undefined ? rawCandle.min_delta : (rawCandle.delta < 0 ? rawCandle.delta : 0);
     const maxD = rawCandle.max_delta !== undefined ? rawCandle.max_delta : (rawCandle.delta > 0 ? rawCandle.delta : 0);
 
-    // Footer Card Background
-    ctx.fillStyle = '#0c111c';
+    // Calculate buyer/seller split ratio
+    let totalBid = 0, totalAsk = 0;
+    for (const cl of Object.values(grouped)) {
+      totalBid += (cl.bid || 0);
+      totalAsk += (cl.ask || 0);
+    }
+    const sumTraded = totalBid + totalAsk || 1;
+    const buyPct = Math.round((totalAsk / sumTraded) * 100);
+    const sellPct = 100 - buyPct;
+
+    // Time & Countdown
+    const d = new Date((rawCandle.time || Date.now() / 1000) * 1000);
+    const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const isLive = (rawCandle.time === candles[candles.length - 1]?.time);
+    const tfSecMap = { 'M1': 60, 'M5': 300, 'M15': 900, 'M30': 1800, 'H1': 3600, 'H4': 14400 };
+    const intervalSec = tfSecMap[this.timeframe || 'M1'] || 60;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const remSec = Math.max(0, intervalSec - (nowSec % intervalSec));
+    const countdownStr = `${String(Math.floor(remSec / 60)).padStart(2, '0')}:${String(remSec % 60).padStart(2, '0')}`;
+
+    // Footer Card Background (Deep Obsidian Card with 2px accent top line)
+    ctx.fillStyle = '#0c1220';
     ctx.fillRect(x, footerY, this.candleWidth, footerH);
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
     ctx.strokeRect(x, footerY, this.candleWidth, footerH);
 
+    // Accent line on top of footer
+    ctx.fillStyle = isBull ? 'rgba(0, 230, 118, 0.7)' : 'rgba(255, 51, 102, 0.7)';
+    ctx.fillRect(x, footerY, this.candleWidth, 2);
+
     // Row 1: Volume
     ctx.textAlign = 'center';
-    ctx.font = 'bold 10px "JetBrains Mono", monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(`Vol: ${rawCandle.volume.toFixed(1)}`, centerX, footerY + 12);
+    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(`VOL: ${candleVol.toFixed(1)}L`, centerX, footerY + 13);
 
-    // Row 2: Delta (with color)
-    ctx.font = 'bold 11px "JetBrains Mono", monospace';
+    // Row 2: Delta (with color and % share)
+    ctx.font = 'bold 10px "JetBrains Mono", monospace';
     ctx.fillStyle = deltaColor;
-    ctx.fillText(`Δ ${deltaSign}${rawCandle.delta.toFixed(1)} (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 25);
+    ctx.fillText(`Δ ${deltaSign}${rawCandle.delta.toFixed(1)}L (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 26);
 
     // Row 3: Min / Max Delta (Exhaustion indicator)
     ctx.font = '9px "JetBrains Mono", monospace';
-    ctx.fillStyle = '#64748b';
-    ctx.fillText(`Min: ${minD.toFixed(0)}  Max: ${maxD.toFixed(0)}`, centerX, footerY + 37);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`KEMUNCAK: ${minD.toFixed(0)} | +${maxD.toFixed(0)}`, centerX, footerY + 39);
 
-    // Row 4: Mode Label
+    // Row 4: Buyer / Seller Participation Ratio
     ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-    ctx.fillStyle = '#475569';
-    const modeLabel = this.viewMode === 'bid_ask' ? 'BID x ASK' : (this.viewMode === 'delta' ? 'DELTA PROFILE' : 'VOL PROFILE');
-    ctx.fillText(modeLabel, centerX, footerY + 48);
+    ctx.fillStyle = buyPct >= 50 ? '#86efac' : '#fda4af';
+    ctx.fillText(`🟢 ${buyPct}% Tanya | 🔴 ${sellPct}% Bida`, centerX, footerY + 52);
+
+    // Row 5: Candle Time & Live Countdown
+    ctx.font = 'bold 9px "JetBrains Mono", monospace';
+    ctx.fillStyle = isLive ? '#00f0ff' : '#64748b';
+    ctx.fillText(isLive ? `⏱ ${timeStr} (${countdownStr})` : `🕒 ${timeStr}`, centerX, footerY + 64);
 
     ctx.restore();
   }
@@ -1717,10 +1813,10 @@ class FootprintRenderer {
   _drawFootprintTopHUD(ctx, snapshot) {
     ctx.save();
     this.fpToolbarHitboxes = [];
-    const topH = 26;
+    const topH = 28;
 
     // Header Background Strip
-    ctx.fillStyle = 'rgba(8, 14, 24, 0.92)';
+    ctx.fillStyle = 'rgba(7, 12, 22, 0.95)';
     ctx.fillRect(0, 0, this.width - 75, topH);
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
@@ -1729,25 +1825,68 @@ class FootprintRenderer {
     ctx.lineTo(this.width - 75, topH);
     ctx.stroke();
 
-    let pillX = 10;
+    let pillX = 8;
     const y = 4;
-    const h = 17;
+    const h = 20;
 
     const drawPill = (label, isActive, activeCol, onClick) => {
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const w = Math.ceil(ctx.measureText(label).width) + 12;
+      if (pillX + w > this.width - 80) return; // Prevent overflow
       ctx.fillStyle = isActive ? activeCol : 'rgba(15, 23, 42, 0.85)';
       ctx.fillRect(pillX, y, w, h);
       ctx.strokeStyle = isActive ? '#ffffff' : '#334155';
-      ctx.lineWidth = 0.8;
+      ctx.lineWidth = isActive ? 1.1 : 0.8;
       ctx.strokeRect(pillX, y, w, h);
       ctx.fillStyle = isActive ? '#020617' : '#94a3b8';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(label, pillX + w / 2, y + h / 2 + 0.5);
       this.fpToolbarHitboxes.push({ x: pillX, y, w, h, onClick });
-      pillX += w + 6;
+      pillX += w + 5;
     };
+
+    // Mode Switcher Pills (1-Click Direct Toggle)
+    drawPill(
+      '📊 BIDA x TANYA',
+      this.viewMode === 'bid_ask',
+      '#00f0ff',
+      () => { this.setViewMode('bid_ask'); }
+    );
+
+    drawPill(
+      '📈 DELTA',
+      this.viewMode === 'delta',
+      '#38bdf8',
+      () => { this.setViewMode('delta'); }
+    );
+
+    drawPill(
+      '📦 VOLUM',
+      this.viewMode === 'volume',
+      '#a855f7',
+      () => { this.setViewMode('volume'); }
+    );
+
+    // Dynamic Candle Count Zoom Pills
+    const curBars = this.fpVisibleBars || 10;
+    drawPill(
+      '➖ Lilin',
+      false,
+      '#64748b',
+      () => {
+        this.fpVisibleBars = Math.max(6, (this.fpVisibleBars || 10) - 2);
+      }
+    );
+
+    drawPill(
+      `➕ Lilin [${curBars}]`,
+      curBars > 10,
+      '#34d399',
+      () => {
+        this.fpVisibleBars = Math.min(22, (this.fpVisibleBars || 10) + 2);
+      }
+    );
 
     drawPill(
       `📐 SNR: ${this.showSessionLevels ? 'ON' : 'OFF'}`,
@@ -1757,7 +1896,7 @@ class FootprintRenderer {
     );
 
     drawPill(
-      `⚡ IMB: ${this.imbThreshold === 4.0 ? '400% (Whale)' : '300% (Standard)'}`,
+      `⚡ IMB: ${this.imbThreshold === 4.0 ? '400% (Whale)' : '300% (Std)'}`,
       this.imbThreshold === 4.0,
       '#fbbf24',
       () => { this.imbThreshold = this.imbThreshold === 4.0 ? 3.0 : 4.0; }
@@ -1766,40 +1905,34 @@ class FootprintRenderer {
     drawPill(
       `📊 VA 70%: ${this.showValueArea ? 'ON' : 'OFF'}`,
       this.showValueArea,
-      '#a855f7',
+      '#c084fc',
       () => { this.showValueArea = !this.showValueArea; }
     );
 
     drawPill(
-      `🛡️ ABSORPTION: ${this.showWickAbsorption !== false ? 'ON' : 'OFF'}`,
+      `🛡️ ABSORB: ${this.showWickAbsorption !== false ? 'ON' : 'OFF'}`,
       this.showWickAbsorption !== false,
       '#34d399',
-      () => { this.showWickAbsorption = this.showWickAbsorption === false; }
-    );
-
-    drawPill(
-      `⚡ Δ DIV: ${this.showCandleDeltaDiv !== false ? 'ON' : 'OFF'}`,
-      this.showCandleDeltaDiv !== false,
-      '#f43f5e',
-      () => { this.showCandleDeltaDiv = this.showCandleDeltaDiv === false; }
+      () => { this.showWickAbsorption = (this.showWickAbsorption === false); }
     );
 
     drawPill(
       `🎯 SGNL: ${this.showFpsignals !== false ? 'ON' : 'OFF'}`,
       this.showFpsignals !== false,
       '#00e676',
-      () => { this.showFpsignals = this.showFpsignals === false; }
+      () => { this.showFpsignals = (this.showFpsignals === false); }
     );
 
     drawPill(
-      `🔍 RESET ZOOM`,
+      '🎯 PUSAT',
       false,
-      '#64748b',
+      '#fbbf24',
       () => {
         this.verticalZoom = 1.0;
         this.candleWidth = 145;
         this.priceOffset = 0.0;
         this.barOffset = 0;
+        this.centerVertical();
       }
     );
 
