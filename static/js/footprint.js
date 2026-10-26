@@ -42,6 +42,7 @@ class FootprintRenderer {
     this._cdConfirmedSignalsCache = new Map(); // Permanent cache: c.time -> signal data (Prevents flickering & repainting)
 
     // Pro Candlestick Chart Sub-Settings
+    this.csZenMode = false; // Zen Candle Mode: Pristine view without clutter
     this.csVisibleBars = 34;
     this.csShowEMA = true;
     this.csShowVWAP = true;
@@ -3675,15 +3676,15 @@ class FootprintRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Anti-Collision Right-Edge Pill Tag (offset horizontally if vertically tight)
+      // Anti-Collision Left-Edge Pill Tag (Keeps the right live candle area 100% spacious)
       const txt = `${lvl.label} $${lvl.price.toFixed(2)}`;
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      const tw = ctx.measureText(txt).width + 10;
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      const tw = ctx.measureText(txt).width + 8;
 
-      let tagX = chartW - tw - 4;
+      let tagX = 8;
       let colShift = 0;
-      while (placedTagYs.some(pt => Math.abs(pt.y - y) < 16 && Math.abs(pt.x - tagX) < (tw + 8)) && colShift < 3) {
-        tagX -= tw + 8;
+      while (placedTagYs.some(pt => Math.abs(pt.y - y) < 16 && Math.abs(pt.x - tagX) < (tw + 8)) && colShift < 4) {
+        tagX += tw + 6;
         colShift++;
       }
       placedTagYs.push({ x: tagX, y: y });
@@ -3738,7 +3739,7 @@ class FootprintRenderer {
     }
 
     // 7.5. Institutional Fair Value Gaps (FVG) & Order Blocks (OB) - Streamlined Max 4 Active
-    const showFvgOb = this.csShowFvgOb !== false;
+    const showFvgOb = !this.csZenMode && (this.csShowFvgOb !== false);
     if (showFvgOb && candles.length >= 4) {
       ctx.save();
 
@@ -3914,7 +3915,7 @@ class FootprintRenderer {
     }
 
     // 7.8. Smart Market Structure Breaks (BOS / CHoCH) - Top 3 Most Recent Only
-    const showStructure = this.csShowStructure !== false;
+    const showStructure = !this.csZenMode && (this.csShowStructure !== false);
     if (showStructure && candles.length >= 8) {
       ctx.save();
       const swings = [];
@@ -4438,27 +4439,27 @@ class FootprintRenderer {
           ctx.closePath();
           ctx.fill();
 
-          const badgeY = isBuy ? Math.min(mainChartBottom - 11, yLow + 17) : Math.max(mainChartTop + 14, yHigh - 17);
-          const badgeText = isFocus ? aPlusSignal.badge : (isBuy ? `▲ ${aPlusSignal.technique || 'BUY'}` : `▼ ${aPlusSignal.technique || 'SELL'}`);
-
-          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-          const btw = ctx.measureText(badgeText).width + 10;
-          const bth = 15;
-          const btx = cx - btw / 2;
-          const bty = badgeY - bth / 2;
-
-          ctx.fillStyle = isBuy ? 'rgba(6, 78, 59, 0.94)' : 'rgba(136, 19, 55, 0.94)';
-          ctx.fillRect(btx, bty, btw, bth);
-          ctx.strokeStyle = isFocus ? '#ffd60a' : (isBuy ? '#10b981' : '#f43f5e');
-          ctx.lineWidth = isFocus ? 1.2 : 0.8;
-          ctx.strokeRect(btx, bty, btw, bth);
-
-          ctx.fillStyle = isFocus ? '#ffd60a' : '#ffffff';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(badgeText, cx, badgeY);
-
+          // Only render bulky text badge and SL/TP rays on the ACTIVE FOCUS signal
           if (isFocus) {
+            const badgeY = isBuy ? Math.min(mainChartBottom - 11, yLow + 17) : Math.max(mainChartTop + 14, yHigh - 17);
+            const badgeText = aPlusSignal.badge;
+
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            const btw = ctx.measureText(badgeText).width + 10;
+            const bth = 15;
+            const btx = cx - btw / 2;
+            const bty = badgeY - bth / 2;
+
+            ctx.fillStyle = isBuy ? 'rgba(6, 78, 59, 0.94)' : 'rgba(136, 19, 55, 0.94)';
+            ctx.fillRect(btx, bty, btw, bth);
+            ctx.strokeStyle = '#ffd60a';
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(btx, bty, btw, bth);
+
+            ctx.fillStyle = '#ffd60a';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(badgeText, cx, badgeY);
             const pegW = Math.min(slotW * 3.2, 85);
             const ySl = pToY(aPlusSignal.sl);
             const yTp = pToY(aPlusSignal.tp);
@@ -4625,45 +4626,7 @@ class FootprintRenderer {
       ctx.fillText(subTeleTxt, chartW - 8, volTop + 13);
     }
 
-    // 10.5. Visual S/R Rays from Previous 3 Candle POCs
-    if (this.csShowLevels && candles.length >= 3) {
-      const recentCandles = candles.slice(-4, -1);
-      const pocColors = ['#f59e0b', '#38bdf8', '#c084fc'];
-
-      recentCandles.forEach((rc, rIdx) => {
-        if (!rc.poc || rc.poc <= 0) return;
-        const pocY = pToY(rc.poc);
-        if (pocY < mainChartTop + 8 || pocY > mainChartBottom - 8) return;
-
-        const cOrigIdx = candles.length - 4 + rIdx;
-        const startX = getBarX(Math.max(0, cOrigIdx));
-        const col = pocColors[rIdx % pocColors.length];
-        const offsetNum = recentCandles.length - rIdx;
-
-        ctx.save();
-        ctx.setLineDash([4, 3]);
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 1.1;
-        ctx.beginPath();
-        ctx.moveTo(startX, pocY);
-        ctx.lineTo(chartW, pocY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        const tagText = `POC-${offsetNum} $${rc.poc.toFixed(2)}`;
-        ctx.font = 'bold 8px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(tagText).width + 8;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
-        ctx.fillRect(chartW - tw - 4, pocY - 7, tw, 14);
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 0.8;
-        ctx.strokeRect(chartW - tw - 4, pocY - 7, tw, 14);
-        ctx.fillStyle = col;
-        ctx.textAlign = 'center';
-        ctx.fillText(tagText, chartW - 4 - tw / 2, pocY + 3.5);
-        ctx.restore();
-      });
-    }
+    // 10.5. Historical POCs are already rendered as crisp internal golden dots inside each candle (Zero clutter rays)
 
     // 11. Live Price Dashed Ray + Countdown Timer
     const liveY = pToY(lastPrice);
@@ -4808,6 +4771,17 @@ class FootprintRenderer {
 
     // Streamlined Essential Feature Toggle Pills (Total 6-7 Pills max, clean and focused)
     const pills = [
+      {
+        label: this.csZenMode ? '🧘 Zen: ON' : '🧘 Zen: OFF',
+        active: this.csZenMode,
+        col: '#00f0ff',
+        fn: () => {
+          this.csZenMode = !this.csZenMode;
+          if (window.orderFlowApp && window.orderFlowApp.showToast) {
+            window.orderFlowApp.showToast(this.csZenMode ? '🧘 Mod Zen Candle: Paparan Bersih & Tenang' : '📊 Mod Analisis Penuh: Semua Garisan & Isyarat Dipaparkan');
+          }
+        }
+      },
       { label: '📈 EMA', active: this.csShowEMA, col: '#ffd60a', fn: () => { this.csShowEMA = !this.csShowEMA; } },
       { label: '🌐 VWAP', active: this.csShowVWAP, col: '#00f0ff', fn: () => { this.csShowVWAP = !this.csShowVWAP; } },
       { label: '🎯 Garisan SNR', active: this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
