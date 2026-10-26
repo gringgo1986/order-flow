@@ -122,13 +122,18 @@ async def background_tick_stream():
 # --- Authentication & Membership SaaS Endpoints ---
 
 @app.get("/admin")
-def admin_page_redirect(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login?error=admin_required")
-    if user.get("role") != "admin":
-        return RedirectResponse(url="/?error=unauthorized")
-    return RedirectResponse(url="/?admin=1")
+def admin_portal_page(request: Request):
+    """Direct route for Admin Control Portal"""
+    candidates = [
+        static_dir / "login.html",
+        base_dir / "login.html",
+        Path("/app/static/login.html"),
+        Path("/app/login.html"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return FileResponse(str(c))
+    return {"status": "error", "message": "login.html not found"}
 
 @app.get("/login")
 def login_page(request: Request):
