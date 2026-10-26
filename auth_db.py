@@ -33,6 +33,58 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 BACKUP_JSON_PATH = Path(__file__).parent / "users_backup.json"
 
+# ─── Supabase Cloud DB User Sync Helpers ─────────────────────────
+def _get_supabase_client():
+    try:
+        from supabase_client import supabase
+        return supabase if supabase.is_connected else None
+    except Exception:
+        return None
+
+def _sync_user_to_supabase(u: dict):
+    sb = _get_supabase_client()
+    if not sb:
+        return
+    try:
+        sb.save_user(u)
+    except Exception as e:
+        print(f"[Supabase User Sync] {e}")
+
+def _delete_user_from_supabase(username: str):
+    sb = _get_supabase_client()
+    if not sb:
+        return
+    try:
+        sb.delete_user(username)
+    except Exception as e:
+        print(f"[Supabase User Delete] {e}")
+
+def _load_users_from_supabase() -> list:
+    sb = _get_supabase_client()
+    if not sb:
+        return []
+    try:
+        rows = sb.load_all_users()
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+def _sync_all_to_supabase():
+    sb = _get_supabase_client()
+    if not sb:
+        return
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT username, password_hash, full_name, role, plan, created_at, expires_at, is_active, last_login, notes FROM users")
+        users = [dict(r) for r in c.fetchall()]
+        conn.close()
+        for u in users:
+            sb.save_user(u)
+    except Exception as e:
+        print(f"[Supabase Sync All] {e}")
+# ─────────────────────────────────────────────────────────────────
+
 def export_backup_json() -> str:
     """Exports all users (excluding sessions) to users_backup.json for persistence across deploys"""
     try:
@@ -153,8 +205,14 @@ def init_db():
         conn.commit()
         print("[Auth] Default admin account created: admin / admin123#")
     conn.close()
-    # Restore persistent users from backup JSON if available
-    restore_backup_json()
+    # ── Restore persistent users from Supabase Cloud DB or backup JSON ──
+    sb_users = _load_users_from_supabase()
+    if sb_users:
+        restore_from_dict_list(sb_users)
+        print(f"[Auth] Restored {len(sb_users)} users directly from Supabase Cloud DB!")
+    else:
+        restore_backup_json()
+        _sync_all_to_supabase()
     export_backup_json()
 
 def calculate_remaining_days(expires_at: str) -> int:
@@ -202,7 +260,9 @@ def authenticate(username: str, password: str) -> Tuple[bool, Optional[Dict[str,
     now_iso = datetime.datetime.utcnow().isoformat()
     c.execute("UPDATE users SET last_login = ? WHERE id = ?", (now_iso, user["id"]))
     conn.commit()
+    user["last_login"] = now_iso
     conn.close()
+    _sync_user_to_supabase(user)
 
     user.pop("password_hash", None)
     user["remaining_days"] = calculate_remaining_days(user["expires_at"])
@@ -342,6 +402,17 @@ def create_user(
         user_id = c.lastrowid
         conn.close()
         export_backup_json()
+        _sync_user_to_supabase({
+            "username": username,
+            "password_hash": p_hash,
+            "full_name": full_name.strip() or username,
+            "role": role,
+            "plan": plan,
+            "created_at": now.isoformat(),
+            "expires_at": expires_at,
+            "is_active": 1,
+            "notes": notes.strip()
+        })
         return True, user_id, None
     except sqlite3.IntegrityError:
         conn.close()
@@ -401,14 +472,18 @@ def update_user(user_id: int, **kwargs) -> Tuple[bool, Optional[str]]:
     params.append(user_id)
     c.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
     conn.commit()
+    c.execute("SELECT username, password_hash, full_name, role, plan, created_at, expires_at, is_active, last_login, notes FROM users WHERE id = ?", (user_id,))
+    updated_row = c.fetchone()
     conn.close()
     export_backup_json()
+    if updated_row:
+        _sync_user_to_supabase(dict(updated_row))
     return True, None
 
 def delete_user(user_id: int) -> Tuple[bool, Optional[str]]:
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    c.execute("SELECT username, role FROM users WHERE id = ?", (user_id,))
     row = c.fetchone()
     if not row:
         conn.close()
@@ -420,11 +495,13 @@ def delete_user(user_id: int) -> Tuple[bool, Optional[str]]:
             conn.close()
             return False, "Tidak boleh memadam pentadbir tunggal sistem."
 
+    username = row["username"]
     c.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
     c.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
     export_backup_json()
+    _delete_user_from_supabase(username)
     return True, None
 
 # Run table creation on import
