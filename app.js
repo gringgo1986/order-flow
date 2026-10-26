@@ -818,6 +818,43 @@ class App {
     if (btnLogoutModal) {
       btnLogoutModal.addEventListener('click', () => this.logout());
     }
+        // Restore Backup JSON file handler
+    const fileRestore = document.getElementById('fileRestoreBackup');
+    if (fileRestore) {
+      fileRestore.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const txtStatus = document.getElementById('txtRestoreStatus');
+        if (txtStatus) txtStatus.textContent = 'Memproses fail sandaran...';
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          const users = parsed.users || (Array.isArray(parsed) ? parsed : []);
+          if (users.length === 0) {
+            alert('Fail JSON tidak mengandungi data pengguna yang sah.');
+            if (txtStatus) txtStatus.textContent = '';
+            return;
+          }
+          const res = await fetch('/api/admin/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ users })
+          });
+          const resData = await res.json();
+          if (res.ok) {
+            alert(`✅ ${resData.message}`);
+            if (txtStatus) txtStatus.textContent = `✅ ${resData.count} akaun dipulihkan!`;
+            this.loadAdminUsers();
+          } else {
+            alert(`❌ ${resData.detail || resData.message}`);
+            if (txtStatus) txtStatus.textContent = '❌ Gagal memulihkan fail.';
+          }
+        } catch (err) {
+          alert(`❌ Ralat membaca fail JSON: ${err.message}`);
+          if (txtStatus) txtStatus.textContent = '❌ Ralat membaca fail.';
+        }
+      });
+    }
     const formCreateUser = document.getElementById('formCreateUser');
     if (formCreateUser) {
       formCreateUser.addEventListener('submit', (e) => this.handleCreateUser(e));
