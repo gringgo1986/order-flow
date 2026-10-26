@@ -820,37 +820,41 @@ class FootprintRenderer {
     if (!sessions) return;
     ctx.save();
     const levels = [
-      // Higher Timeframe SNR M15, M30, H1, H4, H8
-      { price: sessions.h8_res || sessions.h8_high, label: '🏛️ H8 RES', col: '#e11d48' },
-      { price: sessions.h8_sup || sessions.h8_low,  label: '🏛️ H8 SUP', col: '#059669' },
-      { price: sessions.h4_res || sessions.h4_high, label: '🏰 H4 RES', col: '#ec4899' },
-      { price: sessions.h4_sup || sessions.h4_low,  label: '🏰 H4 SUP', col: '#10b981' },
-      { price: sessions.h1_res || sessions.h1_high, label: '⏱️ H1 RES', col: '#f97316' },
-      { price: sessions.h1_sup || sessions.h1_low,  label: '⏱️ H1 SUP', col: '#06b6d4' },
-      { price: sessions.m30_res || sessions.m30_high, label: '⏳ M30 RES', col: '#a855f7' },
-      { price: sessions.m30_sup || sessions.m30_low,  label: '⏳ M30 SUP', col: '#3b82f6' },
-      { price: sessions.m15_res || sessions.m15_high, label: '⚡ M15 RES', col: '#fbbf24' },
-      { price: sessions.m15_sup || sessions.m15_low,  label: '⚡ M15 SUP', col: '#2dd4bf' },
+      // 1D (Daily) Major Levels
+      { price: sessions.pdh,         label: '🏛️ 1D HIGH (PDH)', col: '#fde047', isMajor: true },
+      { price: sessions.pdl,         label: '🏛️ 1D LOW (PDL)',  col: '#fde047', isMajor: true },
+      { price: sessions.daily_open,  label: '⚡ 1D OPEN',       col: '#38bdf8', isMajor: true },
 
-      { price: sessions.pdh,         label: '🏛️ PDH (Semalam)', col: '#fde047' },
-      { price: sessions.pdl,         label: '🏛️ PDL (Semalam)', col: '#fde047' },
-      { price: sessions.daily_open,  label: '⚡ DAILY OPEN',    col: '#38bdf8' },
-      { price: sessions.asian_high,  label: '🌏 ASIAN HIGH',    col: '#f59e0b' },
-      { price: sessions.asian_low,   label: '🌏 ASIAN LOW',     col: '#f59e0b' },
-      { price: sessions.london_high, label: '🇬🇧 LONDON HIGH',   col: '#06b6d4' },
-      { price: sessions.london_low,  label: '🇬🇧 LONDON LOW',    col: '#06b6d4' },
-      { price: sessions.ny_high,     label: '🗽 NY HIGH',       col: '#c084fc' },
-      { price: sessions.ny_low,      label: '🗽 NY LOW',        col: '#c084fc' }
+      // Higher Timeframe SNR H8, H4, H1, M30, M15
+      { price: sessions.h8_res || sessions.h8_high, label: '🏛️ H8 RES', col: '#e11d48', isMajor: true },
+      { price: sessions.h8_sup || sessions.h8_low,  label: '🏛️ H8 SUP', col: '#059669', isMajor: true },
+      { price: sessions.h4_res || sessions.h4_high, label: '🏰 H4 RES', col: '#ec4899', isMajor: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: '🏰 H4 SUP', col: '#10b981', isMajor: true },
+      { price: sessions.h1_res || sessions.h1_high, label: '⏱️ H1 RES', col: '#f97316', isMajor: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: '⏱️ H1 SUP', col: '#06b6d4', isMajor: true },
+      { price: sessions.m30_res || sessions.m30_high, label: '⏳ M30 RES', col: '#a855f7', isMajor: false },
+      { price: sessions.m30_sup || sessions.m30_low,  label: '⏳ M30 SUP', col: '#3b82f6', isMajor: false },
+      { price: sessions.m15_res || sessions.m15_high, label: '⚡ M15 RES', col: '#fbbf24', isMajor: false },
+      { price: sessions.m15_sup || sessions.m15_low,  label: '⚡ M15 SUP', col: '#2dd4bf', isMajor: false },
+
+      // Session Extremes
+      { price: sessions.asian_high,  label: '🌏 ASIAN HIGH',    col: '#f59e0b', isMajor: false },
+      { price: sessions.asian_low,   label: '🌏 ASIAN LOW',     col: '#f59e0b', isMajor: false },
+      { price: sessions.london_high, label: '🇬🇧 LONDON HIGH',   col: '#06b6d4', isMajor: false },
+      { price: sessions.london_low,  label: '🇬🇧 LONDON LOW',    col: '#06b6d4', isMajor: false },
+      { price: sessions.ny_high,     label: '🗽 NY HIGH',       col: '#c084fc', isMajor: false },
+      { price: sessions.ny_low,      label: '🗽 NY LOW',        col: '#c084fc', isMajor: false }
     ];
 
+    const drawnTagYs = [];
     for (const lv of levels) {
       if (!lv.price || lv.price <= 0) continue;
       const y = this.priceToY(lv.price);
       if (y < 20 || y > this.height - 70) continue;
 
-      ctx.setLineDash([6, 4]);
+      ctx.setLineDash(lv.isMajor ? [8, 4] : [5, 4]);
       ctx.strokeStyle = lv.col;
-      ctx.lineWidth = 1.1;
+      ctx.lineWidth = lv.isMajor ? 1.2 : 0.9;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(this.width - 70, y);
@@ -860,15 +864,25 @@ class FootprintRenderer {
       const text = `${lv.label} $${lv.price.toFixed(2)}`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const tw = ctx.measureText(text).width + 10;
-      ctx.fillStyle = 'rgba(8, 13, 24, 0.90)';
-      ctx.fillRect(8, y - 8, tw, 15);
+
+      let tagX = 8;
+      let tagY = y;
+      let colShift = 0;
+      while (drawnTagYs.some(pt => Math.abs(pt.y - tagY) < 16 && Math.abs(pt.x - tagX) < (tw + 12)) && colShift < 4) {
+        tagX += tw + 10;
+        colShift++;
+      }
+      drawnTagYs.push({ x: tagX, y: tagY });
+
+      ctx.fillStyle = 'rgba(8, 13, 24, 0.92)';
+      ctx.fillRect(tagX, tagY - 8, tw, 15);
       ctx.strokeStyle = lv.col;
       ctx.lineWidth = 0.9;
-      ctx.strokeRect(8, y - 8, tw, 15);
+      ctx.strokeRect(tagX, tagY - 8, tw, 15);
 
       ctx.fillStyle = lv.col;
       ctx.textAlign = 'left';
-      ctx.fillText(text, 13, y + 3);
+      ctx.fillText(text, tagX + 5, tagY + 3);
     }
     ctx.restore();
   }
@@ -2934,7 +2948,7 @@ class FootprintRenderer {
       ctx.restore();
     }
 
-    // 11. Draw Institutional Higher Timeframe SNR (M15, M30, H1, H4, H8) & Benchmarks (VWAP, dPOC, PDH/PDL)
+    // 11. Draw Institutional Higher Timeframe SNR (1D, H4, H1, M30, M15) & Benchmarks (VWAP, dPOC)
     const cdLevels = [];
     if (this.cdShowSNR) {
       const sess = snapshot.sessions || snapshot.htf_snr || {};
@@ -2949,6 +2963,12 @@ class FootprintRenderer {
       const m15Res = sess.m15_res || sess.m15_high;
       const m15Sup = sess.m15_sup || sess.m15_low;
 
+      // 1D (Daily) Major Benchmarks directly inside SNR
+      if (sess.pdh > 0) cdLevels.push({ price: sess.pdh, code: '1D RES', label: '🏛️ 1D HIGH (PDH)', col: '#fde047', bg: '#713f12', dash: [8, 4], width: 1.6, isMajor: true });
+      if (sess.pdl > 0) cdLevels.push({ price: sess.pdl, code: '1D SUP', label: '🏛️ 1D LOW (PDL)',  col: '#fde047', bg: '#713f12', dash: [8, 4], width: 1.6, isMajor: true });
+      if (sess.daily_open > 0) cdLevels.push({ price: sess.daily_open, code: '1D OPEN', label: '⚡ 1D OPEN', col: '#38bdf8', bg: '#0c4a6e', dash: [6, 3], width: 1.4, isMajor: true });
+
+      // H8, H4, H1, M30, M15
       if (h8Res > 0) cdLevels.push({ price: h8Res, code: 'H8 RES', label: '🏛️ H8 RES', col: '#e11d48', bg: '#881337', dash: [8, 4], width: 1.8, isMajor: true });
       if (h8Sup > 0) cdLevels.push({ price: h8Sup, code: 'H8 SUP', label: '🏛️ H8 SUP', col: '#059669', bg: '#064e3b', dash: [8, 4], width: 1.8, isMajor: true });
       if (h4Res > 0) cdLevels.push({ price: h4Res, code: 'H4 RES', label: '🏰 H4 RES', col: '#ec4899', bg: '#831843', dash: [6, 3], width: 1.5, isMajor: true });
@@ -2969,8 +2989,10 @@ class FootprintRenderer {
       }
       if (snapshot.sessions) {
         const s = snapshot.sessions;
-        if (s.pdh > 0) cdLevels.push({ price: s.pdh, code: 'PDH', label: '🏛️ PDH', col: '#fde047', bg: '#713f12', dash: [6, 3], width: 1.2 });
-        if (s.pdl > 0) cdLevels.push({ price: s.pdl, code: 'PDL', label: '🏛️ PDL', col: '#fde047', bg: '#713f12', dash: [6, 3], width: 1.2 });
+        if (s.asian_high > 0) cdLevels.push({ price: s.asian_high, code: 'ASIA H', label: '🌏 ASIAN H', col: '#f59e0b', bg: '#78350f', dash: [5, 3], width: 1.1 });
+        if (s.asian_low > 0)  cdLevels.push({ price: s.asian_low,  code: 'ASIA L', label: '🌏 ASIAN L', col: '#f59e0b', bg: '#78350f', dash: [5, 3], width: 1.1 });
+        if (s.london_high > 0) cdLevels.push({ price: s.london_high, code: 'LDN H', label: '🇬🇧 LONDON H', col: '#06b6d4', bg: '#164e63', dash: [5, 3], width: 1.1 });
+        if (s.london_low > 0)  cdLevels.push({ price: s.london_low,  code: 'LDN L', label: '🇬🇧 LONDON L', col: '#06b6d4', bg: '#164e63', dash: [5, 3], width: 1.1 });
       }
     }
 
@@ -3440,20 +3462,32 @@ class FootprintRenderer {
       }
       if (snapshot.sessions) {
         const s = snapshot.sessions;
+        // 1D (Daily) Levels - Major Institutional
+        if (s.pdh > 0) candidateLevels.push({ price: s.pdh, label: '🏛️ 1D HIGH (PDH)', color: '#fde047', dash: [8, 4], prio: 10 });
+        if (s.pdl > 0) candidateLevels.push({ price: s.pdl, label: '🏛️ 1D LOW (PDL)',  color: '#fde047', dash: [8, 4], prio: 10 });
+        if (s.daily_open > 0) candidateLevels.push({ price: s.daily_open, label: '⚡ 1D OPEN', color: '#38bdf8', dash: [6, 3], prio: 9 });
+
+        // H8 & H4
         if (s.h8_res > 0) candidateLevels.push({ price: s.h8_res, label: '🏛️ H8 RES', color: '#e11d48', dash: [8, 4], prio: 8 });
         if (s.h8_sup > 0) candidateLevels.push({ price: s.h8_sup, label: '🏛️ H8 SUP', color: '#059669', dash: [8, 4], prio: 8 });
         if (s.h4_res > 0) candidateLevels.push({ price: s.h4_res, label: '🏰 H4 RES', color: '#ec4899', dash: [6, 3], prio: 7 });
         if (s.h4_sup > 0) candidateLevels.push({ price: s.h4_sup, label: '🏰 H4 SUP', color: '#10b981', dash: [6, 3], prio: 7 });
+
+        // H1
         if (s.h1_res > 0) candidateLevels.push({ price: s.h1_res, label: '⏱️ H1 RES', color: '#f97316', dash: [5, 3], prio: 6 });
         if (s.h1_sup > 0) candidateLevels.push({ price: s.h1_sup, label: '⏱️ H1 SUP', color: '#06b6d4', dash: [5, 3], prio: 6 });
+
+        // M30
         if (s.m30_res > 0) candidateLevels.push({ price: s.m30_res, label: '⏳ M30 RES', color: '#a855f7', dash: [4, 3], prio: 5 });
         if (s.m30_sup > 0) candidateLevels.push({ price: s.m30_sup, label: '⏳ M30 SUP', color: '#3b82f6', dash: [4, 3], prio: 5 });
+
+        // M15
         if (s.m15_res > 0) candidateLevels.push({ price: s.m15_res, label: '⚡ M15 RES', color: '#fbbf24', dash: [3, 3], prio: 5 });
         if (s.m15_sup > 0) candidateLevels.push({ price: s.m15_sup, label: '⚡ M15 SUP', color: '#2dd4bf', dash: [3, 3], prio: 5 });
+
+        // Sessions
         if (s.asian_high > 0) candidateLevels.push({ price: s.asian_high, label: '🌏 ASIAN H', color: '#f59e0b', dash: [5, 4], prio: 4 });
         if (s.asian_low > 0)  candidateLevels.push({ price: s.asian_low,  label: '🌏 ASIAN L', color: '#f59e0b', dash: [5, 4], prio: 4 });
-        if (s.pdh > 0) candidateLevels.push({ price: s.pdh, label: '🏛️ PDH', color: '#fde047', dash: [6, 3], prio: 4 });
-        if (s.pdl > 0) candidateLevels.push({ price: s.pdl, label: '🏛️ PDL', color: '#fde047', dash: [6, 3], prio: 4 });
       }
     }
 
@@ -3477,23 +3511,27 @@ class FootprintRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Vertical clearance >= 18px for Right-Edge Pill Tag
-      const canDrawPill = !placedTagYs.some(py => Math.abs(py - y) < 18);
-      if (canDrawPill) {
-        placedTagYs.push(y);
-        const txt = `${lvl.label} $${lvl.price.toFixed(2)}`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(txt).width + 10;
-        const tagX = chartW - tw - 4;
-        ctx.fillStyle = 'rgba(7, 11, 20, 0.94)';
-        ctx.fillRect(tagX, y - 7, tw, 14);
-        ctx.strokeStyle = lvl.color;
-        ctx.lineWidth = 0.8;
-        ctx.strokeRect(tagX, y - 7, tw, 14);
-        ctx.fillStyle = lvl.color;
-        ctx.textAlign = 'center';
-        ctx.fillText(txt, tagX + tw / 2, y + 3.5);
+      // Anti-Collision Right-Edge Pill Tag (offset horizontally if vertically tight)
+      const txt = `${lvl.label} $${lvl.price.toFixed(2)}`;
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      const tw = ctx.measureText(txt).width + 10;
+
+      let tagX = chartW - tw - 4;
+      let colShift = 0;
+      while (placedTagYs.some(pt => Math.abs(pt.y - y) < 16 && Math.abs(pt.x - tagX) < (tw + 8)) && colShift < 3) {
+        tagX -= tw + 8;
+        colShift++;
       }
+      placedTagYs.push({ x: tagX, y: y });
+
+      ctx.fillStyle = 'rgba(7, 11, 20, 0.94)';
+      ctx.fillRect(tagX, y - 7, tw, 14);
+      ctx.strokeStyle = lvl.color;
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(tagX, y - 7, tw, 14);
+      ctx.fillStyle = lvl.color;
+      ctx.textAlign = 'center';
+      ctx.fillText(txt, tagX + tw / 2, y + 3.5);
       ctx.restore();
     }
 
@@ -4593,7 +4631,7 @@ class FootprintRenderer {
     const pills = [
       { label: '📈 EMA', active: this.csShowEMA, col: '#ffd60a', fn: () => { this.csShowEMA = !this.csShowEMA; } },
       { label: '🌐 VWAP', active: this.csShowVWAP, col: '#00f0ff', fn: () => { this.csShowVWAP = !this.csShowVWAP; } },
-      { label: '⭐ Paras', active: this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
+      { label: '🎯 Garisan SNR', active: this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
       { label: this.csShowFvgOb !== false ? '📦 FVG/OB' : '📦 FVG: OFF', active: this.csShowFvgOb !== false, col: '#34d399', fn: () => { this.csShowFvgOb = !(this.csShowFvgOb !== false); } },
       { label: this.csShowStructure !== false ? '🏛️ BOS' : '🏛️ BOS: OFF', active: this.csShowStructure !== false, col: '#c084fc', fn: () => { this.csShowStructure = !(this.csShowStructure !== false); } },
       { label: this.csShowSignals ? '🎯 Isyarat' : '🎯 Isyarat: OFF', active: this.csShowSignals, col: '#00e676', fn: () => { this.csShowSignals = !this.csShowSignals; } }
