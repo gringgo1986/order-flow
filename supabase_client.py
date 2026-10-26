@@ -8,6 +8,10 @@ from typing import List, Dict, Any, Optional
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://vsqahqpivfyanfxvnagd.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sb_secret_n8ae3Bm_mbUaTh8csnc_tA_LwBxj3Yt")
 
+# 5 Days Retention Window: 5 days * 24 hours * 3600 seconds = 432,000 seconds
+RETENTION_DAYS = 5
+RETENTION_SECONDS = RETENTION_DAYS * 86400
+
 class SupabaseClient:
     def __init__(self, url: str = SUPABASE_URL, key: str = SUPABASE_KEY):
         self.url = url.rstrip("/")
@@ -19,6 +23,7 @@ class SupabaseClient:
             "Prefer": "return=minimal"
         }
         self.is_connected = False
+        self._last_prune_time = 0.0
         self._check_connection()
 
     def _check_connection(self):
@@ -42,8 +47,7 @@ class SupabaseClient:
         try:
             with urllib.request.urlopen(req, timeout=8) as resp:
                 return resp.status in (200, 201, 204)
-        except urllib.error.HTTPError as e:
-            # Table might not exist yet if status is 404
+        except urllib.error.HTTPError:
             return False
         except Exception:
             return False
@@ -60,7 +64,37 @@ class SupabaseClient:
         except Exception:
             return []
 
-    # ─── High-Level Module Sync Methods ────────────────────────────
+    def delete(self, table: str, params: str) -> bool:
+        """Delete records matching filter (used for rolling 5-day retention pruning)"""
+        if not params:
+            return False
+        url = f"{self.url}/rest/v1/{table}?{params}"
+        req = urllib.request.Request(url, headers=self.headers, method="DELETE")
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return resp.status in (200, 204)
+        except Exception:
+            return False
+
+    def prune_older_than_days(self, days: int = RETENTION_DAYS) -> Dict[str, bool]:
+        """Auto-prune records older than 5 days across all order-flow modules"""
+        now = time.time()
+        # Rate limit pruning to at most once every 30 minutes
+        if now - self._last_prune_time < 1800.0:
+            return {}
+        self._last_prune_time = now
+
+        cutoff_sec = int(now - (days * 86400))
+        cutoff_ms = int(cutoff_sec * 1000)
+
+        results = {
+            "bookmap_heatmap": self.delete("bookmap_heatmap", f"timestamp=lt.{cutoff_ms}"),
+            "candles_history": self.delete("candles_history", f"time=lt.{cutoff_sec}"),
+            "signals_history": self.delete("signals_history", f"timestamp=lt.{cutoff_sec}")
+        }
+        return results
+
+    # ─── High-Level Module Sync Methods (5-Day Rolling Retention) ──
 
     def save_heatmap_batch(self, slices: List[Dict[str, Any]]) -> bool:
         """Save a batch of Bookmap heatmap depth slices"""
@@ -74,17 +108,20 @@ class SupabaseClient:
                 "bids": s.get("bids", {}),
                 "asks": s.get("asks", {})
             })
-        return self.post("bookmap_heatmap", records)
+        success = self.post("bookmap_heatmap", records)
+        # Trigger background rolling 5-day retention cleanup
+        self.prune_older_than_days(RETENTION_DAYS)
+        return success
 
-    def load_latest_heatmap(self, limit: int = 350) -> List[Dict[str, Any]]:
-        """Load latest 350 historical heatmap slices on user connect/refresh"""
+    def load_latest_heatmap(self, limit: int = 500) -> List[Dict[str, Any]]:
+        """Load latest historical heatmap slices on user connect/refresh"""
         rows = self.get("bookmap_heatmap", f"select=timestamp,mid_price,bids,asks&order=timestamp.desc&limit={limit}")
         if rows:
             rows.reverse() # chronological order
         return rows
 
     def save_candles_batch(self, candles: List[Dict[str, Any]], timeframe: str = "M1") -> bool:
-        """Save/upsert OHLCV + Footprint/ClusterDelta volume ladder candles"""
+        """Save/upsert OHLCV + Footprint/ClusterDelta volume ladder candles (5 days)"""
         if not candles:
             return True
         records = []
@@ -102,8 +139,8 @@ class SupabaseClient:
             })
         return self.post("candles_history", records, upsert=True)
 
-    def load_latest_candles(self, timeframe: str = "M1", limit: int = 60) -> List[Dict[str, Any]]:
-        """Load latest historical candles for Candle, Footprint & ClusterDelta"""
+    def load_latest_candles(self, timeframe: str = "M1", limit: int = 7200) -> List[Dict[str, Any]]:
+        """Load historical candles for Candle, Footprint & ClusterDelta (up to 5 full trading days)"""
         rows = self.get("candles_history", f"timeframe=eq.{timeframe}&order=time.desc&limit={limit}")
         if rows:
             rows.reverse()
@@ -124,8 +161,8 @@ class SupabaseClient:
         }
         return self.post("signals_history", record)
 
-    def load_latest_signals(self, limit: int = 15) -> List[Dict[str, Any]]:
-        """Load confirmed signals for chart overlays"""
+    def load_latest_signals(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Load confirmed signals for chart overlays (up to 5 days)"""
         return self.get("signals_history", f"order=timestamp.desc&limit={limit}")
 
 supabase = SupabaseClient()
