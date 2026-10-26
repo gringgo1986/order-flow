@@ -1197,8 +1197,9 @@ class App {
       this.footprintCanvas.style.display = 'block';
       this.footprintCanvas.style.left = '0';
       this.footprintCanvas.style.width = '100%';
-      if (this.footprint && (this.footprint.viewMode === 'clusterdelta' || this.footprint.viewMode === 'candlestick')) {
+      if (this.footprint) {
         this.footprint.setViewMode('bid_ask');
+        this.footprint.centerVertical();
         this.footprint.setClusterStep(1.00);
         document.querySelectorAll('.fp-mode-btn').forEach(b => {
           b.classList.toggle('active', b.dataset.mode === 'bid_ask');
@@ -1206,6 +1207,9 @@ class App {
         document.querySelectorAll('.step-btn').forEach(b => {
           b.classList.toggle('active', b.dataset.step === '1.00');
         });
+        if (this.latestSnapshot) {
+          this.footprint.render(this.latestSnapshot);
+        }
       }
     } else if (view === 'split') {
       this.bookmapCanvas.style.display = 'block';
