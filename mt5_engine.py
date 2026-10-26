@@ -427,6 +427,17 @@ class OrderFlowEngine:
         self.recent_trades   = []
         self.cvd_history     = []
         
+        # Restore real historical heatmap from Supabase Cloud DB
+        try:
+            from supabase_client import supabase
+            if supabase.is_connected:
+                cloud_heatmap = supabase.load_latest_heatmap(350)
+                if cloud_heatmap and len(cloud_heatmap) >= 20:
+                    self.heatmap_history = cloud_heatmap
+                    print(f"[Supabase Cloud DB] Berjaya memuatkan {len(cloud_heatmap)} hirisan peta haba Bookmap sebenar!")
+        except Exception as sbErr:
+            print(f"[Supabase Heatmap Restore] {sbErr}")
+
         # Pre-seed 300 heatmap slices across the past 60 seconds (every 200ms)
         p_walker = base_price
         prev_p   = base_price
@@ -1250,6 +1261,18 @@ class OrderFlowEngine:
                             self.candles.append(candle_obj)
             except Exception as e:
                 print(f"[Timeframe] Failed copying MT5 rates: {e}")
+
+        # Fallback if simulator or no rates returned: check Supabase Cloud DB first
+        if len(self.candles) == 0:
+            try:
+                from supabase_client import supabase
+                if supabase.is_connected:
+                    cloud_candles = supabase.load_latest_candles(self.timeframe, limit=1000)
+                    if cloud_candles and len(cloud_candles) >= 10:
+                        self.candles = cloud_candles
+                        print(f"[Supabase Cloud DB] Berjaya memuatkan {len(cloud_candles)} batang lilin & kluster Footprint dari Supabase!")
+            except Exception as e:
+                print(f"[Supabase Candles Restore] {e}")
 
         # Fallback if simulator or no rates returned
         if len(self.candles) == 0:
