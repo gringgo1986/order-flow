@@ -1,0 +1,40 @@
+{
+  "name": "XAUUSD Pro Order Flow & Bookmap",
+  "short_name": "XAUUSD Flow",
+  "description": "Terminal Dagangan Institusi XAUUSD: Bookmap Heatmap, Footprint Bid x Ask, ClusterDelta & Candlestick Cockpit",
+  "start_url": "/login",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#050a14",
+  "theme_color": "#f59e0b",
+  "lang": "ms",
+  "dir": "ltr",
+  "categories": ["finance", "productivity", "business"],
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
