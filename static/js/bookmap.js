@@ -723,7 +723,32 @@ class BookmapRenderer {
     ctx.fillRect(this.CHART_LEFT, this.CHART_TOP, this.CHART_WIDTH, this.CHART_HEIGHT);
 
     /* ── 3. Continuous Horizontal Liquidity Heatmap + Future Projection Zone ── */
-    this._drawHeatmap(ctx, snapshot.heatmap || [], snapshot.order_book, now, snapshot.spoof_events || []);
+    // Persistent rolling heatmap buffer across WebSocket updates
+    if (!this._heatmapHistoryBuffer) this._heatmapHistoryBuffer = [];
+    if (snapshot.heatmap && snapshot.heatmap.length) {
+      if (snapshot.heatmap.length >= 100) {
+        // Full initial buffer delivered on connect/refresh (300-350 slices)
+        this._heatmapHistoryBuffer = [...snapshot.heatmap];
+      } else {
+        // Real-time incremental stream updates: append newer slices
+        const lastTs = this._heatmapHistoryBuffer.length 
+          ? this._heatmapHistoryBuffer[this._heatmapHistoryBuffer.length - 1].timestamp 
+          : 0;
+        for (const snap of snapshot.heatmap) {
+          if (snap.timestamp > lastTs) {
+            this._heatmapHistoryBuffer.push(snap);
+          }
+        }
+        if (this._heatmapHistoryBuffer.length > 600) {
+          this._heatmapHistoryBuffer = this._heatmapHistoryBuffer.slice(-600);
+        }
+      }
+    }
+    const effectiveHeatmap = (this._heatmapHistoryBuffer && this._heatmapHistoryBuffer.length >= 2) 
+      ? this._heatmapHistoryBuffer 
+      : (snapshot.heatmap || []);
+
+    this._drawHeatmap(ctx, effectiveHeatmap, snapshot.order_book, now, snapshot.spoof_events || []);
 
     /* ── 4. Chart Gridlines & "NOW" Time Line Separator ── */
     this._drawGrid(ctx, now);
