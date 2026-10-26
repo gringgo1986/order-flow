@@ -3298,20 +3298,25 @@ class FootprintRenderer {
    */
   _renderCandlestickChart(ctx, snapshot) {
     ctx.save();
-    this.hoverCell = null;
-    this.cdToolbarHitboxes = [];
+    try {
+      this.hoverCell = null;
+      this.cdToolbarHitboxes = [];
 
-    const rawCandles = snapshot.candles || [];
-    if (rawCandles.length === 0) {
-      ctx.restore();
-      return;
-    }
+      const rawCandles = (snapshot && snapshot.candles) ? snapshot.candles : [];
+      if (!rawCandles || rawCandles.length === 0) {
+        return;
+      }
 
-    const numBars = Math.max(14, Math.min(50, this.csVisibleBars || 34));
-    const candles = this._sliceCandlesWithOffset(rawCandles, numBars);
-    const sliceEndIdx = Math.max(candles.length, rawCandles.length - Math.round(this.barOffset || 0));
-    const rawUpToView = rawCandles.slice(0, sliceEndIdx);
-    const lastPrice = snapshot.last_price || snapshot.bid || candles[candles.length - 1].close;
+      const numBars = Math.max(14, Math.min(50, this.csVisibleBars || 34));
+      const candles = this._sliceCandlesWithOffset(rawCandles, numBars);
+      if (!candles || candles.length === 0) {
+        return;
+      }
+      const sliceEndIdx = Math.max(candles.length, rawCandles.length - Math.round(this.barOffset || 0));
+      const rawUpToView = rawCandles.slice(0, sliceEndIdx);
+      const lastCandle = candles[candles.length - 1];
+      const lastPrice = (snapshot && (snapshot.last_price || snapshot.bid)) || (lastCandle ? lastCandle.close : 0);
+      if (!lastPrice) return;
 
     // Layout geometry (World-Class TradingView Obsidian Layout)
     const topBarH = 34;
@@ -3585,6 +3590,7 @@ class FootprintRenderer {
         const c1 = candles[i - 2];
         const c2 = candles[i - 1];
         const c3 = candles[i];
+        if (!c1 || !c2 || !c3) continue;
 
         // Bullish FVG: C1 High < C3 Low
         if (c3.low > c1.high + 0.12) {
@@ -3673,6 +3679,7 @@ class FootprintRenderer {
       for (let i = obSearchStart; i < candles.length - 1; i++) {
         const base = candles[i - 1];
         const impulse = candles[i];
+        if (!base || !impulse) continue;
         const impulseBody = Math.abs(impulse.close - impulse.open);
 
         // Bullish Order Block
@@ -3754,6 +3761,7 @@ class FootprintRenderer {
       const swings = [];
       for (let i = 2; i < candles.length - 2; i++) {
         const c = candles[i];
+        if (!c || !candles[i - 1] || !candles[i - 2] || !candles[i + 1] || !candles[i + 2]) continue;
         const isSwingHigh = c.high > candles[i - 1].high && c.high > candles[i - 2].high &&
                             c.high > candles[i + 1].high && c.high > candles[i + 2].high;
         const isSwingLow = c.low < candles[i - 1].low && c.low < candles[i - 2].low &&
@@ -3839,304 +3847,314 @@ class FootprintRenderer {
       drawCurve(ema9,  'rgba(255, 214, 10, 0.92)', 1.6);  // EMA 9 Gold
     }
 
-    // 8.5 Institutional 7-Strategy Signal Engine & Permanent Frozen Cache
+        // 8.5 Institutional 7-Strategy Signal Engine & Permanent Frozen Cache (Ultra Optimized 60 FPS)
     if (!this._confirmedSignalsCache) {
       this._confirmedSignalsCache = new Map();
     }
 
-    const techs = this.csTechniques || { smc: true, of_absorb: true, vwap_band: true, ema_trend: true, vp_retest: true, snr: true, snd: true };
+    try {
+      const techs = this.csTechniques || { smc: true, of_absorb: true, vwap_band: true, ema_trend: true, vp_retest: true, snr: true, snd: true };
 
-    const calcFullEMA = (arr, period) => {
-      const k = 2 / (period + 1);
-      const out = [];
-      let ema = arr[0] ? arr[0].close : 0;
-      for (let i = 0; i < arr.length; i++) {
-        ema = i === 0 ? arr[i].close : (arr[i].close * k + ema * (1 - k));
-        out.push(ema);
-      }
-      return out;
-    };
-    const rawEma9 = calcFullEMA(rawCandles, 9);
-    const rawEma21 = calcFullEMA(rawCandles, 21);
-    const rawEma50 = calcFullEMA(rawCandles, 50);
+      // Ultra-Fast Signal Engine: Scan only the active recent window (last 70 candles)
+      const scanWindow = 70;
+      const scanStart = Math.max(0, rawCandles.length - scanWindow);
 
-    let lastCachedSignalTime = 0;
-    let lastCachedSignalDir = null;
+      const calcFullEMA = (arr, period) => {
+        const k = 2 / (period + 1);
+        const out = [];
+        let ema = arr[0] ? arr[0].close : 0;
+        for (let i = 0; i < arr.length; i++) {
+          ema = i === 0 ? arr[i].close : (arr[i].close * k + ema * (1 - k));
+          out.push(ema);
+        }
+        return out;
+      };
+      const rawEma9 = calcFullEMA(rawCandles, 9);
+      const rawEma21 = calcFullEMA(rawCandles, 21);
+      const rawEma50 = calcFullEMA(rawCandles, 50);
 
-    for (let i = 0; i < rawCandles.length - 1; i++) {
-      const past = this._confirmedSignalsCache.get(rawCandles[i].time);
-      if (past && past.aPlusSignal) {
-        lastCachedSignalTime = rawCandles[i].time;
-        lastCachedSignalDir = past.aPlusSignal.direction;
-      }
-    }
+      let lastCachedSignalTime = this._lastSignalTime || 0;
+      let lastCachedSignalDir = this._lastSignalDir || null;
 
-    const candleInterval = snapshot.candle_interval || 60;
-    for (let i = 0; i < rawCandles.length - 1; i++) {
-      const rc = rawCandles[i];
-      if (this._confirmedSignalsCache.has(rc.time)) {
-        continue;
+      for (let i = scanStart; i < rawCandles.length - 1; i++) {
+        const past = this._confirmedSignalsCache.get(rawCandles[i].time);
+        if (past && past.aPlusSignal) {
+          lastCachedSignalTime = rawCandles[i].time;
+          lastCachedSignalDir = past.aPlusSignal.direction;
+        }
       }
 
-      const totalRange = Math.max(0.05, rc.high - rc.low);
-      const upperWick = rc.high - Math.max(rc.open, rc.close);
-      const lowerWick = Math.min(rc.open, rc.close) - rc.low;
-      const isBull = rc.close >= rc.open;
-      const hasBearDivergence = isBull && (rc.delta || 0) < -1.8;
-      const hasBullDivergence = !isBull && (rc.delta || 0) > 1.8;
+      const candleInterval = snapshot.candle_interval || 60;
+      for (let i = scanStart; i < rawCandles.length - 1; i++) {
+        const rc = rawCandles[i];
+        if (!rc) continue;
+        if (this._confirmedSignalsCache.has(rc.time)) {
+          continue;
+        }
 
-      let aPlusSignal = null;
-      let signalBadge = null;
-      let signalCol = '#00e676';
+        const totalRange = Math.max(0.05, rc.high - rc.low);
+        const upperWick = rc.high - Math.max(rc.open, rc.close);
+        const lowerWick = Math.min(rc.open, rc.close) - rc.low;
+        const isBull = rc.close >= rc.open;
+        const hasBearDivergence = isBull && (rc.delta || 0) < -1.8;
+        const hasBullDivergence = !isBull && (rc.delta || 0) > 1.8;
 
-      const timeDiff = rc.time - lastCachedSignalTime;
-      const canEmitBuy = (timeDiff >= candleInterval * 3) || (lastCachedSignalDir === 'SELL');
-      const canEmitSell = (timeDiff >= candleInterval * 3) || (lastCachedSignalDir === 'BUY');
+        let aPlusSignal = null;
+        let signalBadge = null;
+        let signalCol = '#00e676';
 
-      // TEKNIK 1: SMC Liquidity Sweep
-      if (!aPlusSignal && techs.smc && totalRange >= 0.35) {
-        let smcSupport = null;
-        let smcResistance = null;
-        if (snapshot.sessions) {
-          const s = snapshot.sessions;
-          const supLevels = [{ name: 'ASIAN LOW', price: s.asian_low }, { name: 'LONDON LOW', price: s.london_low }, { name: 'PDL', price: s.pdl }].filter(l => l.price > 0);
-          const resLevels = [{ name: 'ASIAN HIGH', price: s.asian_high }, { name: 'LONDON HIGH', price: s.london_high }, { name: 'PDH', price: s.pdh }].filter(l => l.price > 0);
-          for (const l of supLevels) {
-            if (rc.low <= l.price + 0.15 && rc.low >= l.price - 0.90 && rc.close >= l.price) { smcSupport = l; break; }
+        const timeDiff = rc.time - lastCachedSignalTime;
+        const canEmitBuy = (timeDiff >= candleInterval * 3) || (lastCachedSignalDir === 'SELL');
+        const canEmitSell = (timeDiff >= candleInterval * 3) || (lastCachedSignalDir === 'BUY');
+
+        // TEKNIK 1: SMC Liquidity Sweep
+        if (!aPlusSignal && techs.smc && totalRange >= 0.35) {
+          let smcSupport = null;
+          let smcResistance = null;
+          if (snapshot.sessions) {
+            const s = snapshot.sessions;
+            const supLevels = [{ name: 'ASIAN LOW', price: s.asian_low }, { name: 'LONDON LOW', price: s.london_low }, { name: 'PDL', price: s.pdl }].filter(l => l.price > 0);
+            const resLevels = [{ name: 'ASIAN HIGH', price: s.asian_high }, { name: 'LONDON HIGH', price: s.london_high }, { name: 'PDH', price: s.pdh }].filter(l => l.price > 0);
+            for (const l of supLevels) {
+              if (rc.low <= l.price + 0.15 && rc.low >= l.price - 0.90 && rc.close >= l.price) { smcSupport = l; break; }
+            }
+            for (const l of resLevels) {
+              if (rc.high >= l.price - 0.15 && rc.high <= l.price + 0.90 && rc.close <= l.price) { smcResistance = l; break; }
+            }
           }
-          for (const l of resLevels) {
-            if (rc.high >= l.price - 0.15 && rc.high <= l.price + 0.90 && rc.close <= l.price) { smcResistance = l; break; }
-          }
-        }
-        const buyAbsorb = (lowerWick / totalRange >= 0.38 && (rc.delta || 0) > 0) || (hasBullDivergence && lowerWick / totalRange >= 0.22);
-        const sellAbsorb = (upperWick / totalRange >= 0.38 && (rc.delta || 0) < 0) || (hasBearDivergence && upperWick / totalRange >= 0.22);
+          const buyAbsorb = (lowerWick / totalRange >= 0.38 && (rc.delta || 0) > 0) || (hasBullDivergence && lowerWick / totalRange >= 0.22);
+          const sellAbsorb = (upperWick / totalRange >= 0.38 && (rc.delta || 0) < 0) || (hasBearDivergence && upperWick / totalRange >= 0.22);
 
-        if (smcSupport && buyAbsorb && canEmitBuy) {
-          const entry = rc.close;
-          const sl = Math.min(rc.low, smcSupport.price) - 0.35;
-          const risk = Math.max(0.80, entry - sl);
-          const tp = entry + (risk * 2.5);
-          aPlusSignal = { direction: 'BUY', technique: 'SMC Sweep', techKey: 'smc', badge: `⭐ [SMC] BUY [${smcSupport.name}]`, level: smcSupport.name, levelPrice: smcSupport.price, entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#00e676';
-        } else if (smcResistance && sellAbsorb && canEmitSell) {
-          const entry = rc.close;
-          const sl = Math.max(rc.high, smcResistance.price) + 0.35;
-          const risk = Math.max(0.80, sl - entry);
-          const tp = entry - (risk * 2.5);
-          aPlusSignal = { direction: 'SELL', technique: 'SMC Sweep', techKey: 'smc', badge: `⭐ [SMC] SELL [${smcResistance.name}]`, level: smcResistance.name, levelPrice: smcResistance.price, entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#ff3366';
-        }
-      }
-
-      // TEKNIK 2: Order Flow Delta Absorption
-      if (!aPlusSignal && techs.of_absorb && totalRange >= 0.35) {
-        const strongBullAbsorb = (hasBullDivergence && lowerWick / totalRange >= 0.30) || (lowerWick / totalRange >= 0.48 && (rc.delta || 0) > 4);
-        const strongBearAbsorb = (hasBearDivergence && upperWick / totalRange >= 0.30) || (upperWick / totalRange >= 0.48 && (rc.delta || 0) < -4);
-        if (strongBullAbsorb && canEmitBuy) {
-          const entry = rc.close;
-          const risk = Math.max(0.80, entry - rc.low + 0.35);
-          const sl = entry - risk;
-          const tp = entry + (risk * 2.0);
-          aPlusSignal = { direction: 'BUY', technique: 'OF Absorption', techKey: 'of_absorb', badge: `⚡ [OF] BUY [ABSORPSI]`, level: 'Delta Floor', entry, sl, tp, risk, reward: tp - entry, rr: 2.0 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#00e676';
-        } else if (strongBearAbsorb && canEmitSell) {
-          const entry = rc.close;
-          const risk = Math.max(0.80, rc.high + 0.35 - entry);
-          const sl = entry + risk;
-          const tp = entry - (risk * 2.0);
-          aPlusSignal = { direction: 'SELL', technique: 'OF Absorption', techKey: 'of_absorb', badge: `⚡ [OF] SELL [ABSORPSI]`, level: 'Delta Ceiling', entry, sl, tp, risk, reward: entry - tp, rr: 2.0 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#ff3366';
-        }
-      }
-
-      // TEKNIK 3: VWAP ±2σ Bounce
-      if (!aPlusSignal && techs.vwap_band && snapshot.vwap && totalRange >= 0.35) {
-        const v = snapshot.vwap;
-        if (v.std2_down > 0 && rc.low <= v.std2_down + 0.25 && rc.close >= v.std2_down - 0.10 && ((rc.delta || 0) > 0 || hasBullDivergence) && canEmitBuy) {
-          const entry = rc.close;
-          const risk = Math.max(0.80, entry - v.std2_down + 0.40);
-          const sl = entry - risk;
-          const tp = v.value > entry ? v.value : entry + (risk * 2.0);
-          aPlusSignal = { direction: 'BUY', technique: 'VWAP ±2σ Bounce', techKey: 'vwap_band', badge: `🌐 [VWAP] BUY [-2σ]`, level: 'VWAP -2σ', entry, sl, tp, risk, reward: tp - entry, rr: 2.0 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#00e676';
-        } else if (v.std2_up > 0 && rc.high >= v.std2_up - 0.25 && rc.close <= v.std2_up + 0.10 && ((rc.delta || 0) < 0 || hasBearDivergence) && canEmitSell) {
-          const entry = rc.close;
-          const risk = Math.max(0.80, v.std2_up + 0.40 - entry);
-          const sl = entry + risk;
-          const tp = v.value < entry ? v.value : entry - (risk * 2.0);
-          aPlusSignal = { direction: 'SELL', technique: 'VWAP ±2σ Bounce', techKey: 'vwap_band', badge: `🌐 [VWAP] SELL [+2σ]`, level: 'VWAP +2σ', entry, sl, tp, risk, reward: entry - tp, rr: 2.0 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#ff3366';
-        }
-      }
-
-      // TEKNIK 4: EMA Ribbon Trend Pullback
-      if (!aPlusSignal && techs.ema_trend && i >= 5 && rawEma50 && rawEma50[i] && totalRange >= 0.35) {
-        const isUptrend = rawEma9[i] > rawEma21[i] && rawEma21[i] > rawEma50[i];
-        const isDowntrend = rawEma9[i] < rawEma21[i] && rawEma21[i] < rawEma50[i];
-        if (isUptrend && rc.low <= rawEma21[i] + 0.25 && rc.close >= rawEma21[i] - 0.15 && isBull && (rc.delta || 0) > 0 && canEmitBuy) {
-          const entry = rc.close;
-          const risk = Math.max(0.80, entry - rawEma50[i] + 0.35);
-          const sl = entry - risk;
-          const tp = entry + (risk * 3.0);
-          aPlusSignal = { direction: 'BUY', technique: 'EMA Pullback', techKey: 'ema_trend', badge: `🚀 [TREND] BUY [EMA]`, level: 'EMA 21/50', entry, sl, tp, risk, reward: tp - entry, rr: 3.0 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#00e676';
-        } else if (isDowntrend && rc.high >= rawEma21[i] - 0.25 && rc.close <= rawEma21[i] + 0.15 && !isBull && (rc.delta || 0) < 0 && canEmitSell) {
-          const entry = rc.close;
-          const risk = Math.max(0.80, rawEma50[i] + 0.35 - entry);
-          const sl = entry + risk;
-          const tp = entry - (risk * 3.0);
-          aPlusSignal = { direction: 'SELL', technique: 'EMA Pullback', techKey: 'ema_trend', badge: `🚀 [TREND] SELL [EMA]`, level: 'EMA 21/50', entry, sl, tp, risk, reward: entry - tp, rr: 3.0 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#ff3366';
-        }
-      }
-
-      // TEKNIK 5: Volume Profile dPOC & Value Area Retest
-      if (!aPlusSignal && techs.vp_retest && snapshot.session_vp && totalRange >= 0.35) {
-        const svp = snapshot.session_vp;
-        const vpLevels = [{ name: 'dPOC', price: svp.dpoc }, { name: 'VAH', price: svp.vah }, { name: 'VAL', price: svp.val }].filter(l => l.price > 0);
-        for (const l of vpLevels) {
-          if (rc.low <= l.price + 0.18 && rc.close >= l.price && (rc.delta || 0) > 0 && canEmitBuy) {
+          if (smcSupport && buyAbsorb && canEmitBuy) {
             const entry = rc.close;
-            const risk = Math.max(0.80, entry - l.price + 0.35);
-            const sl = entry - risk;
+            const sl = Math.min(rc.low, smcSupport.price) - 0.35;
+            const risk = Math.max(0.80, entry - sl);
             const tp = entry + (risk * 2.5);
-            aPlusSignal = { direction: 'BUY', technique: 'VP Retest', techKey: 'vp_retest', badge: `🏛️ [VP] BUY [${l.name}]`, level: l.name, entry, sl, tp, risk, reward: tp - entry, rr: 2.5 };
+            aPlusSignal = { direction: 'BUY', technique: 'SMC Sweep', techKey: 'smc', badge: `⭐ [SMC] BUY [${smcSupport.name}]`, level: smcSupport.name, levelPrice: smcSupport.price, entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
             signalBadge = aPlusSignal.badge;
             signalCol = '#00e676';
-            break;
-          } else if (rc.high >= l.price - 0.18 && rc.close <= l.price && (rc.delta || 0) < 0 && canEmitSell) {
+          } else if (smcResistance && sellAbsorb && canEmitSell) {
             const entry = rc.close;
-            const risk = Math.max(0.80, l.price + 0.35 - entry);
-            const sl = entry + risk;
+            const sl = Math.max(rc.high, smcResistance.price) + 0.35;
+            const risk = Math.max(0.80, sl - entry);
             const tp = entry - (risk * 2.5);
-            aPlusSignal = { direction: 'SELL', technique: 'VP Retest', techKey: 'vp_retest', badge: `🏛️ [VP] SELL [${l.name}]`, level: l.name, entry, sl, tp, risk, reward: entry - tp, rr: 2.5 };
+            aPlusSignal = { direction: 'SELL', technique: 'SMC Sweep', techKey: 'smc', badge: `⭐ [SMC] SELL [${smcResistance.name}]`, level: smcResistance.name, levelPrice: smcResistance.price, entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
             signalBadge = aPlusSignal.badge;
             signalCol = '#ff3366';
-            break;
           }
         }
-      }
 
-      // TEKNIK 6: SNR Classic
-      if (!aPlusSignal && techs.snr && i >= 6 && totalRange >= 0.35) {
-        let bestSup = null, bestRes = null;
-        const lookback = Math.min(i - 2, 35);
-        for (let k = i - 2; k >= i - lookback; k--) {
-          const pastC = rawCandles[k];
-          const pastPrev = rawCandles[k - 1];
-          const pastNext = rawCandles[k + 1];
-          if (!pastPrev || !pastNext) continue;
-          if (pastC.low < pastPrev.low && pastC.low < pastNext.low) {
-            if (rc.low <= pastC.low + 0.22 && rc.low >= pastC.low - 0.45 && rc.close >= pastC.low) {
-              bestSup = { price: pastC.low, name: rc.close > pastC.high ? 'RBS' : 'SUPPORT' };
+        // TEKNIK 2: Order Flow Delta Absorption
+        if (!aPlusSignal && techs.of_absorb && totalRange >= 0.35) {
+          const strongBullAbsorb = (hasBullDivergence && lowerWick / totalRange >= 0.30) || (lowerWick / totalRange >= 0.48 && (rc.delta || 0) > 4);
+          const strongBearAbsorb = (hasBearDivergence && upperWick / totalRange >= 0.30) || (upperWick / totalRange >= 0.48 && (rc.delta || 0) < -4);
+          if (strongBullAbsorb && canEmitBuy) {
+            const entry = rc.close;
+            const risk = Math.max(0.80, entry - rc.low + 0.35);
+            const sl = entry - risk;
+            const tp = entry + (risk * 2.0);
+            aPlusSignal = { direction: 'BUY', technique: 'OF Absorption', techKey: 'of_absorb', badge: `⚡ [OF] BUY [ABSORPSI]`, level: 'Delta Floor', entry, sl, tp, risk, reward: tp - entry, rr: 2.0 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#00e676';
+          } else if (strongBearAbsorb && canEmitSell) {
+            const entry = rc.close;
+            const risk = Math.max(0.80, rc.high + 0.35 - entry);
+            const sl = entry + risk;
+            const tp = entry - (risk * 2.0);
+            aPlusSignal = { direction: 'SELL', technique: 'OF Absorption', techKey: 'of_absorb', badge: `⚡ [OF] SELL [ABSORPSI]`, level: 'Delta Ceiling', entry, sl, tp, risk, reward: entry - tp, rr: 2.0 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#ff3366';
+          }
+        }
+
+        // TEKNIK 3: VWAP ±2σ Bounce
+        if (!aPlusSignal && techs.vwap_band && snapshot.vwap && totalRange >= 0.35) {
+          const v = snapshot.vwap;
+          if (v.std2_down > 0 && rc.low <= v.std2_down + 0.25 && rc.close >= v.std2_down - 0.10 && ((rc.delta || 0) > 0 || hasBullDivergence) && canEmitBuy) {
+            const entry = rc.close;
+            const risk = Math.max(0.80, entry - v.std2_down + 0.40);
+            const sl = entry - risk;
+            const tp = v.value > entry ? v.value : entry + (risk * 2.0);
+            aPlusSignal = { direction: 'BUY', technique: 'VWAP ±2σ Bounce', techKey: 'vwap_band', badge: `🌐 [VWAP] BUY [-2σ]`, level: 'VWAP -2σ', entry, sl, tp, risk, reward: tp - entry, rr: 2.0 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#00e676';
+          } else if (v.std2_up > 0 && rc.high >= v.std2_up - 0.25 && rc.close <= v.std2_up + 0.10 && ((rc.delta || 0) < 0 || hasBearDivergence) && canEmitSell) {
+            const entry = rc.close;
+            const risk = Math.max(0.80, v.std2_up + 0.40 - entry);
+            const sl = entry + risk;
+            const tp = v.value < entry ? v.value : entry - (risk * 2.0);
+            aPlusSignal = { direction: 'SELL', technique: 'VWAP ±2σ Bounce', techKey: 'vwap_band', badge: `🌐 [VWAP] SELL [+2σ]`, level: 'VWAP +2σ', entry, sl, tp, risk, reward: entry - tp, rr: 2.0 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#ff3366';
+          }
+        }
+
+        // TEKNIK 4: EMA Ribbon Trend Pullback
+        if (!aPlusSignal && techs.ema_trend && i >= 5 && rawEma50 && rawEma50[i] && totalRange >= 0.35) {
+          const isUptrend = rawEma9[i] > rawEma21[i] && rawEma21[i] > rawEma50[i];
+          const isDowntrend = rawEma9[i] < rawEma21[i] && rawEma21[i] < rawEma50[i];
+          if (isUptrend && rc.low <= rawEma21[i] + 0.25 && rc.close >= rawEma21[i] - 0.15 && isBull && (rc.delta || 0) > 0 && canEmitBuy) {
+            const entry = rc.close;
+            const risk = Math.max(0.80, entry - rawEma50[i] + 0.35);
+            const sl = entry - risk;
+            const tp = entry + (risk * 3.0);
+            aPlusSignal = { direction: 'BUY', technique: 'EMA Pullback', techKey: 'ema_trend', badge: `🚀 [TREND] BUY [EMA]`, level: 'EMA 21/50', entry, sl, tp, risk, reward: tp - entry, rr: 3.0 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#00e676';
+          } else if (isDowntrend && rc.high >= rawEma21[i] - 0.25 && rc.close <= rawEma21[i] + 0.15 && !isBull && (rc.delta || 0) < 0 && canEmitSell) {
+            const entry = rc.close;
+            const risk = Math.max(0.80, rawEma50[i] + 0.35 - entry);
+            const sl = entry + risk;
+            const tp = entry - (risk * 3.0);
+            aPlusSignal = { direction: 'SELL', technique: 'EMA Pullback', techKey: 'ema_trend', badge: `🚀 [TREND] SELL [EMA]`, level: 'EMA 21/50', entry, sl, tp, risk, reward: entry - tp, rr: 3.0 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#ff3366';
+          }
+        }
+
+        // TEKNIK 5: Volume Profile dPOC & Value Area Retest
+        if (!aPlusSignal && techs.vp_retest && snapshot.session_vp && totalRange >= 0.35) {
+          const svp = snapshot.session_vp;
+          const vpLevels = [{ name: 'dPOC', price: svp.dpoc }, { name: 'VAH', price: svp.vah }, { name: 'VAL', price: svp.val }].filter(l => l.price > 0);
+          for (const l of vpLevels) {
+            if (rc.low <= l.price + 0.18 && rc.close >= l.price && (rc.delta || 0) > 0 && canEmitBuy) {
+              const entry = rc.close;
+              const risk = Math.max(0.80, entry - l.price + 0.35);
+              const sl = entry - risk;
+              const tp = entry + (risk * 2.5);
+              aPlusSignal = { direction: 'BUY', technique: 'VP Retest', techKey: 'vp_retest', badge: `🏛️ [VP] BUY [${l.name}]`, level: l.name, entry, sl, tp, risk, reward: tp - entry, rr: 2.5 };
+              signalBadge = aPlusSignal.badge;
+              signalCol = '#00e676';
+              break;
+            } else if (rc.high >= l.price - 0.18 && rc.close <= l.price && (rc.delta || 0) < 0 && canEmitSell) {
+              const entry = rc.close;
+              const risk = Math.max(0.80, l.price + 0.35 - entry);
+              const sl = entry + risk;
+              const tp = entry - (risk * 2.5);
+              aPlusSignal = { direction: 'SELL', technique: 'VP Retest', techKey: 'vp_retest', badge: `🏛️ [VP] SELL [${l.name}]`, level: l.name, entry, sl, tp, risk, reward: entry - tp, rr: 2.5 };
+              signalBadge = aPlusSignal.badge;
+              signalCol = '#ff3366';
               break;
             }
           }
-          if (pastC.high > pastPrev.high && pastC.high > pastNext.high) {
-            if (rc.high >= pastC.high - 0.22 && rc.high <= pastC.high + 0.45 && rc.close <= pastC.high) {
-              bestRes = { price: pastC.high, name: rc.close < pastC.low ? 'SBR' : 'RESISTANCE' };
-              break;
+        }
+
+        // TEKNIK 6: SNR Classic
+        if (!aPlusSignal && techs.snr && i >= 6 && totalRange >= 0.35) {
+          let bestSup = null, bestRes = null;
+          const lookback = Math.min(i - 2, 25);
+          for (let k = i - 2; k >= i - lookback; k--) {
+            const pastC = rawCandles[k];
+            const pastPrev = rawCandles[k - 1];
+            const pastNext = rawCandles[k + 1];
+            if (!pastC || !pastPrev || !pastNext) continue;
+            if (pastC.low < pastPrev.low && pastC.low < pastNext.low) {
+              if (rc.low <= pastC.low + 0.22 && rc.low >= pastC.low - 0.45 && rc.close >= pastC.low) {
+                bestSup = { price: pastC.low, name: rc.close > pastC.high ? 'RBS' : 'SUPPORT' };
+                break;
+              }
+            }
+            if (pastC.high > pastPrev.high && pastC.high > pastNext.high) {
+              if (rc.high >= pastC.high - 0.22 && rc.high <= pastC.high + 0.45 && rc.close <= pastC.high) {
+                bestRes = { price: pastC.high, name: rc.close < pastC.low ? 'SBR' : 'RESISTANCE' };
+                break;
+              }
             }
           }
-        }
-        const buyAbsorb = (lowerWick / totalRange >= 0.35 && (rc.delta || 0) > 0) || (hasBullDivergence && lowerWick / totalRange >= 0.20);
-        const sellAbsorb = (upperWick / totalRange >= 0.35 && (rc.delta || 0) < 0) || (hasBearDivergence && upperWick / totalRange >= 0.20);
-        if (bestSup && buyAbsorb && canEmitBuy) {
-          const entry = rc.close;
-          const sl = Math.min(rc.low, bestSup.price) - 0.35;
-          const risk = Math.max(0.80, entry - sl);
-          const tp = entry + (risk * 2.5);
-          aPlusSignal = { direction: 'BUY', technique: 'SNR Classic', techKey: 'snr', badge: `🎯 [SNR] BUY [${bestSup.name}]`, level: bestSup.name, entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#00e676';
-        } else if (bestRes && sellAbsorb && canEmitSell) {
-          const entry = rc.close;
-          const sl = Math.max(rc.high, bestRes.price) + 0.35;
-          const risk = Math.max(0.80, sl - entry);
-          const tp = entry - (risk * 2.5);
-          aPlusSignal = { direction: 'SELL', technique: 'SNR Classic', techKey: 'snr', badge: `🎯 [SNR] SELL [${bestRes.name}]`, level: bestRes.name, entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#ff3366';
-        }
-      }
-
-      // TEKNIK 7: SND Base
-      if (!aPlusSignal && techs.snd && i >= 6 && totalRange >= 0.35) {
-        let demandZone = null, supplyZone = null;
-        const lookback = Math.min(i - 2, 28);
-        for (let k = i - 2; k >= i - lookback; k--) {
-          const base = rawCandles[k];
-          const impulse = rawCandles[k + 1];
-          if (!base || !impulse) continue;
-          const impulseBody = Math.abs(impulse.close - impulse.open);
-          if (impulse.close > impulse.open && impulseBody >= 0.55 && (impulse.delta || 0) > 3) {
-            const dHigh = Math.max(base.open, base.close);
-            const dLow = base.low;
-            if (rc.low <= dHigh + 0.18 && rc.low >= dLow - 0.40 && rc.close >= dHigh - 0.15) {
-              demandZone = { high: dHigh, low: dLow, name: 'DEMAND' };
-              break;
-            }
-          }
-          if (impulse.close < impulse.open && impulseBody >= 0.55 && (impulse.delta || 0) < -3) {
-            const sLow = Math.min(base.open, base.close);
-            const sHigh = base.high;
-            if (rc.high >= sLow - 0.18 && rc.high <= sHigh + 0.40 && rc.close <= sLow + 0.15) {
-              supplyZone = { high: sHigh, low: sLow, name: 'SUPPLY' };
-              break;
-            }
+          const buyAbsorb = (lowerWick / totalRange >= 0.35 && (rc.delta || 0) > 0) || (hasBullDivergence && lowerWick / totalRange >= 0.20);
+          const sellAbsorb = (upperWick / totalRange >= 0.35 && (rc.delta || 0) < 0) || (hasBearDivergence && upperWick / totalRange >= 0.20);
+          if (bestSup && buyAbsorb && canEmitBuy) {
+            const entry = rc.close;
+            const sl = Math.min(rc.low, bestSup.price) - 0.35;
+            const risk = Math.max(0.80, entry - sl);
+            const tp = entry + (risk * 2.5);
+            aPlusSignal = { direction: 'BUY', technique: 'SNR Classic', techKey: 'snr', badge: `🎯 [SNR] BUY [${bestSup.name}]`, level: bestSup.name, entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#00e676';
+          } else if (bestRes && sellAbsorb && canEmitSell) {
+            const entry = rc.close;
+            const sl = Math.max(rc.high, bestRes.price) + 0.35;
+            const risk = Math.max(0.80, sl - entry);
+            const tp = entry - (risk * 2.5);
+            aPlusSignal = { direction: 'SELL', technique: 'SNR Classic', techKey: 'snr', badge: `🎯 [SNR] SELL [${bestRes.name}]`, level: bestRes.name, entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#ff3366';
           }
         }
-        if (demandZone && lowerWick / totalRange >= 0.30 && ((rc.delta || 0) > 0 || hasBullDivergence) && canEmitBuy) {
-          const entry = rc.close;
-          const sl = demandZone.low - 0.35;
-          const risk = Math.max(0.80, entry - sl);
-          const tp = entry + (risk * 2.5);
-          aPlusSignal = { direction: 'BUY', technique: 'SND Zone', techKey: 'snd', badge: `📦 [SND] BUY [DEMAND]`, level: 'Demand Base', entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#00e676';
-        } else if (supplyZone && upperWick / totalRange >= 0.30 && ((rc.delta || 0) < 0 || hasBearDivergence) && canEmitSell) {
-          const entry = rc.close;
-          const sl = supplyZone.high + 0.35;
-          const risk = Math.max(0.80, sl - entry);
-          const tp = entry - (risk * 2.5);
-          aPlusSignal = { direction: 'SELL', technique: 'SND Zone', techKey: 'snd', badge: `📦 [SND] SELL [SUPPLY]`, level: 'Supply Base', entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
-          signalBadge = aPlusSignal.badge;
-          signalCol = '#ff3366';
+
+        // TEKNIK 7: SND Base
+        if (!aPlusSignal && techs.snd && i >= 6 && totalRange >= 0.35) {
+          let demandZone = null, supplyZone = null;
+          const lookback = Math.min(i - 2, 20);
+          for (let k = i - 2; k >= i - lookback; k--) {
+            const base = rawCandles[k];
+            const impulse = rawCandles[k + 1];
+            if (!base || !impulse) continue;
+            const impulseBody = Math.abs(impulse.close - impulse.open);
+            if (impulse.close > impulse.open && impulseBody >= 0.55 && (impulse.delta || 0) > 3) {
+              const dHigh = Math.max(base.open, base.close);
+              const dLow = base.low;
+              if (rc.low <= dHigh + 0.18 && rc.low >= dLow - 0.40 && rc.close >= dHigh - 0.15) {
+                demandZone = { high: dHigh, low: dLow, name: 'DEMAND' };
+                break;
+              }
+            }
+            if (impulse.close < impulse.open && impulseBody >= 0.55 && (impulse.delta || 0) < -3) {
+              const sLow = Math.min(base.open, base.close);
+              const sHigh = base.high;
+              if (rc.high >= sLow - 0.18 && rc.high <= sHigh + 0.40 && rc.close <= sLow + 0.15) {
+                supplyZone = { high: sHigh, low: sLow, name: 'SUPPLY' };
+                break;
+              }
+            }
+          }
+          if (demandZone && lowerWick / totalRange >= 0.30 && ((rc.delta || 0) > 0 || hasBullDivergence) && canEmitBuy) {
+            const entry = rc.close;
+            const sl = demandZone.low - 0.35;
+            const risk = Math.max(0.80, entry - sl);
+            const tp = entry + (risk * 2.5);
+            aPlusSignal = { direction: 'BUY', technique: 'SND Zone', techKey: 'snd', badge: `📦 [SND] BUY [DEMAND]`, level: 'Demand Base', entry, sl: entry - risk, tp, risk, reward: tp - entry, rr: 2.5 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#00e676';
+          } else if (supplyZone && upperWick / totalRange >= 0.30 && ((rc.delta || 0) < 0 || hasBearDivergence) && canEmitSell) {
+            const entry = rc.close;
+            const sl = supplyZone.high + 0.35;
+            const risk = Math.max(0.80, sl - entry);
+            const tp = entry - (risk * 2.5);
+            aPlusSignal = { direction: 'SELL', technique: 'SND Zone', techKey: 'snd', badge: `📦 [SND] SELL [SUPPLY]`, level: 'Supply Base', entry, sl: entry + risk, tp, risk, reward: entry - tp, rr: 2.5 };
+            signalBadge = aPlusSignal.badge;
+            signalCol = '#ff3366';
+          }
         }
+
+        if (aPlusSignal) {
+          lastCachedSignalTime = rc.time;
+          lastCachedSignalDir = aPlusSignal.direction;
+          this._lastSignalTime = rc.time;
+          this._lastSignalDir = aPlusSignal.direction;
+        } else {
+          if (hasBearDivergence) {
+            signalBadge = '⚠️ TAPE DIV (-Δ)';
+            signalCol = '#f59e0b';
+          } else if (hasBullDivergence) {
+            signalBadge = '⚠️ TAPE DIV (+Δ)';
+            signalCol = '#38bdf8';
+          }
+        }
+
+        this._confirmedSignalsCache.set(rc.time, { aPlusSignal, signalBadge, signalCol });
       }
 
-      if (aPlusSignal) {
-        lastCachedSignalTime = rc.time;
-        lastCachedSignalDir = aPlusSignal.direction;
-      } else {
-        if (hasBearDivergence) {
-          signalBadge = '⚠️ TAPE DIV (-Δ)';
-          signalCol = '#f59e0b';
-        } else if (hasBullDivergence) {
-          signalBadge = '⚠️ TAPE DIV (+Δ)';
-          signalCol = '#38bdf8';
+      // Safe Cache Pruning: Retain up to 2000 candles so past data is NEVER constantly evicted
+      if (this._confirmedSignalsCache.size > 2000) {
+        const keys = Array.from(this._confirmedSignalsCache.keys());
+        for (let k = 0; k < keys.length - 1500; k++) {
+          this._confirmedSignalsCache.delete(keys[k]);
         }
       }
-
-      this._confirmedSignalsCache.set(rc.time, { aPlusSignal, signalBadge, signalCol });
+    } catch (engineErr) {
+      console.warn('[Candlestick Signal Engine Error]', engineErr);
     }
-
-    if (this._confirmedSignalsCache.size > 300) {
-      const keys = Array.from(this._confirmedSignalsCache.keys());
-      for (let k = 0; k < keys.length - 200; k++) {
-        this._confirmedSignalsCache.delete(keys[k]);
-      }
-    }
-
-    // 8.6 Pre-pass: Identify Hovered Candle & Latest Active Confirmed Signal
     let hoveredCandle = null;
     let hoveredCandleIdx = -1;
     let latestSignalCandleIdx = -1;
@@ -4754,11 +4772,14 @@ class FootprintRenderer {
         // Ultra Compact
         ctx.font = '9px "JetBrains Mono", monospace';
         ctx.fillStyle = isUpC ? '#00e676' : '#ff3366';
-        ctx.fillText(`C: $${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`, 110, 20);
+        ctx.fillText(`C: $${dispC ? dispC.close.toFixed(2) : '0.00'} (${isUpC ? '+' : ''}${chg.toFixed(2)})`, 110, 20);
       }
     }
-
-    ctx.restore();
+    } catch (renderErr) {
+      console.error('[Candlestick Render Error]', renderErr);
+    } finally {
+      ctx.restore();
+    }
   }
 
 
