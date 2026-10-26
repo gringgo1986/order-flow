@@ -168,6 +168,16 @@ def api_login(req: LoginRequest):
     )
     return res
 
+@app.get("/logout")
+def page_logout(request: Request):
+    """Direct URL logout endpoint: clears session and redirects to /login"""
+    session_id = request.cookies.get("session_id")
+    if session_id:
+        auth_db.destroy_session(session_id)
+    res = RedirectResponse(url="/login?msg=logged_out")
+    res.delete_cookie(key="session_id", path="/")
+    return res
+
 @app.post("/api/logout")
 def api_logout(request: Request):
     session_id = request.cookies.get("session_id")
