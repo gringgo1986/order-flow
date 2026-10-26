@@ -13,35 +13,11 @@ class App {
     this.selectedLot = 0.01;
     this.latestSnapshot = null;
 
-    // ====================================================================
-    // V14.0 PRO ENHANCEMENTS: Web Audio Engine, DOM Toggle & Battery Saver
-    // ====================================================================
-
-    // 1. Institutional Sound Engine (Web Audio API Synthesizer)
+    // V14.0 Enhancements state
     this.audioEnabled = true;
     this._audioCtx = null;
-    this._initAudioEngine();
-
-    // 2. Smart Battery Saver (Visibility Throttling)
     this.isPageHidden = false;
     this._lastBgRenderTime = 0;
-    document.addEventListener('visibilitychange', () => {
-      this.isPageHidden = document.hidden;
-      if (!this.isPageHidden) {
-        this.needsRedraw = true;
-        window.dispatchEvent(new Event('resize'));
-        if (this.latestSnapshot) {
-          if (this.bookmap && this.currentView === 'bookmap') this.bookmap.render();
-          if (this.footprint && this.currentView !== 'bookmap') this.footprint.render(this.latestSnapshot);
-        }
-      }
-    });
-
-    // 3. Mobile Smart DOM Toggle
-    this._setupDomToggle();
-
-    // 4. Mobile Native Touch Gestures
-    this._setupMobileTouchGestures();
 
     this.needsRedraw = true;
     this._lastInsightsHTML = "";
@@ -70,6 +46,28 @@ class App {
     this.loadHistoricalCandles();
     // Initialize user authentication & admin status
     this.initAuthAndAdmin();
+
+    // V14.0 Enhancements Init
+    this._initAudioEngine();
+    this._setupDomToggle();
+    this._setupMobileTouchGestures();
+
+    // Battery Saver Visibility Listener
+    document.addEventListener('visibilitychange', () => {
+      this.isPageHidden = document.hidden;
+      if (!this.isPageHidden) {
+        this.needsRedraw = true;
+        window.dispatchEvent(new Event('resize'));
+        if (this.latestSnapshot) {
+          if (this.bookmap && (this.currentView === 'bookmap' || this.currentView === 'split')) {
+            this.bookmap.render(this.latestSnapshot);
+          }
+          if (this.footprint && this.currentView !== 'bookmap') {
+            this.footprint.render(this.latestSnapshot);
+          }
+        }
+      }
+    });
   }
 
   _initElements() {
@@ -2450,12 +2448,6 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       btnSubmit.textContent = '➕ Cipta ID & Aktifkan';
     }
   }
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-  window.app = new App();
-  window.orderFlowApp = window.app;
-
 
   // ==================== V14.0 PRO ENHANCEMENT METHODS ====================
 
@@ -2486,7 +2478,6 @@ window.addEventListener('DOMContentLoaded', () => {
       const now = ctx.currentTime;
 
       if (type === 'BUY') {
-        // High-clarity ascending harmonic dual chime (C5 -> G5)
         const osc1 = ctx.createOscillator();
         const osc2 = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -2494,11 +2485,11 @@ window.addEventListener('DOMContentLoaded', () => {
         osc1.type = 'triangle';
         osc2.type = 'sine';
 
-        osc1.frequency.setValueAtTime(523.25, now);       // C5
-        osc1.frequency.exponentialRampToValueAtTime(783.99, now + 0.14); // G5
+        osc1.frequency.setValueAtTime(523.25, now);
+        osc1.frequency.exponentialRampToValueAtTime(783.99, now + 0.14);
 
-        osc2.frequency.setValueAtTime(659.25, now);       // E5
-        osc2.frequency.exponentialRampToValueAtTime(1046.50, now + 0.14); // C6
+        osc2.frequency.setValueAtTime(659.25, now);
+        osc2.frequency.exponentialRampToValueAtTime(1046.50, now + 0.14);
 
         gain.gain.setValueAtTime(0.18, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
@@ -2513,7 +2504,6 @@ window.addEventListener('DOMContentLoaded', () => {
         osc2.stop(now + 0.35);
 
       } else if (type === 'SELL') {
-        // Authoritative descending harmonic dual chime (G5 -> C5)
         const osc1 = ctx.createOscillator();
         const osc2 = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -2521,11 +2511,11 @@ window.addEventListener('DOMContentLoaded', () => {
         osc1.type = 'sawtooth';
         osc2.type = 'sine';
 
-        osc1.frequency.setValueAtTime(783.99, now);       // G5
-        osc1.frequency.exponentialRampToValueAtTime(440.00, now + 0.16); // A4
+        osc1.frequency.setValueAtTime(783.99, now);
+        osc1.frequency.exponentialRampToValueAtTime(440.00, now + 0.16);
 
-        osc2.frequency.setValueAtTime(659.25, now);       // E5
-        osc2.frequency.exponentialRampToValueAtTime(329.63, now + 0.16); // E4
+        osc2.frequency.setValueAtTime(659.25, now);
+        osc2.frequency.exponentialRampToValueAtTime(329.63, now + 0.16);
 
         gain.gain.setValueAtTime(0.15, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
@@ -2540,7 +2530,6 @@ window.addEventListener('DOMContentLoaded', () => {
         osc2.stop(now + 0.38);
 
       } else {
-        // Whale Order Flow Sweep Alert (Rapid 3-tier pip)
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
@@ -2598,7 +2587,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
     toggleButtons.forEach(btn => btn.addEventListener('click', toggleDOM));
 
-    // Also link btnToggleSound to centralized audio engine
     const btnToggleSound = document.getElementById('btnToggleSound');
     if (btnToggleSound) {
       btnToggleSound.addEventListener('click', () => {
@@ -2612,7 +2600,6 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   _setupMobileTouchGestures() {
-    // Touch gesture support on canvases for Android phones
     const canvases = [this.bookmapCanvas, this.footprintCanvas].filter(Boolean);
     canvases.forEach(canvas => {
       let touchStartX = 0;
@@ -2626,7 +2613,6 @@ window.addEventListener('DOMContentLoaded', () => {
           touchStartX = t.clientX - rect.left;
           touchStartY = t.clientY - rect.top;
 
-          // Double tap to center
           const now = Date.now();
           if (now - lastTapTime < 320) {
             if (this.footprint && this.footprint.centerVertical) {
@@ -2641,7 +2627,6 @@ window.addEventListener('DOMContentLoaded', () => {
           }
           lastTapTime = now;
 
-          // Simulate mousedown
           const mouseEvent = new MouseEvent('mousedown', {
             clientX: t.clientX,
             clientY: t.clientY,
@@ -2669,5 +2654,9 @@ window.addEventListener('DOMContentLoaded', () => {
       }, { passive: true });
     });
   }
-
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+  window.app = new App();
+  window.orderFlowApp = window.app;
+});
