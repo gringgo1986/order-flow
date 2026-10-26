@@ -12,6 +12,37 @@ class App {
     // Trading state
     this.selectedLot = 0.01;
     this.latestSnapshot = null;
+
+    // ====================================================================
+    // V14.0 PRO ENHANCEMENTS: Web Audio Engine, DOM Toggle & Battery Saver
+    // ====================================================================
+
+    // 1. Institutional Sound Engine (Web Audio API Synthesizer)
+    this.audioEnabled = true;
+    this._audioCtx = null;
+    this._initAudioEngine();
+
+    // 2. Smart Battery Saver (Visibility Throttling)
+    this.isPageHidden = false;
+    this._lastBgRenderTime = 0;
+    document.addEventListener('visibilitychange', () => {
+      this.isPageHidden = document.hidden;
+      if (!this.isPageHidden) {
+        this.needsRedraw = true;
+        window.dispatchEvent(new Event('resize'));
+        if (this.latestSnapshot) {
+          if (this.bookmap && this.currentView === 'bookmap') this.bookmap.render();
+          if (this.footprint && this.currentView !== 'bookmap') this.footprint.render(this.latestSnapshot);
+        }
+      }
+    });
+
+    // 3. Mobile Smart DOM Toggle
+    this._setupDomToggle();
+
+    // 4. Mobile Native Touch Gestures
+    this._setupMobileTouchGestures();
+
     this.needsRedraw = true;
     this._lastInsightsHTML = "";
     this._lastTapeHTML = "";
@@ -1213,10 +1244,30 @@ class App {
       }
     } else if (view === 'split') {
       this.bookmapCanvas.style.display = 'block';
-      this.bookmapCanvas.style.width = '50%';
       this.footprintCanvas.style.display = 'block';
-      this.footprintCanvas.style.left = '50%';
-      this.footprintCanvas.style.width = '50%';
+      const isMobilePortrait = window.innerWidth <= 900 || window.innerHeight > window.innerWidth;
+      const viewport = document.getElementById('chartViewport');
+      if (isMobilePortrait) {
+        if (viewport) viewport.classList.add('split-mode-vertical');
+        this.bookmapCanvas.style.width = '100%';
+        this.bookmapCanvas.style.height = '50%';
+        this.bookmapCanvas.style.top = '0';
+        this.bookmapCanvas.style.left = '0';
+        this.footprintCanvas.style.width = '100%';
+        this.footprintCanvas.style.height = '50%';
+        this.footprintCanvas.style.top = '50%';
+        this.footprintCanvas.style.left = '0';
+      } else {
+        if (viewport) viewport.classList.remove('split-mode-vertical');
+        this.bookmapCanvas.style.width = '50%';
+        this.bookmapCanvas.style.height = '100%';
+        this.bookmapCanvas.style.top = '0';
+        this.bookmapCanvas.style.left = '0';
+        this.footprintCanvas.style.width = '50%';
+        this.footprintCanvas.style.height = '100%';
+        this.footprintCanvas.style.top = '0';
+        this.footprintCanvas.style.left = '50%';
+      }
     }
     setTimeout(() => {
       window.dispatchEvent(new Event('resize'));
@@ -1277,6 +1328,14 @@ class App {
       try {
         const snapshot = JSON.parse(event.data);
         this.latestSnapshot = snapshot;
+        // Battery Saver: throttle background rendering when tab/screen is hidden
+        if (this.isPageHidden) {
+          const now = Date.now();
+          if (now - this._lastBgRenderTime < 2500) {
+            return;
+          }
+          this._lastBgRenderTime = now;
+        }
         this.needsRedraw = true;
         this._updateUI(snapshot);
       } catch (err) {
@@ -2396,4 +2455,219 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
 window.addEventListener('DOMContentLoaded', () => {
   window.app = new App();
   window.orderFlowApp = window.app;
-});
+
+
+  // ==================== V14.0 PRO ENHANCEMENT METHODS ====================
+
+  _initAudioEngine() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        this._audioCtx = new AudioCtx();
+      }
+    } catch (e) {
+      console.warn('[AudioEngine] Web Audio not supported', e);
+    }
+  }
+
+  playInstitutionalChime(type) {
+    if (!this.audioEnabled) return;
+    try {
+      if (!this._audioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this._audioCtx = new AudioCtx();
+      }
+      if (this._audioCtx && this._audioCtx.state === 'suspended') {
+        this._audioCtx.resume();
+      }
+      if (!this._audioCtx) return;
+
+      const ctx = this._audioCtx;
+      const now = ctx.currentTime;
+
+      if (type === 'BUY') {
+        // High-clarity ascending harmonic dual chime (C5 -> G5)
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc1.type = 'triangle';
+        osc2.type = 'sine';
+
+        osc1.frequency.setValueAtTime(523.25, now);       // C5
+        osc1.frequency.exponentialRampToValueAtTime(783.99, now + 0.14); // G5
+
+        osc2.frequency.setValueAtTime(659.25, now);       // E5
+        osc2.frequency.exponentialRampToValueAtTime(1046.50, now + 0.14); // C6
+
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.35);
+        osc2.stop(now + 0.35);
+
+      } else if (type === 'SELL') {
+        // Authoritative descending harmonic dual chime (G5 -> C5)
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc1.type = 'sawtooth';
+        osc2.type = 'sine';
+
+        osc1.frequency.setValueAtTime(783.99, now);       // G5
+        osc1.frequency.exponentialRampToValueAtTime(440.00, now + 0.16); // A4
+
+        osc2.frequency.setValueAtTime(659.25, now);       // E5
+        osc2.frequency.exponentialRampToValueAtTime(329.63, now + 0.16); // E4
+
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.38);
+        osc2.stop(now + 0.38);
+
+      } else {
+        // Whale Order Flow Sweep Alert (Rapid 3-tier pip)
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.setValueAtTime(1174.66, now + 0.08);
+        gain.gain.setValueAtTime(0.20, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.22);
+      }
+    } catch (e) {
+      console.warn('[AudioEngine Error]', e);
+    }
+  }
+
+  _setupDomToggle() {
+    const workspace = document.querySelector('.main-workspace');
+    const toggleButtons = [
+      document.getElementById('btnToggleDOM'),
+      document.getElementById('btnToggleDOMTop'),
+      document.getElementById('mobileDomFab')
+    ].filter(Boolean);
+
+    const toggleDOM = () => {
+      if (!workspace) return;
+      const isMobile = window.innerWidth <= 900;
+      
+      if (isMobile) {
+        const isForcedOpen = workspace.classList.toggle('dom-forced-open');
+        workspace.classList.toggle('dom-collapsed', !isForcedOpen);
+        const fabTxt = document.getElementById('mobileDomFabText');
+        if (fabTxt) fabTxt.textContent = isForcedOpen ? '✕ CARTA' : '📊 DOM';
+        this.showToast(isForcedOpen ? '📊 Tangga DOM Dibuka' : '📈 Mod Skrin Penuh Carta Aktif');
+      } else {
+        const isCollapsed = workspace.classList.toggle('dom-collapsed');
+        toggleButtons.forEach(btn => {
+          if (btn.id !== 'mobileDomFab') {
+            btn.classList.toggle('active', !isCollapsed);
+            btn.style.opacity = isCollapsed ? '0.6' : '1.0';
+          }
+        });
+        this.showToast(isCollapsed ? '📈 Mod Skrin Penuh: Carta 100% Lebar' : '📊 Tangga DOM Dibuka');
+      }
+
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+        if (this.latestSnapshot) {
+          if (this.bookmap && this.currentView === 'bookmap') this.bookmap.render();
+          if (this.footprint && this.currentView !== 'bookmap') this.footprint.render(this.latestSnapshot);
+        }
+      }, 50);
+    };
+
+    toggleButtons.forEach(btn => btn.addEventListener('click', toggleDOM));
+
+    // Also link btnToggleSound to centralized audio engine
+    const btnToggleSound = document.getElementById('btnToggleSound');
+    if (btnToggleSound) {
+      btnToggleSound.addEventListener('click', () => {
+        this.audioEnabled = !this.audioEnabled;
+        btnToggleSound.classList.toggle('active', this.audioEnabled);
+        btnToggleSound.textContent = this.audioEnabled ? '🔊' : '🔇';
+        this.showToast(this.audioEnabled ? '🔊 Audio Isyarat Institusi: AKTIF' : '🔇 Audio: BISU');
+        if (this.audioEnabled) this.playInstitutionalChime('BUY');
+      });
+    }
+  }
+
+  _setupMobileTouchGestures() {
+    // Touch gesture support on canvases for Android phones
+    const canvases = [this.bookmapCanvas, this.footprintCanvas].filter(Boolean);
+    canvases.forEach(canvas => {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let lastTapTime = 0;
+
+      canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          const t = e.touches[0];
+          const rect = canvas.getBoundingClientRect();
+          touchStartX = t.clientX - rect.left;
+          touchStartY = t.clientY - rect.top;
+
+          // Double tap to center
+          const now = Date.now();
+          if (now - lastTapTime < 320) {
+            if (this.footprint && this.footprint.centerVertical) {
+              this.footprint.centerVertical();
+              this.showToast('🎯 Carta Dipusatkan Semula');
+            }
+            if (this.bookmap && this.bookmap.centerToPrice) {
+              this.bookmap.centerToPrice();
+            }
+            lastTapTime = 0;
+            return;
+          }
+          lastTapTime = now;
+
+          // Simulate mousedown
+          const mouseEvent = new MouseEvent('mousedown', {
+            clientX: t.clientX,
+            clientY: t.clientY,
+            button: 0
+          });
+          canvas.dispatchEvent(mouseEvent);
+        }
+      }, { passive: true });
+
+      canvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1) {
+          const t = e.touches[0];
+          const mouseEvent = new MouseEvent('mousemove', {
+            clientX: t.clientX,
+            clientY: t.clientY,
+            button: 0
+          });
+          canvas.dispatchEvent(mouseEvent);
+        }
+      }, { passive: true });
+
+      canvas.addEventListener('touchend', (e) => {
+        const mouseEvent = new MouseEvent('mouseup', { button: 0 });
+        window.dispatchEvent(mouseEvent);
+      }, { passive: true });
+    });
+  }
+
+}
