@@ -3162,17 +3162,21 @@ class FootprintRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Non-overlapping badge tag on right side of chart (before the panel)
+      // Anti-Collision Badge Tag on LEFT side of chart (Keeps right live candle area 100% spacious)
+      const tagText = `${lv.label} $${lv.price.toFixed(2)}`;
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      const tagW = ctx.measureText(tagText).width + 10;
+
+      let tagX = 8;
       let tagY = ly;
-      while (drawnCdTagYs.some(dy => Math.abs(dy - tagY) < 15)) {
-        tagY += 15;
+      let colShift = 0;
+      while (drawnCdTagYs.some(pt => Math.abs(pt.y - tagY) < 15 && Math.abs(pt.x - tagX) < (tagW + 8)) && colShift < 4) {
+        tagX += tagW + 8;
+        colShift++;
       }
+
       if (tagY <= topHeaderH + chartH - 10) {
-        drawnCdTagYs.push(tagY);
-        const tagText = `${lv.label} $${lv.price.toFixed(2)}`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const tagW = ctx.measureText(tagText).width + 10;
-        const tagX = chartW - tagW - 6;
+        drawnCdTagYs.push({ x: tagX, y: tagY });
 
         ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
         ctx.fillRect(tagX, tagY - 7, tagW, 14);
