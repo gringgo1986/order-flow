@@ -44,6 +44,9 @@ class DOMManager {
     const icebergs = snapshot.icebergs || [];
     const spoofEvents = snapshot.spoof_events || [];
     const sess = snapshot.sessions || snapshot.htf_snr || {};
+    const pdh = sess.pdh || 0;
+    const pdl = sess.pdl || 0;
+    const dailyOpen = sess.daily_open || 0;
     const h8Res = sess.h8_res || sess.h8_high;
     const h8Sup = sess.h8_sup || sess.h8_low;
     const h4Res = sess.h4_res || sess.h4_high;
@@ -91,20 +94,24 @@ class DOMManager {
     // 1. Render Top Half: ASK Liquidity Ladder (High -> Low down to Ask)
     for (const row of askRows) {
       const { p, pStr, vol } = row;
-      const isDPOC = dpoc > 0 && Math.abs(p - dpoc) <= 0.06;
-      const isH8 = h8Res > 0 && Math.abs(p - h8Res) <= 0.06;
-      const isH4 = h4Res > 0 && Math.abs(p - h4Res) <= 0.06;
-      const isH1 = h1Res > 0 && Math.abs(p - h1Res) <= 0.06;
-      const isM30 = m30Res > 0 && Math.abs(p - m30Res) <= 0.06;
-      const isM15 = m15Res > 0 && Math.abs(p - m15Res) <= 0.06;
+      const is1D = pdh > 0 && Math.abs(p - pdh) <= 0.08;
+      const is1DOpen = dailyOpen > 0 && Math.abs(p - dailyOpen) <= 0.08;
+      const isDPOC = dpoc > 0 && Math.abs(p - dpoc) <= 0.08;
+      const isH8 = h8Res > 0 && Math.abs(p - h8Res) <= 0.08;
+      const isH4 = h4Res > 0 && Math.abs(p - h4Res) <= 0.08;
+      const isH1 = h1Res > 0 && Math.abs(p - h1Res) <= 0.08;
+      const isM30 = m30Res > 0 && Math.abs(p - m30Res) <= 0.08;
+      const isM15 = m15Res > 0 && Math.abs(p - m15Res) <= 0.08;
       const hasIceberg = icebergs.some(ic => Math.abs(ic.price - p) <= 0.11 && (nowMs - ic.timestamp < 90000));
-      const hasSpoofPull = spoofEvents.some(sp => sp.type === 'PULLING' && Math.abs(sp.price - p) <= 0.06 && (nowMs - sp.timestamp < 12000));
+      const hasSpoofPull = spoofEvents.some(sp => sp.type === 'PULLING' && Math.abs(sp.price - p) <= 0.08 && (nowMs - sp.timestamp < 12000));
       const isShark = vol >= 78.0;
       const isWall = vol >= 50.0;
       const askBarWidth = Math.min(100, (vol / scale) * 100);
 
       let badgePrefix = '';
       if (hasSpoofPull) badgePrefix = '⚡ ';
+      else if (is1D) badgePrefix = '🏛️1D-RES ';
+      else if (is1DOpen) badgePrefix = '⚡1D-OPEN ';
       else if (isH8) badgePrefix = '🏛️H8 ';
       else if (isH4) badgePrefix = '🏰H4 ';
       else if (isH1) badgePrefix = '⏱️H1 ';
@@ -118,6 +125,10 @@ class DOMManager {
       let rowBgStyle = '';
       if (hasSpoofPull) {
         rowBgStyle = 'background:rgba(239,68,68,0.22); border-right:2px solid #ef4444;';
+      } else if (is1D) {
+        rowBgStyle = 'background:rgba(253,224,71,0.28); border-right:3px solid #fde047;';
+      } else if (is1DOpen) {
+        rowBgStyle = 'background:rgba(56,189,248,0.24); border-right:3px solid #38bdf8;';
       } else if (isH8) {
         rowBgStyle = 'background:rgba(225,29,72,0.26); border-right:3px solid #e11d48;';
       } else if (isH4) {
@@ -174,20 +185,24 @@ class DOMManager {
     // 3. Render Bottom Half: BID Liquidity Ladder (Bid -> Low)
     for (const row of bidRows) {
       const { p, pStr, vol } = row;
-      const isDPOC = dpoc > 0 && Math.abs(p - dpoc) <= 0.06;
-      const isH8 = h8Sup > 0 && Math.abs(p - h8Sup) <= 0.06;
-      const isH4 = h4Sup > 0 && Math.abs(p - h4Sup) <= 0.06;
-      const isH1 = h1Sup > 0 && Math.abs(p - h1Sup) <= 0.06;
-      const isM30 = m30Sup > 0 && Math.abs(p - m30Sup) <= 0.06;
-      const isM15 = m15Sup > 0 && Math.abs(p - m15Sup) <= 0.06;
+      const is1D = pdl > 0 && Math.abs(p - pdl) <= 0.08;
+      const is1DOpen = dailyOpen > 0 && Math.abs(p - dailyOpen) <= 0.08;
+      const isDPOC = dpoc > 0 && Math.abs(p - dpoc) <= 0.08;
+      const isH8 = h8Sup > 0 && Math.abs(p - h8Sup) <= 0.08;
+      const isH4 = h4Sup > 0 && Math.abs(p - h4Sup) <= 0.08;
+      const isH1 = h1Sup > 0 && Math.abs(p - h1Sup) <= 0.08;
+      const isM30 = m30Sup > 0 && Math.abs(p - m30Sup) <= 0.08;
+      const isM15 = m15Sup > 0 && Math.abs(p - m15Sup) <= 0.08;
       const hasIceberg = icebergs.some(ic => Math.abs(ic.price - p) <= 0.11 && (nowMs - ic.timestamp < 90000));
-      const hasSpoofPull = spoofEvents.some(sp => sp.type === 'PULLING' && Math.abs(sp.price - p) <= 0.06 && (nowMs - sp.timestamp < 12000));
+      const hasSpoofPull = spoofEvents.some(sp => sp.type === 'PULLING' && Math.abs(sp.price - p) <= 0.08 && (nowMs - sp.timestamp < 12000));
       const isShark = vol >= 78.0;
       const isWall = vol >= 50.0;
       const bidBarWidth = Math.min(100, (vol / scale) * 100);
 
       let badgePrefix = '';
       if (hasSpoofPull) badgePrefix = '⚡ ';
+      else if (is1D) badgePrefix = '🏛️1D-SUP ';
+      else if (is1DOpen) badgePrefix = '⚡1D-OPEN ';
       else if (isH8) badgePrefix = '🏛️H8 ';
       else if (isH4) badgePrefix = '🏰H4 ';
       else if (isH1) badgePrefix = '⏱️H1 ';
@@ -201,6 +216,10 @@ class DOMManager {
       let rowBgStyle = '';
       if (hasSpoofPull) {
         rowBgStyle = 'background:rgba(239,68,68,0.22); border-left:2px solid #ef4444;';
+      } else if (is1D) {
+        rowBgStyle = 'background:rgba(253,224,71,0.28); border-left:3px solid #fde047;';
+      } else if (is1DOpen) {
+        rowBgStyle = 'background:rgba(56,189,248,0.24); border-left:3px solid #38bdf8;';
       } else if (isH8) {
         rowBgStyle = 'background:rgba(5,150,105,0.26); border-left:3px solid #059669;';
       } else if (isH4) {
