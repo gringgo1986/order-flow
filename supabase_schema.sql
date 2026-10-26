@@ -43,10 +43,37 @@ CREATE TABLE IF NOT EXISTS signals_history (
 );
 CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals_history(timestamp DESC);
 
--- 4. Polisi Keselamatan Akses Penuh untuk Pelayan (Bypass RLS)
+-- 4. Jadual Pengguna Sistem (Users - Disimpan Kekal di Supabase)
+CREATE TABLE IF NOT EXISTS app_users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(150) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'member',
+    plan VARCHAR(100) NOT NULL DEFAULT 'Bulanan 30 Hari',
+    created_at VARCHAR(100) NOT NULL,
+    expires_at VARCHAR(100) NOT NULL DEFAULT 'never',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_login VARCHAR(100),
+    notes TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_app_users_username ON app_users(username);
+
+-- 5. Jadual Sesi Pengguna (App Sessions)
+CREATE TABLE IF NOT EXISTS app_sessions (
+    session_id VARCHAR(100) PRIMARY KEY,
+    user_id BIGINT,
+    username VARCHAR(100),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- 6. Polisi Keselamatan Akses Penuh untuk Pelayan (Bypass RLS)
 ALTER TABLE bookmap_heatmap ENABLE ROW LEVEL SECURITY;
 ALTER TABLE candles_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE signals_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_sessions ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
@@ -58,9 +85,15 @@ BEGIN
 
     DROP POLICY IF EXISTS "Full Access signals_history" ON signals_history;
     CREATE POLICY "Full Access signals_history" ON signals_history FOR ALL USING (true) WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "Full Access app_users" ON app_users;
+    CREATE POLICY "Full Access app_users" ON app_users FOR ALL USING (true) WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "Full Access app_sessions" ON app_sessions;
+    CREATE POLICY "Full Access app_sessions" ON app_sessions FOR ALL USING (true) WITH CHECK (true);
 END $$;
 
--- 5. Fungsi Pembersihan Automatik Rekod Melebihi 5 Hari (5-Day Rolling Retention)
+-- 7. Fungsi Pembersihan Automatik Rekod Melebihi 5 Hari (5-Day Rolling Retention)
 CREATE OR REPLACE FUNCTION prune_older_than_5_days()
 RETURNS void AS $$
 BEGIN
