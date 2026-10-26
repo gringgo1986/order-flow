@@ -35,9 +35,11 @@ class SupabaseClient:
         except Exception:
             self.is_connected = False
 
-    def post(self, table: str, data: Any, upsert: bool = False) -> bool:
+    def post(self, table: str, data: Any, upsert: bool = False, on_conflict: Optional[str] = None) -> bool:
         """Insert or upsert records to Supabase table"""
         url = f"{self.url}/rest/v1/{table}"
+        if upsert and on_conflict:
+            url += f"?on_conflict={on_conflict}"
         headers = dict(self.headers)
         if upsert:
             headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
@@ -164,5 +166,35 @@ class SupabaseClient:
     def load_latest_signals(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Load confirmed signals for chart overlays (up to 5 days)"""
         return self.get("signals_history", f"order=timestamp.desc&limit={limit}")
+
+    # ─── User Management Sync Methods (Admin Panel to Cloud DB) ───
+
+    def save_user(self, u: Dict[str, Any]) -> bool:
+        """Save or upsert user in Supabase cloud database"""
+        if not u or not u.get("username"):
+            return False
+        record = {
+            "username": u["username"],
+            "password_hash": u["password_hash"],
+            "full_name": u.get("full_name", u["username"]),
+            "role": u.get("role", "member"),
+            "plan": u.get("plan", "Bulanan 30 Hari"),
+            "created_at": str(u.get("created_at", "")),
+            "expires_at": str(u.get("expires_at", "never")),
+            "is_active": bool(u.get("is_active", 1)),
+            "last_login": str(u.get("last_login") or ""),
+            "notes": str(u.get("notes") or "")
+        }
+        return self.post("app_users", record, upsert=True, on_conflict="username")
+
+    def load_all_users(self) -> List[Dict[str, Any]]:
+        """Fetch all registered users from Supabase cloud database"""
+        return self.get("app_users", "order=id.asc")
+
+    def delete_user(self, username: str) -> bool:
+        """Delete user by username from Supabase cloud database"""
+        if not username:
+            return False
+        return self.delete("app_users", f"username=eq.{username}")
 
 supabase = SupabaseClient()
