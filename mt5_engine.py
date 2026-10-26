@@ -58,7 +58,7 @@ class OrderFlowEngine:
         
         # Liquidity Heatmap snapshots: list of {timestamp, bid_levels: {price: vol}, ask_levels: {price: vol}}
         self.heatmap_history: List[Dict[str, Any]] = []
-        self.max_heatmap_records = 500
+        self.max_heatmap_records = 850
         
         # Persistent resting order book (price -> volume)
         # Keeps institutional limit walls FIXED at absolute price levels across time
@@ -430,7 +430,7 @@ class OrderFlowEngine:
         p_walker = base_price
         prev_p   = base_price
         
-        for i in range(300, -1, -1):
+        for i in range(350, -1, -1):
             t_ms = now_ms - (i * 200)
             
             # Realistic micro-walk between liquidity walls
@@ -2465,7 +2465,7 @@ class OrderFlowEngine:
             res.append(self.current_candle)
         return res
 
-    def get_full_snapshot(self) -> Dict[str, Any]:
+    def get_full_snapshot(self, initial: bool = False) -> Dict[str, Any]:
         """Returns the full state payload to send to the browser UI"""
         now = time.time()
         return {
@@ -2525,8 +2525,8 @@ class OrderFlowEngine:
             "account": self.account_info,
             "positions": self.positions,
             "trades": self.recent_trades[-60:],
-            "heatmap": self.heatmap_history[-80:],
-            "candles": self.candles[-30:] + ([self.current_candle] if self.current_candle else []),
+            "heatmap": (self.heatmap_history[-350:] if initial else self.heatmap_history[-60:]),
+            "candles": self.candles[-50:] + ([self.current_candle] if self.current_candle else []),
             "total_candles_count": len(self.candles) + (1 if self.current_candle else 0),
             "current_candle": self.current_candle,
             "spoof_events": self.spoof_events[-6:],
