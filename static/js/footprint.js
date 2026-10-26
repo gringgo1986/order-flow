@@ -2334,6 +2334,17 @@ class FootprintRenderer {
       if (signal) {
         lastCdSignalTime = rc.time;
         lastCdSignalDir = signal.direction;
+
+        // Trigger Audio Chime & Screen Toast for fresh signals (recent 2 candles)
+        if (i >= rawCandles.length - 3 && this._lastAudibleSignalTime !== rc.time) {
+          this._lastAudibleSignalTime = rc.time;
+          if (window.app && window.app.playInstitutionalChime) {
+            window.app.playInstitutionalChime(signal.direction);
+          }
+          if (window.app && window.app.showToast) {
+            window.app.showToast(`🎯 ISYARAT DISAHKAN: ${signal.direction} @ $${signal.entry.toFixed(2)}`);
+          }
+        }
       }
       this._cdConfirmedSignalsCache.set(rc.time, { signal });
     }
