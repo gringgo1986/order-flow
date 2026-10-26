@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "exported_at": "2026-10-26T00:36:22.052153",
+  "users": [
+    {
+      "username": "admin",
+      "password_hash": "c4728d9f3253d73f12b769265591423a$6fb050b15fe0614df78330467ded5ee27acf539ef162f68483a094f7606d0f18",
+      "full_name": "Pengasas Sistem (Admin)",
+      "role": "admin",
+      "plan": "VIP Lifetime",
+      "created_at": "2026-10-25T08:50:41.012595",
+      "expires_at": "never",
+      "is_active": 1,
+      "last_login": "2026-10-25T09:16:37.217332",
+      "notes": "Default Root Administrator"
+    }
+  ]
+}
