@@ -1001,40 +1001,27 @@ class BookmapRenderer {
           ctx.stroke();
           ctx.restore();
 
-          // 2. Sleek Compact Shark Wall Tag (Only draw full pill for #1 Wall, compact tag for others)
-          if (rankIdx === 0) {
-            const sideLbl = isAsk ? 'SELL LIMIT' : 'BUY LIMIT';
-            const badgeTxt = `🦈 ${Math.round(wall.v)}L ${sideLbl} @ $${wall.p.toFixed(2)}`;
-            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-            const tw = ctx.measureText(badgeTxt).width + 10;
-            const bh = 14;
-            const bx = Math.max(this.CHART_LEFT + 12, this.NOW_X - tw - 8);
-            const by = wy - bh / 2;
-
-            ctx.fillStyle = isAsk ? 'rgba(28, 6, 14, 0.88)' : 'rgba(4, 24, 16, 0.88)';
-            ctx.fillRect(bx, by, tw, bh);
-            ctx.strokeStyle = col;
-            ctx.lineWidth = 1.0;
-            ctx.strokeRect(bx, by, tw, bh);
-
-            ctx.fillStyle = col;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(badgeTxt, bx + 5, wy);
-          }
-
-          // 3. Compact tag inside Projection Zone (NOW_X -> CHART_RIGHT)
+          // 2. Clear & Uncluttered Shark Wall Tag inside Projection Zone (NOW_X -> CHART_RIGHT)
+          // NEVER obstruct live candlestick & trade bubbles in front of NOW_X
           if (rankIdx < 2) {
-            const pTxt = `🦈 ${Math.round(wall.v)}L`;
+            const sideLbl = isAsk ? 'SELL' : 'BUY';
+            const fullTxt = `🦈 ${Math.round(wall.v)}L ${sideLbl}`;
+            const shortTxt = `🦈 ${Math.round(wall.v)}L`;
             ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            const fullW = ctx.measureText(fullTxt).width + 8;
+            const useFull = (projW >= fullW + 8);
+            const pTxt = useFull ? fullTxt : shortTxt;
             const ptw = Math.min(projW - 6, ctx.measureText(pTxt).width + 8);
-            ctx.fillStyle = 'rgba(6, 10, 18, 0.90)';
+
+            ctx.fillStyle = isAsk ? 'rgba(28, 6, 14, 0.92)' : 'rgba(4, 24, 16, 0.92)';
             ctx.fillRect(projX + 4, wy - 7, ptw, 14);
             ctx.strokeStyle = col;
             ctx.lineWidth = 1;
             ctx.strokeRect(projX + 4, wy - 7, ptw, 14);
             ctx.fillStyle = col;
-            ctx.fillText(pTxt, projX + 8, wy + 1);
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(pTxt, projX + 6, wy);
           }
         };
 
@@ -1684,21 +1671,25 @@ class BookmapRenderer {
         ctx.stroke();
 
         ctx.setLineDash([]);
-        const label = `▲ BUY ZONE +${topBuy.buy.toFixed(1)}L @ $${topBuy.price.toFixed(2)}`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const txtW = ctx.measureText(label).width;
-        const badgeX = this.NOW_X - txtW - 16;
-        const badgeY = buyY - 7;
+        if (!this.bmZenMode) {
+          const label = `▲ BUY ZONE +${topBuy.buy.toFixed(1)}L`;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const txtW = ctx.measureText(label).width + 8;
+          // Place inside projection zone on right of NOW_X so bubbles are completely unobstructed
+          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 4);
+          const badgeY = buyY - 7;
 
-        ctx.fillStyle = 'rgba(5, 22, 14, 0.90)';
-        ctx.fillRect(badgeX, badgeY, txtW + 10, 15);
-        ctx.strokeStyle = 'rgba(0, 230, 118, 0.85)';
-        ctx.lineWidth = 0.9;
-        ctx.strokeRect(badgeX, badgeY, txtW + 10, 15);
+          ctx.fillStyle = 'rgba(5, 22, 14, 0.90)';
+          ctx.fillRect(badgeX, badgeY, txtW, 14);
+          ctx.strokeStyle = 'rgba(0, 230, 118, 0.85)';
+          ctx.lineWidth = 0.9;
+          ctx.strokeRect(badgeX, badgeY, txtW, 14);
 
-        ctx.fillStyle = '#00e676';
-        ctx.textAlign = 'left';
-        ctx.fillText(label, badgeX + 5, badgeY + 10.5);
+          ctx.fillStyle = '#00e676';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, badgeX + 4, buyY);
+        }
       }
     }
 
@@ -1722,21 +1713,25 @@ class BookmapRenderer {
         ctx.stroke();
 
         ctx.setLineDash([]);
-        const label = `▼ SELL ZONE -${topSell.sell.toFixed(1)}L @ $${topSell.price.toFixed(2)}`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const txtW = ctx.measureText(label).width;
-        const badgeX = this.NOW_X - txtW - 16;
-        const badgeY = sellY - 7;
+        if (!this.bmZenMode) {
+          const label = `▼ SELL ZONE -${topSell.sell.toFixed(1)}L`;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const txtW = ctx.measureText(label).width + 8;
+          // Place inside projection zone on right of NOW_X so bubbles are completely unobstructed
+          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 4);
+          const badgeY = sellY - 7;
 
-        ctx.fillStyle = 'rgba(30, 8, 15, 0.90)';
-        ctx.fillRect(badgeX, badgeY, txtW + 10, 15);
-        ctx.strokeStyle = 'rgba(255, 51, 102, 0.85)';
-        ctx.lineWidth = 0.9;
-        ctx.strokeRect(badgeX, badgeY, txtW + 10, 15);
+          ctx.fillStyle = 'rgba(30, 8, 15, 0.90)';
+          ctx.fillRect(badgeX, badgeY, txtW, 14);
+          ctx.strokeStyle = 'rgba(255, 51, 102, 0.85)';
+          ctx.lineWidth = 0.9;
+          ctx.strokeRect(badgeX, badgeY, txtW, 14);
 
-        ctx.fillStyle = '#ff3366';
-        ctx.textAlign = 'left';
-        ctx.fillText(label, badgeX + 5, badgeY + 10.5);
+          ctx.fillStyle = '#ff3366';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, badgeX + 4, sellY);
+        }
       }
     }
     ctx.restore();
@@ -2034,7 +2029,7 @@ class BookmapRenderer {
     if (!sessions) return;
     ctx.save();
 
-    const levels = [
+    const rawLevels = [
       // 1D (Daily) Levels - Major Institutional S/R
       { price: sessions.pdh,         label: '🏛️ 1D HIGH (PDH)', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
       { price: sessions.pdl,         label: '🏛️ 1D LOW (PDL)',  col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
@@ -2067,15 +2062,37 @@ class BookmapRenderer {
       { price: sessions.ny_low,      label: '🗽 NY LOW',        col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false }
     ];
 
+    // Consolidate levels sharing the same price (or within $0.15) to prevent overlapping badges & duplicate lines!
+    const levels = [];
+    for (const raw of rawLevels) {
+      if (!raw.price || raw.price <= 0) continue;
+      const matched = levels.find(l => Math.abs(l.price - raw.price) < 0.15);
+      if (matched) {
+        if (!matched.labels.includes(raw.label)) {
+          matched.labels.push(raw.label);
+        }
+        if (raw.isHtf) {
+          matched.isHtf = true;
+          matched.col = raw.col;
+          matched.bg = raw.bg;
+        }
+      } else {
+        levels.push({
+          price: raw.price,
+          labels: [raw.label],
+          col: raw.col,
+          bg: raw.bg,
+          isHtf: raw.isHtf
+        });
+      }
+    }
+
     const drawnBadges = [];
     let offScreenAboveCount = 0;
     let offScreenBelowCount = 0;
 
     for (const lv of levels) {
-      if (!lv.price || lv.price <= 0) continue;
       const y = this.priceToY(lv.price);
-
-      // Check if level is on-screen
       const inView = (y >= this.CHART_TOP - 4 && y <= this.CHART_BOTTOM + 4);
 
       if (inView) {
@@ -2089,18 +2106,19 @@ class BookmapRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // 2. Anti-collision badge slotting (offset horizontally if vertically tight)
-        const text = `${lv.label} $${lv.price.toFixed(2)}`;
+        // 2. Consolidated & 100% collision-proof badge slotting
+        const text = `${lv.labels.join(' • ')} $${lv.price.toFixed(2)}`;
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
         const tw = ctx.measureText(text).width + 8;
 
         let bx = this.CHART_LEFT + 6;
         let colShift = 0;
-        while (drawnBadges.some(b => Math.abs(b.y - y) < 16 && Math.abs(b.x - bx) < (tw + 10)) && colShift < 4) {
-          bx += tw + 8;
+        while (drawnBadges.some(b => Math.abs(b.y - y) < 15 && !(bx >= (b.x + b.w + 4) || (bx + tw + 4) <= b.x)) && colShift < 4) {
+          const hit = drawnBadges.find(b => Math.abs(b.y - y) < 15 && !(bx >= (b.x + b.w + 4) || (bx + tw + 4) <= b.x));
+          bx = hit ? (hit.x + hit.w + 6) : (bx + tw + 8);
           colShift++;
         }
-        drawnBadges.push({ x: bx, y: y });
+        drawnBadges.push({ x: bx, y: y, w: tw });
 
         const by = y - 7;
         ctx.fillStyle = 'rgba(8, 13, 24, 0.92)';
@@ -2117,8 +2135,9 @@ class BookmapRenderer {
         ctx.fillText(text, bx + 4, y);
       } else if (lv.isHtf) {
         // Track major off-screen HTF levels (1D, H4, H1)
+        const primaryLabel = lv.labels[0] || 'LEVEL';
         if (y < this.CHART_TOP && offScreenAboveCount < 2) {
-          const offTxt = `▲ ${lv.label.replace(/[^A-Za-z0-9 ]/g, '').trim()} $${lv.price.toFixed(2)}`;
+          const offTxt = `▲ ${primaryLabel.replace(/[^A-Za-z0-9 ]/g, '').trim()} $${lv.price.toFixed(2)}`;
           ctx.font = 'bold 8px "JetBrains Mono", monospace';
           const otw = ctx.measureText(offTxt).width + 10;
           const ox = this.CHART_LEFT + 10 + (offScreenAboveCount * 130);
@@ -2133,7 +2152,7 @@ class BookmapRenderer {
           ctx.fillText(offTxt, ox + 4, this.CHART_TOP + 8.5);
           offScreenAboveCount++;
         } else if (y > this.CHART_BOTTOM && offScreenBelowCount < 2) {
-          const offTxt = `▼ ${lv.label.replace(/[^A-Za-z0-9 ]/g, '').trim()} $${lv.price.toFixed(2)}`;
+          const offTxt = `▼ ${primaryLabel.replace(/[^A-Za-z0-9 ]/g, '').trim()} $${lv.price.toFixed(2)}`;
           ctx.font = 'bold 8px "JetBrains Mono", monospace';
           const otw = ctx.measureText(offTxt).width + 10;
           const ox = this.CHART_LEFT + 10 + (offScreenBelowCount * 130);
