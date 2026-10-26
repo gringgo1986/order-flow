@@ -292,6 +292,14 @@ class FootprintRenderer {
       const tooltip = document.getElementById('chartTooltip');
       if (tooltip) tooltip.style.display = 'none';
     });
+
+    // Dismiss tooltip on canvas tap/click anywhere to avoid sticky black box
+    this.canvas.addEventListener('click', () => {
+      setTimeout(() => {
+        const tooltip = document.getElementById('chartTooltip');
+        if (tooltip && !this.hoverCell) tooltip.style.display = 'none';
+      }, 100);
+    });
   }
 
   setViewMode(mode) {
