@@ -392,12 +392,13 @@ class FootprintRenderer {
   }
 
   priceToY(price) {
-    const fullRange = Math.max(0.5, this.maxPrice - this.minPrice);
-    const zoomedRange = fullRange / Math.max(0.4, this.verticalZoom || 1.0);
-    const centerP = (this.minPrice + this.maxPrice) / 2.0 + (this.priceOffset || 0);
+    const h = Math.max(260, this.height || (this.canvas ? this.canvas.clientHeight : 600));
+    const fullRange = Math.max(0.5, (this.maxPrice || 4015) - (this.minPrice || 4000));
+    const zoomedRange = Math.max(0.2, fullRange / Math.max(0.4, this.verticalZoom || 1.0));
+    const centerP = ((this.minPrice || 4000) + (this.maxPrice || 4015)) / 2.0 + (this.priceOffset || 0);
     const viewMin = centerP - zoomedRange / 2.0;
-    const ratio = (price - viewMin) / zoomedRange;
-    return (this.height - 75) - (ratio * (this.height - 140));
+    const ratio = ((price || centerP) - viewMin) / zoomedRange;
+    return (h - 75) - (ratio * (h - 140));
   }
 
   yToPrice(y) {
@@ -803,17 +804,33 @@ class FootprintRenderer {
     // 1C. Composite Session Volume Profile (SVP) & Iceberg Overlays
     this._drawSVPAndIcebergs(ctx, snapshot);
 
-    // 2. Render Footprint Candles
-    const rightMargin = 80;
-    const startX = this.width - rightMargin - (this.candleWidth + this.candleSpacing);
+    // 2. Render Footprint Candles (Robust Multi-Bar Engine with Guaranteed Visibility)
+    // Synchronize container width & height directly from canvas element
+    if (this.canvas && this.canvas.clientWidth) {
+      this.width = Math.max(this.canvas.clientWidth, 600);
+      this.height = Math.max(this.canvas.clientHeight, 300);
+    }
+    const rightMargin = 85;
+    const spacing = 18;
+    this.candleSpacing = spacing;
+    const usableW = Math.max(300, this.width - rightMargin - 20);
+    const dynamicW = Math.floor(usableW / Math.max(1, candles.length)) - spacing;
+    this.candleWidth = Math.max(90, Math.min(150, dynamicW));
+
+    // Right-anchored: Latest live candle sits firmly on the right side of the chart
+    const rightAnchorX = this.width - rightMargin - this.candleWidth - 8;
     this.hoverCell = null;
 
     for (let i = 0; i < candles.length; i++) {
       const candleIndexFromRight = (candles.length - 1) - i;
-      const x = startX - (candleIndexFromRight * (this.candleWidth + this.candleSpacing));
-      if (x < -this.candleWidth - 20 || x > this.width) continue;
+      const x = rightAnchorX - (candleIndexFromRight * (this.candleWidth + spacing));
+      if (x < -this.candleWidth - 40 || x > this.width) continue;
 
-      this._drawSingleFootprint(ctx, candles[i], x);
+      try {
+        this._drawSingleFootprint(ctx, candles[i], x);
+      } catch (cErr) {
+        console.warn('[Footprint Candle Draw Error at bar ' + i + ']', cErr);
+      }
     }
 
     // 2.3. Draw Strict Location-First Footprint Signals at SNR
@@ -1534,15 +1551,16 @@ class FootprintRenderer {
     ctx.lineWidth = 1.8;
     ctx.strokeRect(x - 2, bodyTop, this.candleWidth + 4, bodyHeight);
 
-    // 8. Sierra Chart / ATAS Style 5-Row Statistics Summary Table
+    // 8. Sierra Chart / ATAS Style 5-Row Statistics Summary Table (100% Null-Safe)
     const footerH = 68;
-    const footerY = this.height - footerH - 4;
-    const deltaColor = rawCandle.delta >= 0 ? '#00e676' : '#ff3366';
-    const deltaSign = rawCandle.delta > 0 ? '+' : '';
-    const candleVol = rawCandle.volume || 0;
-    const deltaPct = candleVol > 0 ? Math.round((rawCandle.delta / candleVol) * 100) : 0;
-    const minD = rawCandle.min_delta !== undefined ? rawCandle.min_delta : (rawCandle.delta < 0 ? rawCandle.delta : 0);
-    const maxD = rawCandle.max_delta !== undefined ? rawCandle.max_delta : (rawCandle.delta > 0 ? rawCandle.delta : 0);
+    const footerY = (this.height || 600) - footerH - 4;
+    const cDelta = Number(rawCandle.delta || 0);
+    const deltaColor = cDelta >= 0 ? '#00e676' : '#ff3366';
+    const deltaSign = cDelta > 0 ? '+' : '';
+    const candleVol = Number(rawCandle.volume || 0);
+    const deltaPct = candleVol > 0 ? Math.round((cDelta / candleVol) * 100) : 0;
+    const minD = rawCandle.min_delta !== undefined ? Number(rawCandle.min_delta) : (cDelta < 0 ? cDelta : 0);
+    const maxD = rawCandle.max_delta !== undefined ? Number(rawCandle.max_delta) : (cDelta > 0 ? cDelta : 0);
 
     // Calculate buyer/seller split ratio
     let totalBid = 0, totalAsk = 0;
@@ -1584,7 +1602,7 @@ class FootprintRenderer {
     // Row 2: Delta (with color and % share)
     ctx.font = 'bold 10px "JetBrains Mono", monospace';
     ctx.fillStyle = deltaColor;
-    ctx.fillText(`Δ ${deltaSign}${rawCandle.delta.toFixed(1)}L (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 26);
+    ctx.fillText(`Δ ${deltaSign}${cDelta.toFixed(1)}L (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 26);
 
     // Row 3: Min / Max Delta (Exhaustion indicator)
     ctx.font = '9px "JetBrains Mono", monospace';
