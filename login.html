@@ -482,7 +482,8 @@
           btnSubmit.innerHTML = '<span>✅ Akses Diberikan! Membuka Terminal...</span>';
           btnSubmit.style.background = '#10b981';
           setTimeout(() => {
-            window.location.href = '/';
+            const dest = (data.user && data.user.role === 'admin') ? '/?admin=1' : '/';
+            window.location.href = dest;
           }, 450);
         } else {
           showError(data.detail || data.message || 'ID Pengguna atau Kata Laluan tidak sah.');
