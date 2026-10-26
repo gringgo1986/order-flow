@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Log Masuk | XAUUSD.FLOW PRO — Institutional Order Flow Cockpit</title>
+  <title>Portal Pengguna & Pentadbir | XAUUSD.FLOW PRO</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,10 +11,10 @@
   <style>
     :root {
       --bg-dark: #060911;
-      --card-bg: rgba(11, 18, 32, 0.92);
+      --card-bg: rgba(11, 18, 32, 0.94);
       --card-border: rgba(56, 189, 248, 0.22);
       --gold: #f59e0b;
-      --gold-glow: rgba(245, 158, 11, 0.25);
+      --gold-glow: rgba(245, 158, 11, 0.28);
       --cyan: #38bdf8;
       --cyan-glow: rgba(56, 189, 248, 0.25);
       --green: #10b981;
@@ -25,11 +25,7 @@
       --font-mono: 'JetBrains Mono', monospace;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       background-color: var(--bg-dark);
@@ -46,15 +42,22 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 20px;
+      padding: 20px 14px;
       overflow-x: hidden;
     }
 
-    .login-container {
+    /* Container for Login Cards */
+    .portal-container {
       width: 100%;
-      max-width: 440px;
+      max-width: 460px;
       position: relative;
       z-index: 10;
+      transition: all 0.3s ease;
+    }
+
+    /* Wider container when Admin Dashboard is active */
+    .portal-container.admin-expanded {
+      max-width: 980px;
     }
 
     /* Glow backdrop element */
@@ -63,10 +66,10 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 320px;
-      height: 320px;
-      background: radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, rgba(56, 189, 248, 0.12) 40%, transparent 70%);
-      filter: blur(40px);
+      width: 380px;
+      height: 380px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.16) 0%, rgba(56, 189, 248, 0.10) 40%, transparent 70%);
+      filter: blur(50px);
       z-index: -1;
       pointer-events: none;
     }
@@ -74,19 +77,19 @@
     /* Header Brand */
     .brand-header {
       text-align: center;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
 
     .brand-logo {
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .brand-icon {
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
       background: linear-gradient(135deg, #f59e0b, #ef4444);
       border-radius: 9px;
       display: flex;
@@ -98,75 +101,120 @@
 
     .brand-title {
       font-family: var(--font-mono);
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 800;
-      letter-spacing: -0.5px;
-      color: #ffffff;
-    }
-
-    .brand-title span {
-      color: var(--cyan);
-    }
-
-    .brand-badge {
-      display: inline-block;
-      font-family: var(--font-mono);
-      font-size: 9.5px;
-      font-weight: 700;
-      padding: 2px 8px;
-      background: rgba(245, 158, 11, 0.15);
-      border: 1px solid rgba(245, 158, 11, 0.35);
-      color: #fbbf24;
-      border-radius: 20px;
-      margin-bottom: 8px;
       letter-spacing: 0.5px;
     }
 
-    .brand-desc {
-      font-size: 12px;
+    .brand-title span { color: var(--gold); }
+
+    .brand-subtitle {
+      font-size: 11.5px;
       color: var(--text-muted);
-      line-height: 1.4;
+      font-family: var(--font-mono);
+    }
+
+    /* Dual-Mode Navigation Tabs */
+    .portal-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: rgba(10, 16, 28, 0.85);
+      border: 1px solid #1e293b;
+      padding: 4px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+
+    .portal-tab-btn {
+      background: none;
+      border: none;
+      padding: 9px 12px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #94a3b8;
+      border-radius: 7px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .portal-tab-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .portal-tab-btn.active.member-tab {
+      background: rgba(2, 132, 199, 0.25);
+      border: 1px solid #0284c7;
+      color: #38bdf8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+    }
+
+    .portal-tab-btn.active.admin-tab {
+      background: rgba(217, 119, 6, 0.25);
+      border: 1px solid #f59e0b;
+      color: #fbbf24;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
     }
 
     /* Main Card */
-    .login-card {
+    .portal-card {
       background: var(--card-bg);
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--card-border);
+      border: 1px solid #1e293b;
       border-radius: 14px;
-      padding: 32px 28px;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 30px rgba(56, 189, 248, 0.08);
-      position: relative;
+      padding: 24px 22px;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(12px);
+      transition: all 0.3s ease;
+    }
+
+    .portal-card.admin-card-border {
+      border-color: rgba(245, 158, 11, 0.4);
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(245, 158, 11, 0.15);
     }
 
     .card-top-tag {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--cyan);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 18px;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--cyan);
+      background: rgba(56, 189, 248, 0.10);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 3px 8px;
+      border-radius: 4px;
+      margin-bottom: 14px;
     }
 
-    .card-top-tag::before {
-      content: '';
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      background: var(--cyan);
-      border-radius: 50%;
-      box-shadow: 0 0 8px var(--cyan);
+    .card-top-tag.admin-badge {
+      color: #fbbf24;
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.35);
     }
 
-    /* Form Fields */
-    .form-group {
-      margin-bottom: 18px;
+    .card-title {
+      font-size: 17px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      letter-spacing: -0.2px;
     }
 
+    .card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      line-height: 1.45;
+    }
+
+    /* Form Styles */
+    .form-group { margin-bottom: 16px; }
     .form-label {
       display: block;
       font-size: 11px;
@@ -174,15 +222,12 @@
       color: #cbd5e1;
       margin-bottom: 6px;
       font-family: var(--font-mono);
-      letter-spacing: 0.3px;
     }
-
     .input-wrap {
       position: relative;
       display: flex;
       align-items: center;
     }
-
     .input-icon {
       position: absolute;
       left: 12px;
@@ -190,26 +235,27 @@
       color: #64748b;
       pointer-events: none;
     }
-
     .form-input {
       width: 100%;
-      background: rgba(6, 10, 20, 0.85);
+      background: rgba(6, 10, 20, 0.90);
       border: 1px solid #1e293b;
       border-radius: 8px;
       padding: 11px 40px 11px 36px;
       font-size: 13px;
       color: #ffffff;
       font-family: var(--font-mono);
-      transition: all 0.2s ease;
       outline: none;
+      transition: all 0.2s ease;
     }
-
     .form-input:focus {
       border-color: var(--cyan);
       box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
-      background: rgba(10, 16, 32, 0.95);
+      background: rgba(10, 16, 32, 0.98);
     }
-
+    .admin-card-border .form-input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.30);
+    }
     .btn-toggle-pwd {
       position: absolute;
       right: 12px;
@@ -218,14 +264,8 @@
       color: #64748b;
       cursor: pointer;
       font-size: 14px;
-      padding: 2px;
     }
 
-    .btn-toggle-pwd:hover {
-      color: #cbd5e1;
-    }
-
-    /* Submit Button */
     .btn-submit {
       width: 100%;
       background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
@@ -237,32 +277,27 @@
       font-weight: 800;
       color: #ffffff;
       cursor: pointer;
-      box-shadow: 0 4px 20px rgba(2, 132, 199, 0.4);
+      box-shadow: 0 4px 18px rgba(2, 132, 199, 0.4);
       transition: all 0.2s ease;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      margin-top: 24px;
+      margin-top: 20px;
     }
-
     .btn-submit:hover {
       background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
       transform: translateY(-1px);
-      box-shadow: 0 6px 24px rgba(14, 165, 233, 0.55);
+    }
+    .btn-submit.admin-btn {
+      background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+      border-color: #f59e0b;
+      box-shadow: 0 4px 18px rgba(245, 158, 11, 0.4);
+    }
+    .btn-submit.admin-btn:hover {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
     }
 
-    .btn-submit:active {
-      transform: translateY(0);
-    }
-
-    .btn-submit:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    /* Error Alert */
     .error-alert {
       display: none;
       background: rgba(239, 68, 68, 0.14);
@@ -271,200 +306,488 @@
       padding: 10px 12px;
       font-size: 11.5px;
       color: #fca5a5;
-      margin-bottom: 18px;
-      animation: shake 0.35s ease;
+      margin-bottom: 16px;
       font-family: var(--font-mono);
       line-height: 1.4;
     }
 
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      20%, 60% { transform: translateX(-4px); }
-      40%, 80% { transform: translateX(4px); }
+    /* ==================== SYSTEMATIC ADMIN DASHBOARD STYLES ==================== */
+    #adminDashboardView {
+      display: none;
     }
 
-    /* Membership Perks List */
-    .features-list {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 22px;
-      padding-top: 18px;
-      border-top: 1px solid #1e293b;
-    }
-
-    .feature-item {
-      font-size: 10px;
-      color: #94a3b8;
+    .admin-dash-header {
       display: flex;
       align-items: center;
-      gap: 5px;
-      font-family: var(--font-mono);
+      justify-content: space-between;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
-    .feature-item span {
-      color: var(--green);
+    .admin-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
     }
 
-    /* Sales / Contact Admin Strip */
-    .sales-box {
-      margin-top: 22px;
+    .admin-kpi-card {
       background: rgba(15, 23, 42, 0.7);
       border: 1px solid #1e293b;
-      border-radius: 10px;
-      padding: 14px;
+      border-radius: 9px;
+      padding: 12px 14px;
       text-align: center;
     }
 
-    .sales-text {
-      font-size: 11px;
+    .admin-kpi-label {
+      font-size: 10px;
       color: #94a3b8;
-      margin-bottom: 10px;
+      font-family: var(--font-mono);
+      font-weight: 700;
     }
 
-    .btn-contact {
-      display: inline-flex;
+    .admin-kpi-value {
+      font-size: 24px;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      margin-top: 4px;
+    }
+
+    .admin-section-box {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+
+    .admin-section-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 800;
+      color: #fbbf24;
+      display: flex;
       align-items: center;
-      gap: 6px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.45);
-      color: #34d399;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .user-table-wrap {
+      overflow-x: auto;
+      max-height: 380px;
+      overflow-y: auto;
+    }
+
+    .user-table {
+      width: 100%;
+      border-collapse: collapse;
       font-family: var(--font-mono);
       font-size: 11px;
-      font-weight: 700;
-      padding: 7px 14px;
-      border-radius: 6px;
-      text-decoration: none;
-      transition: all 0.2s ease;
+      text-align: left;
     }
 
-    .btn-contact:hover {
-      background: rgba(16, 185, 129, 0.28);
-      border-color: #10b981;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+    .user-table th {
+      position: sticky;
+      top: 0;
+      background: #090e1a;
+      padding: 9px 10px;
+      color: #94a3b8;
+      font-weight: 700;
+      border-bottom: 1px solid #334155;
+    }
+
+    .user-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .btn-action-sm {
+      padding: 3px 7px;
+      font-size: 9.5px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
     }
 
     .footer-copy {
       text-align: center;
-      margin-top: 24px;
+      margin-top: 20px;
       font-size: 10.5px;
-      color: #475569;
+      color: #64748b;
       font-family: var(--font-mono);
     }
   </style>
 </head>
 <body>
 
-  <div class="login-container">
+  <div class="portal-container" id="portalContainer">
     <div class="glow-aura"></div>
 
-    <!-- Header Brand -->
+    <!-- Top Brand Header -->
     <div class="brand-header">
       <div class="brand-logo">
         <div class="brand-icon">⚡</div>
         <div class="brand-title">XAUUSD<span>.FLOW</span></div>
       </div>
-      <div>
-        <span class="brand-badge">INSTITUTIONAL TERMINAL PRO</span>
-      </div>
-      <p class="brand-desc">Platform Analisis Order Flow, Bookmap & Footprint Berketepatan Tinggi</p>
+      <div class="brand-subtitle">PORTAL LOG MASUK & PENGURUSAN SISTEM PRO</div>
     </div>
 
-    <!-- Main Card -->
-    <div class="login-card">
-      <div class="card-top-tag">LOG MASUK AKAUN BERDAFTAR</div>
+    <!-- Dual Navigation Switcher Tabs -->
+    <div class="portal-tabs" id="portalTabs">
+      <button class="portal-tab-btn active member-tab" id="tabMember" onclick="switchPortalTab('member')">
+        <span>👤</span> LOG MASUK AHLI
+      </button>
+      <button class="portal-tab-btn admin-tab" id="tabAdmin" onclick="switchPortalTab('admin')">
+        <span>👑</span> PORTAL ADMIN
+      </button>
+    </div>
 
-      <!-- Error Alert Box -->
-      <div class="error-alert" id="errorAlert"></div>
+    <!-- ==================== VIEW 1: MEMBER LOGIN ==================== -->
+    <div class="portal-card" id="memberLoginView">
+      <div class="card-top-tag">
+        <span>●</span> AKSES TERMINAL ORDER FLOW
+      </div>
+      <h2 class="card-title">Log Masuk Ahli</h2>
+      <p class="card-desc">Sila masukkan ID Pengguna dan Kata Laluan langganan anda untuk mengakses terminal analitik Bookmap.</p>
 
-      <form id="loginForm" autocomplete="off">
+      <div class="error-alert" id="memberErrorAlert"></div>
+
+      <form id="memberLoginForm">
         <div class="form-group">
-          <label class="form-label" for="inputUsername">ID PENGGUNA / USERNAME</label>
+          <label class="form-label" for="memberUsername">ID PENGGUNA (USERNAME)</label>
           <div class="input-wrap">
             <span class="input-icon">👤</span>
-            <input type="text" id="inputUsername" class="form-input" placeholder="Masukkan ID anda" required autofocus>
+            <input type="text" id="memberUsername" class="form-input" placeholder="Masukkan ID anda" required autocomplete="username">
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="inputPassword">KATA LALUAN / PASSWORD</label>
+          <label class="form-label" for="memberPassword">KATA LALUAN (PASSWORD)</label>
           <div class="input-wrap">
             <span class="input-icon">🔒</span>
-            <input type="password" id="inputPassword" class="form-input" placeholder="••••••••" required>
-            <button type="button" class="btn-toggle-pwd" id="btnTogglePwd" title="Papar/Sembunyi Password">👁</button>
+            <input type="password" id="memberPassword" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('memberPassword', this)">👁</button>
           </div>
         </div>
 
-        <button type="submit" class="btn-submit" id="btnSubmit">
+        <button type="submit" class="btn-submit" id="btnMemberSubmit">
           <span>⚡ LOG MASUK KE TERMINAL</span>
         </button>
       </form>
 
-
+      <div style="margin-top:18px; padding-top:14px; border-top:1px solid #1e293b; text-align:center;">
+        <span style="font-size:11px; color:#94a3b8; font-family:var(--font-mono);">Belum mempunyai ID akses? </span>
+        <a href="https://wa.me/?text=Salam%20Admin,%20saya%20berminat%20untuk%20melanggan%20ID%20Terminal%20XAUUSD.FLOW%20PRO." target="_blank" style="color:#38bdf8; font-size:11px; font-weight:700; text-decoration:none; font-family:var(--font-mono);">Hubungi Admin WhatsApp</a>
+      </div>
     </div>
 
-    <!-- Sales / WhatsApp Contact Box for Potential Buyers -->
-    <div class="sales-box">
-      <div class="sales-text">Belum mempunyai ID akses atau ingin memperbaharui langganan?</div>
-      <a href="https://wa.me/?text=Salam%20Admin,%20saya%20berminat%20untuk%20melanggan%20ID%20Akses%20XAUUSD.FLOW%20Pro" target="_blank" class="btn-contact" id="linkWhatsApp">
-        <span>💬</span> Hubungi Admin untuk Beli ID Akses
-      </a>
+    <!-- ==================== VIEW 2: ADMIN LOGIN (Pre-Auth) ==================== -->
+    <div class="portal-card admin-card-border" id="adminLoginView" style="display:none;">
+      <div class="card-top-tag admin-badge">
+        <span>👑</span> KAWALAN PENTADBIR SISTEM
+      </div>
+      <h2 class="card-title" style="color:#fbbf24;">Log Masuk Pentadbir</h2>
+      <p class="card-desc">Gerbang keselamatan pentadbir untuk menjana ID pelanggan, menguruskan tempoh langganan & memantau pangkalan data.</p>
+
+      <div class="error-alert" id="adminErrorAlert"></div>
+
+      <form id="adminLoginForm">
+        <div class="form-group">
+          <label class="form-label" for="adminUsername">ID PENTADBIR (ROOT USERNAME)</label>
+          <div class="input-wrap">
+            <span class="input-icon">👑</span>
+            <input type="text" id="adminUsername" class="form-input" value="admin" required autocomplete="username">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="adminPassword">KATA LALUAN PENTADBIR</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔑</span>
+            <input type="password" id="adminPassword" class="form-input" placeholder="Masukkan kata laluan admin" required autocomplete="current-password">
+            <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('adminPassword', this)">👁</button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit admin-btn" id="btnAdminSubmit">
+          <span>👑 BUKA PANEL PENTADBIR (ADMIN DASHBOARD)</span>
+        </button>
+      </form>
+    </div>
+
+    <!-- ==================== VIEW 3: SYSTEMATIC ADMIN DASHBOARD (Post-Auth) ==================== -->
+    <div class="portal-card admin-card-border" id="adminDashboardView">
+      
+      <!-- Top Action Bar -->
+      <div class="admin-dash-header">
+        <div>
+          <div style="font-family:var(--font-mono); font-size:10px; color:#fbbf24; font-weight:700; letter-spacing:0.5px;">
+            👑 PUSAT KAWALAN PENTADBIR SISTEM
+          </div>
+          <h2 style="font-size:18px; font-weight:800; color:#ffffff; margin-top:2px;">
+            Papan Pemuka Jualan & ID Pelanggan
+          </h2>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <a href="/" style="background:linear-gradient(135deg, #059669, #047857); border:1px solid #10b981; color:#fff; font-family:var(--font-mono); font-size:11px; font-weight:800; padding:7px 14px; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; box-shadow:0 0 14px rgba(16,185,129,0.35);">
+            <span>🚀</span> BUKA TERMINAL DAGANGAN
+          </a>
+          <button onclick="handleLogout()" style="background:#1e293b; border:1px solid #ef4444; color:#fca5a5; font-family:var(--font-mono); font-size:11px; font-weight:700; padding:7px 12px; border-radius:6px; cursor:pointer;">
+            <span>🚪</span> Log Keluar
+          </button>
+        </div>
+      </div>
+
+      <!-- 4 KPI Metrics Cards -->
+      <div class="admin-kpi-grid">
+        <div class="admin-kpi-card">
+          <div class="admin-kpi-label">JUMLAH PELANGGAN</div>
+          <div class="admin-kpi-value" id="kpiTotalUsers" style="color:#38bdf8;">0</div>
+        </div>
+        <div class="admin-kpi-card">
+          <div class="admin-kpi-label">LANGGANAN AKTIF</div>
+          <div class="admin-kpi-value" id="kpiActiveUsers" style="color:#10b981;">0</div>
+        </div>
+        <div class="admin-kpi-card">
+          <div class="admin-kpi-label">TAMAT TEMPOH</div>
+          <div class="admin-kpi-value" id="kpiExpiredUsers" style="color:#f97316;">0</div>
+        </div>
+        <div class="admin-kpi-card">
+          <div class="admin-kpi-label">VIP SEUMUR HIDUP</div>
+          <div class="admin-kpi-value" id="kpiLifetimeUsers" style="color:#fbbf24;">0</div>
+        </div>
+      </div>
+
+      <!-- Section: Generate New Customer Account -->
+      <div class="admin-section-box">
+        <div class="admin-section-title">
+          <span>➕ JANA ID PELANGGAN BAHARU & RESIT WHATSAPP</span>
+          <button type="button" onclick="generateRandomCredentials()" style="background:none; border:1px solid #334155; color:#94a3b8; font-size:10px; font-family:var(--font-mono); padding:2px 8px; border-radius:4px; cursor:pointer;">
+            🎲 Jana Rawak (ID & Password)
+          </button>
+        </div>
+
+        <form id="dashFormCreateUser" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px; align-items:end;">
+          <div>
+            <label class="form-label">ID PENGGUNA (USERNAME):</label>
+            <input type="text" id="genUsername" placeholder="cth: trader_ali" required class="form-input" style="padding:8px 10px;">
+          </div>
+          <div>
+            <label class="form-label">KATA LALUAN (PASSWORD):</label>
+            <input type="text" id="genPassword" placeholder="cth: ali888" required class="form-input" style="padding:8px 10px;">
+          </div>
+          <div>
+            <label class="form-label">NAMA & NO. WHATSAPP:</label>
+            <input type="text" id="genFullName" placeholder="cth: Ali (012-3456789)" required class="form-input" style="padding:8px 10px;">
+          </div>
+          <div>
+            <label class="form-label">PAKEJ & TEMPOH:</label>
+            <select id="genPlanDuration" class="form-input" style="padding:8px 10px; color:#ffd60a; cursor:pointer;">
+              <option value="7|Trial 7 Hari">Trial 7 Hari</option>
+              <option value="30|Bulanan 30 Hari" selected>Bulanan 30 Hari (Standard)</option>
+              <option value="90|Suku Tahun 90 Hari">Suku Tahun 90 Hari</option>
+              <option value="365|Tahunan 365 Hari">Tahunan 365 Hari</option>
+              <option value="-1|VIP Lifetime (Seumur Hidup)">VIP Lifetime (Seumur Hidup)</option>
+            </select>
+          </div>
+          <div>
+            <button type="submit" id="btnGenSubmit" style="width:100%; background:linear-gradient(135deg, #059669, #047857); border:1px solid #10b981; border-radius:8px; padding:9px; font-family:var(--font-mono); font-weight:800; font-size:11.5px; color:#fff; cursor:pointer; box-shadow:0 2px 12px rgba(16,185,129,0.35);">
+              ➕ CIPTA ID & JANA RESIT
+            </button>
+          </div>
+        </form>
+
+        <!-- Ready to Send WhatsApp Box -->
+        <div id="dashReceiptBox" style="display:none; margin-top:14px; background:#061412; border:1px solid #10b981; border-radius:8px; padding:12px;">
+          <div style="color:#34d399; font-weight:800; font-size:11px; font-family:var(--font-mono); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+            <span>✅ ID PEMBELI BERJAYA DIAKTIFKAN! SALIN RESIT WHATSAPP:</span>
+            <button onclick="copyWhatsAppReceipt()" style="background:#047857; border:none; color:#fff; padding:3px 10px; border-radius:4px; font-size:10px; font-family:var(--font-mono); font-weight:700; cursor:pointer;">
+              📋 Salin Teks
+            </button>
+          </div>
+          <textarea id="dashReceiptText" readonly style="width:100%; height:88px; background:#020b08; border:1px solid #064e3b; color:#a7f3d0; border-radius:5px; padding:8px; font-size:10.5px; font-family:var(--font-mono); resize:none;"></textarea>
+        </div>
+      </div>
+
+      <!-- Section: Customer Management Table with Search -->
+      <div class="admin-section-box">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+          <div class="admin-section-title" style="margin-bottom:0;">
+            <span>👥 SENARAI PENGGUNA & STATUS LANGGANAN</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="text" id="userSearchInput" placeholder="🔍 Cari ID / Nama / No..." oninput="filterUserTable()" style="background:#090d16; border:1px solid #334155; border-radius:5px; padding:4px 10px; color:#fff; font-size:11px; font-family:var(--font-mono); width:180px;">
+            <button onclick="loadAdminDashboardData()" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:4px 10px; font-size:11px; font-family:var(--font-mono); border-radius:5px; cursor:pointer;">
+              🔄 Muat Semula
+            </button>
+          </div>
+        </div>
+
+        <div class="user-table-wrap">
+          <table class="user-table">
+            <thead>
+              <tr>
+                <th>ID PENGGUNA</th>
+                <th>NAMA / WHATSAPP</th>
+                <th>PAKEJ</th>
+                <th>BAKI HARI</th>
+                <th>STATUS</th>
+                <th style="text-align:right;">TINDAKAN PANTAS</th>
+              </tr>
+            </thead>
+            <tbody id="dashUsersTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Section: Persistence & Backup Hub -->
+      <div class="admin-section-box" style="margin-bottom:0;">
+        <div class="admin-section-title">
+          <span>💾 KESELAMATAN & SANDARAN DATA (PERSISTENCE HUB)</span>
+          <span style="font-size:10px; color:#94a3b8; font-weight:normal;">Format: JSON Enkripsi</span>
+        </div>
+        <p style="font-size:11px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">
+          ID pengguna anda kini disandarkan secara automatik ke fail kekal <code>users_backup.json</code> supaya tidak hilang semasa kemas kini pelayan. Anda juga boleh memuat turun atau memulihkan sandaran secara manual pada bila-bila masa.
+        </p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <a href="/api/admin/backup" download style="background:#0284c7; border:1px solid #38bdf8; color:#fff; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; font-family:var(--font-mono); display:inline-flex; align-items:center; gap:6px;">
+            📥 Muat Turun Sandaran (Download Backup .JSON)
+          </a>
+          <label style="background:#334155; border:1px solid #475569; color:#f1f5f9; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; font-family:var(--font-mono); display:inline-flex; align-items:center; gap:6px; margin:0;">
+            📤 Pulihkan Sandaran (Upload .JSON)
+            <input type="file" id="dashFileRestore" accept=".json" onchange="handleRestoreUpload(event)" style="display:none;">
+          </label>
+          <span id="dashRestoreMsg" style="font-size:11px; color:#10b981; font-family:var(--font-mono);"></span>
+        </div>
+      </div>
+
     </div>
 
     <div class="footer-copy">
-      © 2026 XAUUSD.FLOW Pro • Hak Cipta Terpelihara • Akses Eksklusif Ahli Sah
+      &copy; 2026 XAUUSD.FLOW PRO &bull; Hak Cipta Terpelihara
     </div>
   </div>
 
   <script>
-    // Reveal password toggle
-    const inputPwd = document.getElementById('inputPassword');
-    const btnToggle = document.getElementById('btnTogglePwd');
-    btnToggle.addEventListener('click', () => {
-      if (inputPwd.type === 'password') {
-        inputPwd.type = 'text';
-        btnToggle.textContent = '🔒';
+    let allLoadedUsers = [];
+
+    // Helper: Toggle Password View
+    function togglePasswordVisibility(inputId, btn) {
+      const inp = document.getElementById(inputId);
+      if (inp.type === 'password') {
+        inp.type = 'text';
+        btn.textContent = '🔒';
       } else {
-        inputPwd.type = 'password';
-        btnToggle.textContent = '👁';
+        inp.type = 'password';
+        btn.textContent = '👁';
+      }
+    }
+
+    // Switch between Member Portal & Admin Portal Tabs
+    function switchPortalTab(tab) {
+      const btnMember = document.getElementById('tabMember');
+      const btnAdmin = document.getElementById('tabAdmin');
+      const viewMember = document.getElementById('memberLoginView');
+      const viewAdmin = document.getElementById('adminLoginView');
+      const viewDash = document.getElementById('adminDashboardView');
+      const container = document.getElementById('portalContainer');
+
+      if (tab === 'member') {
+        btnMember.classList.add('active');
+        btnAdmin.classList.remove('active');
+        viewMember.style.display = 'block';
+        viewAdmin.style.display = 'none';
+        viewDash.style.display = 'none';
+        container.classList.remove('admin-expanded');
+      } else {
+        btnMember.classList.remove('active');
+        btnAdmin.classList.add('active');
+        viewMember.style.display = 'none';
+
+        // Check if admin is already logged in
+        checkAdminSession();
+      }
+    }
+
+    // Check if user is already logged in as admin
+    async function checkAdminSession() {
+      const viewAdmin = document.getElementById('adminLoginView');
+      const viewDash = document.getElementById('adminDashboardView');
+      const container = document.getElementById('portalContainer');
+
+      const token = localStorage.getItem('session_id');
+      try {
+        const headers = token ? { 'X-Session-ID': token } : {};
+        const res = await fetch('/api/me', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.user && data.user.role === 'admin') {
+            // Admin is logged in! Reveal Dashboard
+            viewAdmin.style.display = 'none';
+            viewDash.style.display = 'block';
+            container.classList.add('admin-expanded');
+            loadAdminDashboardData();
+            return;
+          }
+        }
+      } catch (e) {}
+
+      // Otherwise show Admin Login form
+      viewAdmin.style.display = 'block';
+      viewDash.style.display = 'none';
+      container.classList.remove('admin-expanded');
+    }
+
+    // Check URL parameters on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const isPathAdmin = window.location.pathname.includes('/admin');
+
+      if (isPathAdmin || urlParams.get('tab') === 'admin' || urlParams.get('admin') === '1') {
+        switchPortalTab('admin');
+      }
+
+      if (urlParams.get('msg') === 'logged_out') {
+        showMemberError('✅ Anda telah berjaya log keluar dari sistem.');
+        document.getElementById('memberErrorAlert').style.borderColor = '#10b981';
+        document.getElementById('memberErrorAlert').style.color = '#34d399';
+        document.getElementById('memberErrorAlert').style.background = 'rgba(16,185,129,0.12)';
+      } else if (urlParams.get('error') === 'admin_required') {
+        switchPortalTab('admin');
+        showAdminError('🔒 Sila log masuk sebagai Admin untuk mengakses bahagian ini.');
       }
     });
 
-    // Handle Login Submit
-    const loginForm = document.getElementById('loginForm');
-    const btnSubmit = document.getElementById('btnSubmit');
-    const errorAlert = document.getElementById('errorAlert');
-
-    // Parse URL error params if redirected
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('error') === 'expired') {
-      showError('⚠️ Tempoh langganan akaun anda telah tamat. Sila hubungi admin untuk menyambung akses.');
-    } else if (urlParams.get('error') === 'unauthorized') {
-      showError('🔒 Sila log masuk terlebih dahulu untuk mengakses terminal.');
-    } else if (urlParams.get('error') === 'suspended') {
-      showError('🚫 Akaun ini telah digantung. Sila hubungi admin.');
+    function showMemberError(msg) {
+      const el = document.getElementById('memberErrorAlert');
+      el.textContent = msg;
+      el.style.display = 'block';
     }
 
-    function showError(msg) {
-      errorAlert.textContent = msg;
-      errorAlert.style.display = 'block';
+    function showAdminError(msg) {
+      const el = document.getElementById('adminErrorAlert');
+      el.textContent = msg;
+      el.style.display = 'block';
     }
 
-    loginForm.addEventListener('submit', async (e) => {
+    // Handle Member Login Submit
+    document.getElementById('memberLoginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      errorAlert.style.display = 'none';
+      document.getElementById('memberErrorAlert').style.display = 'none';
 
-      const username = document.getElementById('inputUsername').value.trim();
-      const password = inputPwd.value;
+      const username = document.getElementById('memberUsername').value.trim();
+      const password = document.getElementById('memberPassword').value;
+      const btn = document.getElementById('btnMemberSubmit');
 
-      if (!username || !password) {
-        showError('Sila masukkan ID Pengguna dan Kata Laluan.');
-        return;
-      }
-
-      btnSubmit.disabled = true;
-      btnSubmit.innerHTML = '<span>⏳ Memeriksa ID...</span>';
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ Memeriksa ID...</span>';
 
       try {
         const res = await fetch('/api/login', {
@@ -472,30 +795,335 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
-
         const data = await res.json();
-
         if (res.ok && data.status === 'success') {
-          if (data.session_id) {
-            localStorage.setItem('session_id', data.session_id);
-          }
-          btnSubmit.innerHTML = '<span>✅ Akses Diberikan! Membuka Terminal...</span>';
-          btnSubmit.style.background = '#10b981';
-          setTimeout(() => {
-            const dest = (data.user && data.user.role === 'admin') ? '/?admin=1' : '/';
-            window.location.href = dest;
-          }, 450);
+          if (data.session_id) localStorage.setItem('session_id', data.session_id);
+          btn.innerHTML = '<span>✅ Akses Diterima! Membuka Terminal...</span>';
+          btn.style.background = '#10b981';
+          setTimeout(() => { window.location.href = '/'; }, 350);
         } else {
-          showError(data.detail || data.message || 'ID Pengguna atau Kata Laluan tidak sah.');
-          btnSubmit.disabled = false;
-          btnSubmit.innerHTML = '<span>⚡ LOG MASUK KE TERMINAL</span>';
+          showMemberError(data.detail || data.message || 'ID atau Kata Laluan tidak sah.');
+          btn.disabled = false;
+          btn.innerHTML = '<span>⚡ LOG MASUK KE TERMINAL</span>';
         }
       } catch (err) {
-        showError('Gagal menyambung ke pelayan pengesahan. Sila cuba sebentar lagi.');
-        btnSubmit.disabled = false;
-        btnSubmit.innerHTML = '<span>⚡ LOG MASUK KE TERMINAL</span>';
+        showMemberError('Ralat pelayan pengesahan. Sila cuba lagi.');
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡ LOG MASUK KE TERMINAL</span>';
       }
     });
+
+    // Handle Admin Login Submit
+    document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      document.getElementById('adminErrorAlert').style.display = 'none';
+
+      const username = document.getElementById('adminUsername').value.trim();
+      const password = document.getElementById('adminPassword').value;
+      const btn = document.getElementById('btnAdminSubmit');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ Memeriksa Kuasa Admin...</span>';
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+          if (data.session_id) localStorage.setItem('session_id', data.session_id);
+          if (data.user && data.user.role === 'admin') {
+            btn.innerHTML = '<span>👑 Disahkan! Membuka Dashboard...</span>';
+            setTimeout(() => { checkAdminSession(); }, 300);
+          } else {
+            showAdminError('Akaun ini bukan peranan Admin.');
+            btn.disabled = false;
+            btn.innerHTML = '<span>👑 BUKA PANEL PENTADBIR (ADMIN DASHBOARD)</span>';
+          }
+        } else {
+          showAdminError(data.detail || data.message || 'Kredensial Admin tidak sah.');
+          btn.disabled = false;
+          btn.innerHTML = '<span>👑 BUKA PANEL PENTADBIR (ADMIN DASHBOARD)</span>';
+        }
+      } catch (err) {
+        showAdminError('Ralat pelayan pengesahan.');
+        btn.disabled = false;
+        btn.innerHTML = '<span>👑 BUKA PANEL PENTADBIR (ADMIN DASHBOARD)</span>';
+      }
+    });
+
+    // ==================== DASHBOARD FUNCTIONS ====================
+
+    async function loadAdminDashboardData() {
+      const tbody = document.getElementById('dashUsersTableBody');
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px; color:#94a3b8;">Memuatkan pangkalan data...</td></tr>';
+
+      try {
+        const token = localStorage.getItem('session_id');
+        const headers = token ? { 'X-Session-ID': token } : {};
+        const res = await fetch('/api/admin/users', { headers });
+        if (!res.ok) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px; color:#ef4444;">Sesi telah tamat. Sila log masuk semula.</td></tr>';
+          return;
+        }
+        const data = await res.json();
+        allLoadedUsers = data.users || [];
+
+        // Update KPIs
+        let total = allLoadedUsers.length;
+        let active = 0;
+        let expired = 0;
+        let lifetime = 0;
+
+        allLoadedUsers.forEach(u => {
+          if (u.expires_at === 'never') lifetime++;
+          if (u.status_label === 'AKTIF') active++;
+          else if (u.status_label === 'TAMAT TEMPOH') expired++;
+        });
+
+        document.getElementById('kpiTotalUsers').textContent = total;
+        document.getElementById('kpiActiveUsers').textContent = active;
+        document.getElementById('kpiExpiredUsers').textContent = expired;
+        document.getElementById('kpiLifetimeUsers').textContent = lifetime;
+
+        renderUserTable(allLoadedUsers);
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px; color:#ef4444;">Ralat memuatkan data.</td></tr>';
+      }
+    }
+
+    function renderUserTable(users) {
+      const tbody = document.getElementById('dashUsersTableBody');
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px; color:#94a3b8;">Tiada rekod pengguna ditemui.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      users.forEach(u => {
+        const tr = document.createElement('tr');
+        const daysStr = u.expires_at === 'never' 
+          ? '<span style="color:#fbbf24; font-weight:700;">∞ Seumur Hidup</span>' 
+          : (u.remaining_days > 0 ? `<b style="color:#38bdf8;">${u.remaining_days} Hari</b>` : '<b style="color:#ef4444;">Tamat</b>');
+
+        tr.innerHTML = `
+          <td style="color:#fff; font-weight:700;">
+            ${u.role === 'admin' ? '👑 ' : '👤 '}${u.username}
+          </td>
+          <td style="color:#cbd5e1;">
+            ${u.full_name} ${u.notes ? `<span style="color:#64748b; font-size:9.5px;">(${u.notes})</span>` : ''}
+          </td>
+          <td style="color:#a5b4fc;">${u.plan}</td>
+          <td>${daysStr}</td>
+          <td>
+            <span style="display:inline-block; padding:1px 6px; border-radius:3px; font-size:9px; font-weight:800; background:rgba(0,0,0,0.5); border:1px solid ${u.status_color}; color:${u.status_color};">
+              ${u.status_label}
+            </span>
+          </td>
+          <td style="text-align:right;">
+            <div style="display:inline-flex; gap:4px; justify-content:flex-end;">
+              ${u.role !== 'admin' ? `
+                <button class="btn-action-sm" onclick="quickRenewUser(${u.id}, 30)" style="background:#0284c7; color:#fff;" title="Tambah 30 Hari">+30H</button>
+                <button class="btn-action-sm" onclick="quickRenewUser(${u.id}, 7)" style="background:#0369a1; color:#fff;" title="Tambah 7 Hari">+7H</button>
+                <button class="btn-action-sm" onclick="quickToggleActive(${u.id}, ${u.is_active})" style="background:${u.is_active ? '#e11d48' : '#059669'}; color:#fff;">${u.is_active ? 'Gantung' : 'Aktif'}</button>
+                <button class="btn-action-sm" onclick="quickResetPassword(${u.id}, '${u.username}')" style="background:#475569; color:#fde047;" title="Tukar Password">🔑</button>
+                <button class="btn-action-sm" onclick="quickDeleteUser(${u.id}, '${u.username}')" style="background:#334155; color:#fca5a5;" title="Padam">🗑️</button>
+              ` : '<span style="color:#fbbf24; font-weight:700; font-size:9.5px;">Pentadbir Sistem</span>'}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterUserTable() {
+      const q = document.getElementById('userSearchInput').value.toLowerCase().trim();
+      if (!q) {
+        renderUserTable(allLoadedUsers);
+        return;
+      }
+      const filtered = allLoadedUsers.filter(u => 
+        u.username.toLowerCase().includes(q) ||
+        (u.full_name && u.full_name.toLowerCase().includes(q)) ||
+        (u.notes && u.notes.toLowerCase().includes(q)) ||
+        (u.plan && u.plan.toLowerCase().includes(q))
+      );
+      renderUserTable(filtered);
+    }
+
+    // Quick Actions
+    async function quickRenewUser(id, days) {
+      if (!confirm(`Tambah ${days} hari langganan untuk pengguna ini?`)) return;
+      try {
+        const res = await fetch(`/api/admin/users/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ add_days: days })
+        });
+        if (res.ok) {
+          alert(`✅ Berjaya menambah ${days} hari!`);
+          loadAdminDashboardData();
+        }
+      } catch (e) { alert('Ralat pelayan.'); }
+    }
+
+    async function quickToggleActive(id, currentActive) {
+      const newActive = currentActive === 1 ? 0 : 1;
+      const actName = newActive === 1 ? 'mengaktifkan semula' : 'menggantung';
+      if (!confirm(`Pasti ingin ${actName} akaun pengguna ini?`)) return;
+      try {
+        const res = await fetch(`/api/admin/users/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: newActive })
+        });
+        if (res.ok) {
+          loadAdminDashboardData();
+        }
+      } catch (e) { alert('Ralat pelayan.'); }
+    }
+
+    async function quickResetPassword(id, username) {
+      const newPass = prompt(`Masukkan kata laluan baharu untuk '${username}':`);
+      if (!newPass || newPass.trim().length < 4) return;
+      try {
+        const res = await fetch(`/api/admin/users/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: newPass.trim() })
+        });
+        if (res.ok) {
+          alert(`✅ Kata laluan untuk '${username}' telah ditukar kepada: ${newPass.trim()}`);
+          loadAdminDashboardData();
+        }
+      } catch (e) { alert('Ralat pelayan.'); }
+    }
+
+    async function quickDeleteUser(id, username) {
+      if (!confirm(`AMARAN: Adakah anda pasti ingin memadam pengguna '${username}' secara kekal?`)) return;
+      try {
+        const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          alert(`✅ Akaun '${username}' berjaya dipadam.`);
+          loadAdminDashboardData();
+        }
+      } catch (e) { alert('Ralat pelayan.'); }
+    }
+
+    // Generate Random Credentials
+    function generateRandomCredentials() {
+      const randNum = Math.floor(1000 + Math.random() * 9000);
+      document.getElementById('genUsername').value = `trader_${randNum}`;
+      document.getElementById('genPassword').value = `gold${Math.floor(100 + Math.random() * 900)}#`;
+    }
+
+    // Handle Create User Form
+    document.getElementById('dashFormCreateUser').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('genUsername').value.trim();
+      const password = document.getElementById('genPassword').value.trim();
+      const fullName = document.getElementById('genFullName').value.trim();
+      const planVal = document.getElementById('genPlanDuration').value;
+      const [daysStr, planTitle] = planVal.split('|');
+      const durationDays = parseInt(daysStr);
+
+      const btn = document.getElementById('btnGenSubmit');
+      btn.disabled = true;
+      btn.textContent = 'Menjana ID...';
+
+      try {
+        const res = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            password,
+            full_name: fullName,
+            role: 'member',
+            plan: planTitle,
+            duration_days: durationDays,
+            notes: fullName
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert(`✅ ID Pembeli '${username}' berjaya diaktifkan!`);
+
+          const daysLabel = durationDays === -1 ? 'SEUMUR HIDUP (VIP LIFETIME)' : `${durationDays} HARI`;
+          const waMessage = `Salam ${fullName}!\nTahniah, akses Terminal XAUUSD.FLOW PRO anda telah diaktifkan secara rasmi:\n\n🔗 Laman Web: https://gringgo-orderflow.onrender.com\n👤 ID Pengguna: ${username}\n🔑 Kata Laluan: ${password}\n📅 Pakej Akses: ${planTitle} (${daysLabel})\n\nSelamat berdagang dan semoga beroleh profit konsisten!`;
+
+          document.getElementById('dashReceiptText').value = waMessage;
+          document.getElementById('dashReceiptBox').style.display = 'block';
+
+          // Clear inputs
+          document.getElementById('genUsername').value = '';
+          document.getElementById('genPassword').value = '';
+          document.getElementById('genFullName').value = '';
+
+          loadAdminDashboardData();
+        } else {
+          alert(`❌ ${data.detail || data.message}`);
+        }
+      } catch (err) {
+        alert('Ralat semasa mencipta ID.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '➕ CIPTA ID & JANA RESIT';
+      }
+    });
+
+    function copyWhatsAppReceipt() {
+      const txt = document.getElementById('dashReceiptText');
+      txt.select();
+      navigator.clipboard.writeText(txt.value);
+      alert('📋 Resit WhatsApp berjaya disalin! Sila tampal (paste) ke WhatsApp pembeli.');
+    }
+
+    // Handle Restore JSON File
+    async function handleRestoreUpload(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const msgEl = document.getElementById('dashRestoreMsg');
+      msgEl.textContent = 'Memproses fail sandaran...';
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const users = parsed.users || (Array.isArray(parsed) ? parsed : []);
+        if (users.length === 0) {
+          alert('Fail JSON tidak mengandungi data pengguna yang sah.');
+          msgEl.textContent = '';
+          return;
+        }
+        const res = await fetch('/api/admin/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ users })
+        });
+        const resData = await res.json();
+        if (res.ok) {
+          alert(`✅ ${resData.message}`);
+          msgEl.textContent = `✅ ${resData.count} akaun berjaya dipulihkan!`;
+          loadAdminDashboardData();
+        } else {
+          alert(`❌ ${resData.detail || resData.message}`);
+          msgEl.textContent = '❌ Gagal memulihkan fail.';
+        }
+      } catch (err) {
+        alert(`❌ Ralat membaca fail JSON: ${err.message}`);
+        msgEl.textContent = '❌ Ralat membaca fail.';
+      }
+    }
+
+    // Logout
+    async function handleLogout() {
+      try {
+        localStorage.removeItem('session_id');
+        await fetch('/api/logout', { method: 'POST' });
+      } catch (e) {}
+      window.location.href = '/login?msg=logged_out';
+    }
   </script>
 </body>
 </html>
