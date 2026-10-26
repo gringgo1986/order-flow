@@ -471,6 +471,20 @@ for fname in ["bookmap.js", "footprint.js", "dom.js", "app.js"]:
 
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+@app.get("/manifest.json")
+def manifest_json():
+    p = static_dir / "manifest.json"
+    if p.exists():
+        return FileResponse(str(p), media_type="application/manifest+json")
+    return JSONResponse({})
+
+@app.get("/sw.js")
+def service_worker_js():
+    p = static_dir / "sw.js"
+    if p.exists():
+        return FileResponse(str(p), media_type="application/javascript")
+    return Response(content="", media_type="application/javascript")
+
 @app.get("/")
 def index(request: Request):
     user = get_current_user(request)
