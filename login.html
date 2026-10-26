@@ -926,7 +926,7 @@
             <div style="display:inline-flex; gap:4px; justify-content:flex-end;">
               ${u.role !== 'admin' ? `
                 <button class="btn-action-sm" onclick="quickRenewUser(${u.id}, 30)" style="background:#0284c7; color:#fff;" title="Tambah 30 Hari">+30H</button>
-                <button class="btn-action-sm" onclick="quickRenewUser(${u.id}, 7)" style="background:#0369a1; color:#fff;" title="Tambah 7 Hari">+7H</button>
+                <button class="btn-action-sm" onclick="quickRenewUser(${u.id}, 1)" style="background:#0369a1; color:#fff;" title="Tambah 1 Hari Percubaan">+1H</button>
                 <button class="btn-action-sm" onclick="quickToggleActive(${u.id}, ${u.is_active})" style="background:${u.is_active ? '#e11d48' : '#059669'}; color:#fff;">${u.is_active ? 'Gantung' : 'Aktif'}</button>
                 <button class="btn-action-sm" onclick="quickResetPassword(${u.id}, '${u.username}')" style="background:#475569; color:#fde047;" title="Tukar Password">🔑</button>
                 <button class="btn-action-sm" onclick="quickDeleteUser(${u.id}, '${u.username}')" style="background:#334155; color:#fca5a5;" title="Padam">🗑️</button>
