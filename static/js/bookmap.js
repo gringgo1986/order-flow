@@ -67,6 +67,10 @@ class BookmapRenderer {
     this._depthHistoryBuffer = []; // Rolling 4s buffer for Pulling/Stacking delta calculation
 
     // Bookmap World-Class Enhancements:
+    this.bmZenMode = false;      // Zen Pro Mode: Pristine view without floating banners or small trade noise
+    this.bmBubbleFilter = 'whale'; // 'whale' (min 12L) | 'all' | 'off'
+    this.bmBubbleMinVol = 12.0;  // Threshold for bold lot size numbers on trade bubbles
+    this._occupiedBadgeSlots = []; // Frame-by-frame anti-collision vertical slot registry
     this.bmContrastMode = 'MED'; // 'AUTO' | 'LOW' | 'MED' | 'HIGH'
     this.bmShowSweeps = true;    // Liquidity Sweeps & Voids Visualizer
     this._bmSweepEvents = [];    // Cached sweep events [{ id, price, time, vol, bias, badge }]
@@ -85,6 +89,27 @@ class BookmapRenderer {
 
     this._setupResize();
     this._setupInteractions();
+  }
+
+  /* ─── Anti-Collision Vertical Badge Slotting ───────────────────── */
+  _resolveNonOverlappingY(targetY, badgeH = 18, minGap = 20) {
+    if (!this._occupiedBadgeSlots) this._occupiedBadgeSlots = [];
+    let resolvedY = targetY;
+    let attempts = 0;
+    while (attempts < 8) {
+      const collision = this._occupiedBadgeSlots.find(slotY => Math.abs(slotY - resolvedY) < minGap);
+      if (!collision) break;
+      if (resolvedY + minGap <= this.CHART_BOTTOM - badgeH) {
+        resolvedY += minGap;
+      } else if (resolvedY - minGap >= this.CHART_TOP + badgeH) {
+        resolvedY -= minGap;
+      } else {
+        break;
+      }
+      attempts++;
+    }
+    this._occupiedBadgeSlots.push(resolvedY);
+    return resolvedY;
   }
 
   /* ─── Web Audio API Sound Synthesizer ──────────────────────────── */
@@ -667,6 +692,7 @@ class BookmapRenderer {
       this.maxPrice += (this._targetMax - this.maxPrice) * 0.18;
     }
 
+    this._occupiedBadgeSlots = []; // Reset anti-collision vertical slot registry
     /* ── 1. Clear Canvas with Bookmap Obsidian Navy Background ── */
     ctx.fillStyle = '#050a14';
     ctx.fillRect(0, 0, this.width, this.height);
@@ -1359,9 +1385,11 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── Split 3D Spherical Bubbles with Whale Sound ─────────────── */
+  /* ─── Split 3D Spherical Bubbles with Whale Sound & Smart Filter ─ */
   _drawSplitBubbles(ctx, trades, now) {
     if (!trades || !trades.length) return;
+    if (this.bmBubbleFilter === 'off') return; // User turned off bubbles for pure heatmap view
+
     ctx.save();
     ctx.beginPath();
     ctx.rect(this.CHART_LEFT, this.CHART_TOP, this.CHART_WIDTH, this.CHART_HEIGHT);
@@ -1370,6 +1398,10 @@ class BookmapRenderer {
     this.hoverTrade = null;
     const drawnWhaleBadges = [];
     const sortedTrades = [...trades].sort((a, b) => a.volume - b.volume);
+
+    // Smart Filter: In Zen mode or 'whale' filter, filter retail trade noise
+    const isWhaleOnly = this.bmZenMode || this.bmBubbleFilter === 'whale';
+    const minVol = isWhaleOnly ? (this.bmBubbleMinVol || 12.0) : 0.0;
 
     for (const t of sortedTrades) {
       const cx = this.timeToX(t.timestamp, now);
@@ -1390,6 +1422,19 @@ class BookmapRenderer {
       if (t.is_large && now - t.timestamp < 1200 && t.id !== this._lastWhaleSoundId) {
         this._lastWhaleSoundId = t.id;
         this.playWhaleSound();
+      }
+
+      // Filter sub-threshold retail trades to eliminate chart clutter
+      if (t.volume < minVol) {
+        if (!this.bmZenMode) {
+          // In Full Analisis mode, show clean sleek micro dot without text
+          ctx.beginPath();
+          ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+          ctx.fillStyle = buyRatio >= 0.5 ? 'rgba(0, 230, 118, 0.40)' : 'rgba(255, 51, 102, 0.40)';
+          ctx.fill();
+        }
+        // In Zen mode, skip micro retail trades completely for ultimate serenity
+        continue;
       }
 
       const dist = Math.hypot(this.mouseX - cx, this.mouseY - cy);
@@ -1502,7 +1547,7 @@ class BookmapRenderer {
       ctx.fill();
       ctx.restore();
 
-      if (r >= 10.5) {
+      if (r >= 10.0 && (t.volume >= minVol || this.bmBubbleFilter === 'all')) {
         const fontSize = r >= 22 ? 11 : (r >= 15 ? 9 : 8);
         ctx.font         = `bold ${fontSize}px "JetBrains Mono", monospace`;
         ctx.textAlign    = 'center';
@@ -1524,7 +1569,7 @@ class BookmapRenderer {
         ctx.stroke();
         ctx.restore();
 
-        if (this.bmShowWhaleLabels && t.volume >= 18.0) {
+        if (!this.bmZenMode && this.bmShowWhaleLabels && t.volume >= 18.0) {
           const isWhaleBuy = buyRatio >= 0.5;
           const tagCol = isWhaleBuy ? '#00e676' : '#ff3366';
           const tagTxt = `🐋 ${t.volume.toFixed(1)}L`;
@@ -1868,27 +1913,29 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── CVD Divergence Alert Banner on Chart ─────────────────────── */
+  /* ─── CVD Divergence Alert Banner on Chart (Anti-Collision Docked) ─ */
   _drawDivergenceAlert(ctx, div) {
     if (!div) return;
+    if (this.bmZenMode) return; // Zen Pro Mode: Suppress floating warning banner
     const now = Date.now();
     if (now - div.timestamp > 15000) return;
 
     ctx.save();
     const isBull = div.type === 'bullish';
-    const bannerW = 390;
-    const bannerH = 26;
-    const bannerX = this.CHART_LEFT + (this.CHART_WIDTH - bannerW) / 2;
-    const bannerY = this.CHART_TOP + 12;
+    const bannerW = 340;
+    const bannerH = 20;
+    // Docked at Top-Right so it NEVER collides with Top-Left Radar Bookmap signals
+    const bannerX = this.CHART_RIGHT - bannerW - 14;
+    const bannerY = this.CHART_TOP + 6;
 
     ctx.fillStyle = isBull ? 'rgba(5, 30, 18, 0.94)' : 'rgba(38, 8, 16, 0.94)';
     ctx.fillRect(bannerX, bannerY, bannerW, bannerH);
     ctx.strokeStyle = isBull ? '#00e676' : '#ff3366';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.2;
     ctx.strokeRect(bannerX, bannerY, bannerW, bannerH);
 
     ctx.fillStyle = isBull ? '#00e676' : '#ff3366';
-    ctx.font = 'bold 10px "JetBrains Mono", monospace';
+    ctx.font = 'bold 9px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const icon = isBull ? '⚡' : '⚠️';
@@ -1896,7 +1943,7 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── Trapped Traders (Buyers / Sellers) Visual Badges ───────────── */
+  /* ─── Trapped Traders (Buyers / Sellers) Visual Badges (Anti-Collision) ─── */
   _drawTrappedTraders(ctx, trappedList) {
     if (!trappedList || trappedList.length === 0) return;
     const now = Date.now();
@@ -1905,8 +1952,8 @@ class BookmapRenderer {
     for (const tr of trappedList) {
       if (now - tr.timestamp > 35000) continue; // Persist for 35 seconds
 
-      const y = this.priceToY(tr.price);
-      if (y < this.CHART_TOP || y > this.CHART_BOTTOM) continue;
+      const rawY = this.priceToY(tr.price);
+      if (rawY < this.CHART_TOP || rawY > this.CHART_BOTTOM) continue;
 
       const isBuyerTrapped = tr.type === 'TRAPPED_BUYERS';
       const col = isBuyerTrapped ? '#ff3366' : '#00e676';
@@ -1917,16 +1964,30 @@ class BookmapRenderer {
       ctx.strokeStyle = col;
       ctx.lineWidth = 1.3;
       ctx.beginPath();
-      ctx.moveTo(this.CHART_LEFT, y);
-      ctx.lineTo(this.CHART_RIGHT - 120, y);
+      ctx.moveTo(this.CHART_LEFT, rawY);
+      ctx.lineTo(this.CHART_RIGHT - 120, rawY);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Glowing Badge Pill
+      // In Zen mode, skip the bulky badge pill to keep candles completely clear
+      if (this.bmZenMode) continue;
+
+      // Glowing Badge Pill with Anti-Collision Slotting
       const badgeW = 215;
-      const badgeH = 20;
+      const badgeH = 18;
+      const resolvedY = this._resolveNonOverlappingY(rawY, badgeH, 20);
       const bx = this.CHART_RIGHT - badgeW - 130;
-      const by = y - (badgeH / 2);
+      const by = resolvedY - (badgeH / 2);
+
+      // Connecting lead-line if offset vertically
+      if (Math.abs(resolvedY - rawY) > 4) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(bx + badgeW, by + badgeH / 2);
+        ctx.lineTo(this.CHART_RIGHT - 120, rawY);
+        ctx.stroke();
+      }
 
       ctx.fillStyle = bgCol;
       ctx.fillRect(bx, by, badgeW, badgeH);
@@ -2073,9 +2134,9 @@ class BookmapRenderer {
       }
     }
 
-    // Draw Session Liquidity Sweep Alert Banner if active (< 60s old)
+    // Draw Session Liquidity Sweep Alert Banner if active (< 60s old) and NOT in Zen mode
     const sw = sessions.sweep_alert;
-    if (sw && (Date.now() - sw.timestamp < 60000)) {
+    if (!this.bmZenMode && sw && (Date.now() - sw.timestamp < 60000)) {
       const sy = this.priceToY(sw.level_price);
       if (sy >= this.CHART_TOP + 10 && sy <= this.CHART_BOTTOM - 10) {
         const isBull = sw.bias === 'BUY';
@@ -2247,23 +2308,28 @@ class BookmapRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Compact Iceberg Pill with Multi-Fill Reload Tag
+      // In Zen mode, skip bulky badge pill to preserve clean heatmap and candles
+      if (this.bmZenMode) continue;
+
+      // Compact Iceberg Pill with Anti-Collision Slotting
+      const badgeH = 15;
+      const resolvedY = this._resolveNonOverlappingY(y, badgeH, 20);
       const txt = `🧊 ICE ${ic.bias} $${ic.price.toFixed(2)} (${ic.absorbed_vol}L${reloadTxt})`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const tw = ctx.measureText(txt).width + 12;
       const bx = this.NOW_X - tw - 16;
-      const by = y - 7.5;
+      const by = resolvedY - 7.5;
 
       ctx.fillStyle = 'rgba(6, 12, 24, 0.94)';
-      ctx.fillRect(bx, by, tw, 15);
+      ctx.fillRect(bx, by, tw, badgeH);
       ctx.strokeStyle = col;
       ctx.lineWidth = 1.1;
-      ctx.strokeRect(bx, by, tw, 15);
+      ctx.strokeRect(bx, by, tw, badgeH);
 
       ctx.fillStyle = col;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(txt, bx + 6, y);
+      ctx.fillText(txt, bx + 6, resolvedY);
     }
 
     ctx.restore();
@@ -3004,6 +3070,38 @@ class BookmapRenderer {
       this.bmHudHitboxes.push({ x: pillX, y, w, h, onClick });
       pillX += w + 3;
     };
+
+    // 2A. Zen Pro Mode Toggle (Pristine, Uncluttered Bookmap)
+    drawHudPill(
+      this.bmZenMode ? '🧘 Zen: ON' : '🧘 Zen: OFF',
+      this.bmZenMode,
+      '#00f0ff',
+      () => {
+        this.bmZenMode = !this.bmZenMode;
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          window.orderFlowApp.showToast(this.bmZenMode ? '🧘 Mod Zen Pro Aktif: Paparan Bersih Tanpa Gangguan Teks' : '📊 Mod Analisis Penuh: Semua Tag & Isyarat Dipaparkan');
+        }
+      }
+    );
+
+    // 2B. Smart Bubble Threshold Filter (Jerung >12L / Semua / Tutup)
+    const bubLabel = this.bmBubbleFilter === 'off' ? '🫧 Buih: Tutup' : (this.bmBubbleFilter === 'all' ? '🫧 Buih: Semua' : '🫧 Jerung >12L');
+    const bubActive = this.bmBubbleFilter !== 'off';
+    const bubCol = this.bmBubbleFilter === 'all' ? '#fbbf24' : '#38bdf8';
+    drawHudPill(
+      bubLabel,
+      bubActive,
+      bubCol,
+      () => {
+        if (this.bmBubbleFilter === 'whale') this.bmBubbleFilter = 'all';
+        else if (this.bmBubbleFilter === 'all') this.bmBubbleFilter = 'off';
+        else this.bmBubbleFilter = 'whale';
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          const modeName = this.bmBubbleFilter === 'whale' ? 'Jerung Sahaja (>12L)' : (this.bmBubbleFilter === 'all' ? 'Semua Buih' : 'Buih Dimatikan');
+          window.orderFlowApp.showToast(`🫧 Penapis Buih: ${modeName}`);
+        }
+      }
+    );
 
     // Dynamic Contrast Dial (AUTO / LOW / MED / HIGH)
     const contrastCol = this.bmContrastMode === 'HIGH' ? '#f43f5e' : (this.bmContrastMode === 'MED' ? '#38bdf8' : (this.bmContrastMode === 'LOW' ? '#a78bfa' : '#fbbf24'));
