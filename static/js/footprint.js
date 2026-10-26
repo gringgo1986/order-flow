@@ -3292,10 +3292,10 @@ class FootprintRenderer {
     const lastPrice = snapshot.last_price || snapshot.bid || candles[candles.length - 1].close;
 
     // Layout geometry (World-Class TradingView Obsidian Layout)
-    const topBarH = 32;
-    const rightAxisW = 72;
+    const topBarH = 34;
+    const rightAxisW = 76;
     const bottomTimeH = 22;
-    const volPaneH = Math.max(54, Math.floor((this.height - topBarH - bottomTimeH) * 0.19));
+    const volPaneH = Math.max(54, Math.floor((this.height - topBarH - bottomTimeH) * 0.18));
     const mainChartTop = topBarH;
     const mainChartBottom = this.height - bottomTimeH - volPaneH;
     const mainChartH = mainChartBottom - mainChartTop;
@@ -3418,18 +3418,18 @@ class FootprintRenderer {
     if (snapshot.session_vp && snapshot.session_vp.buckets) {
       const svp = snapshot.session_vp;
       const maxSvpV = Math.max(10, svp.max_bucket_vol || 50);
-      const maxBarW = 64;
+      const maxBarW = 58;
       for (const b of svp.buckets) {
         const by = pToY(b.price);
         if (by < mainChartTop + 6 || by > mainChartBottom - 6) continue;
         const bw = Math.min(maxBarW, (b.total / maxSvpV) * maxBarW);
         const isDpoc = Math.abs(b.price - (svp.dpoc || 0)) < 0.08;
-        ctx.fillStyle = isDpoc ? 'rgba(255, 214, 10, 0.38)' : 'rgba(56, 189, 248, 0.15)';
+        ctx.fillStyle = isDpoc ? 'rgba(255, 214, 10, 0.35)' : 'rgba(56, 189, 248, 0.12)';
         ctx.fillRect(chartW - bw, by - 3, bw, 6);
       }
     }
 
-    // 6. Key Institutional Levels with Anti-Collision Vertical Slotting
+    // 6. Key Institutional Levels with Anti-Collision Vertical Slotting (>= 18px Clearance)
     const candidateLevels = [];
     if (this.csShowVWAP && snapshot.vwap && snapshot.vwap.value > 0) {
       candidateLevels.push({ price: snapshot.vwap.value, label: '🌐 VWAP', color: '#00f0ff', dash: [], prio: 10 });
@@ -3464,7 +3464,7 @@ class FootprintRenderer {
     for (const lvl of candidateLevels) {
       if (!lvl.price || lvl.price <= 0) continue;
       const y = pToY(lvl.price);
-      if (y < mainChartTop + 12 || y > mainChartBottom - 12) continue;
+      if (y < mainChartTop + 14 || y > mainChartBottom - 14) continue;
 
       // Draw Ray Line across the full chart width
       ctx.save();
@@ -3477,8 +3477,8 @@ class FootprintRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Check vertical clearance for Right-Edge Pill Tag (must have >= 15px distance)
-      const canDrawPill = !placedTagYs.some(py => Math.abs(py - y) < 15);
+      // Vertical clearance >= 18px for Right-Edge Pill Tag
+      const canDrawPill = !placedTagYs.some(py => Math.abs(py - y) < 18);
       if (canDrawPill) {
         placedTagYs.push(y);
         const txt = `${lvl.label} $${lvl.price.toFixed(2)}`;
@@ -3502,9 +3502,9 @@ class FootprintRenderer {
     const rightPad = 26;
     const usableW = Math.max(200, chartW - leftPad - rightPad);
     const slotW = usableW / candles.length;
-    const bodyW = Math.max(4, Math.min(22, Math.floor(slotW * 0.70)));
+    const bodyW = Math.max(4, Math.min(26, Math.floor(slotW * 0.72)));
 
-    const getBarX = (idx) => leftPad + idx * slotW + slotW / 2;
+    const getBarX = (idx) => Math.round(leftPad + idx * slotW + slotW / 2) + 0.5;
 
     // Bottom Time Axis Strip
     const timeStripY = this.height - bottomTimeH;
@@ -3535,13 +3535,15 @@ class FootprintRenderer {
       }
     }
 
-    // 7.5. Feature 1 & 3: Institutional Fair Value Gaps (FVG) & Order Blocks (OB)
+    // 7.5. Institutional Fair Value Gaps (FVG) & Order Blocks (OB) - Streamlined Max 4 Active
     const showFvgOb = this.csShowFvgOb !== false;
     if (showFvgOb && candles.length >= 4) {
       ctx.save();
 
-      // --- A. Bullish & Bearish Fair Value Gaps (FVG) ---
-      for (let i = 2; i < candles.length; i++) {
+      // Collect active FVGs (recent 35 bars, limit to max 4 most prominent)
+      const activeFvgs = [];
+      const searchStart = Math.max(2, candles.length - 35);
+      for (let i = searchStart; i < candles.length; i++) {
         const c1 = candles[i - 2];
         const c2 = candles[i - 1];
         const c3 = candles[i];
@@ -3554,38 +3556,18 @@ class FootprintRenderer {
           let endX = chartW - 4;
           let isMitigated = false;
 
-          // Check mitigation by subsequent candles
           for (let j = i + 1; j < candles.length; j++) {
             if (candles[j].low <= botP) {
               endX = getBarX(j);
               isMitigated = true;
               break;
             } else if (candles[j].low < topP) {
-              // Partial mitigation
               botP = Math.max(botP, candles[j].low);
             }
           }
 
-          const yTop = pToY(topP);
-          const yBot = pToY(botP);
-          const boxH = Math.max(3, yBot - yTop);
-          const boxW = Math.max(12, endX - startX);
-
-          if (yTop >= mainChartTop - 10 && yBot <= mainChartBottom + 10) {
-            ctx.fillStyle = isMitigated ? 'rgba(16, 185, 129, 0.06)' : 'rgba(16, 185, 129, 0.14)';
-            ctx.fillRect(startX, yTop, boxW, boxH);
-            ctx.strokeStyle = isMitigated ? 'rgba(16, 185, 129, 0.25)' : 'rgba(52, 211, 153, 0.65)';
-            ctx.setLineDash([3, 3]);
-            ctx.lineWidth = 0.8;
-            ctx.strokeRect(startX, yTop, boxW, boxH);
-            ctx.setLineDash([]);
-
-            if (!isMitigated && boxW > 35) {
-              ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
-              ctx.fillStyle = '#34d399';
-              ctx.textAlign = 'right';
-              ctx.fillText('FVG [+]', startX + boxW - 3, yTop + 8);
-            }
+          if (!isMitigated || (candles.length - 1 - i <= 6)) {
+            activeFvgs.push({ type: 'BULL', topP, botP, startX, endX, isMitigated });
           }
         }
 
@@ -3597,50 +3579,65 @@ class FootprintRenderer {
           let endX = chartW - 4;
           let isMitigated = false;
 
-          // Check mitigation by subsequent candles
           for (let j = i + 1; j < candles.length; j++) {
             if (candles[j].high >= topP) {
               endX = getBarX(j);
               isMitigated = true;
               break;
             } else if (candles[j].high > botP) {
-              // Partial mitigation
               topP = Math.min(topP, candles[j].high);
             }
           }
 
-          const yTop = pToY(topP);
-          const yBot = pToY(botP);
-          const boxH = Math.max(3, yBot - yTop);
-          const boxW = Math.max(12, endX - startX);
-
-          if (yTop >= mainChartTop - 10 && yBot <= mainChartBottom + 10) {
-            ctx.fillStyle = isMitigated ? 'rgba(244, 63, 94, 0.06)' : 'rgba(244, 63, 94, 0.14)';
-            ctx.fillRect(startX, yTop, boxW, boxH);
-            ctx.strokeStyle = isMitigated ? 'rgba(244, 63, 94, 0.25)' : 'rgba(251, 113, 133, 0.65)';
-            ctx.setLineDash([3, 3]);
-            ctx.lineWidth = 0.8;
-            ctx.strokeRect(startX, yTop, boxW, boxH);
-            ctx.setLineDash([]);
-
-            if (!isMitigated && boxW > 35) {
-              ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
-              ctx.fillStyle = '#fb7185';
-              ctx.textAlign = 'right';
-              ctx.fillText('FVG [-]', startX + boxW - 3, yTop + 8);
-            }
+          if (!isMitigated || (candles.length - 1 - i <= 6)) {
+            activeFvgs.push({ type: 'BEAR', topP, botP, startX, endX, isMitigated });
           }
         }
       }
 
-      // --- B. Institutional Unmitigated Order Blocks (OB Boxes) ---
-      for (let i = 2; i < candles.length - 1; i++) {
+      // Draw top 4 FVGs
+      const drawnFvgs = activeFvgs.slice(-4);
+      for (const fvg of drawnFvgs) {
+        const yTop = pToY(fvg.topP);
+        const yBot = pToY(fvg.botP);
+        const boxH = Math.max(3, yBot - yTop);
+        const boxW = Math.max(12, fvg.endX - fvg.startX);
+
+        if (yTop >= mainChartTop - 10 && yBot <= mainChartBottom + 10) {
+          const isBullFvg = fvg.type === 'BULL';
+          const fillCol = isBullFvg
+            ? (fvg.isMitigated ? 'rgba(16, 185, 129, 0.05)' : 'rgba(16, 185, 129, 0.14)')
+            : (fvg.isMitigated ? 'rgba(244, 63, 94, 0.05)' : 'rgba(244, 63, 94, 0.14)');
+          const strokeCol = isBullFvg
+            ? (fvg.isMitigated ? 'rgba(16, 185, 129, 0.20)' : 'rgba(52, 211, 153, 0.60)')
+            : (fvg.isMitigated ? 'rgba(244, 63, 94, 0.20)' : 'rgba(251, 113, 133, 0.60)');
+
+          ctx.fillStyle = fillCol;
+          ctx.fillRect(fvg.startX, yTop, boxW, boxH);
+          ctx.strokeStyle = strokeCol;
+          ctx.setLineDash([3, 3]);
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(fvg.startX, yTop, boxW, boxH);
+          ctx.setLineDash([]);
+
+          if (!fvg.isMitigated && boxW > 35) {
+            ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+            ctx.fillStyle = isBullFvg ? '#34d399' : '#fb7185';
+            ctx.textAlign = 'right';
+            ctx.fillText(isBullFvg ? 'FVG [+]' : 'FVG [-]', fvg.startX + boxW - 3, yTop + 8);
+          }
+        }
+      }
+
+      // --- B. Institutional Unmitigated Order Blocks (OB Boxes, max 3) ---
+      const activeObs = [];
+      const obSearchStart = Math.max(2, candles.length - 28);
+      for (let i = obSearchStart; i < candles.length - 1; i++) {
         const base = candles[i - 1];
         const impulse = candles[i];
-        const impulseRange = impulse.high - impulse.low;
         const impulseBody = Math.abs(impulse.close - impulse.open);
 
-        // Bullish Order Block (Base Red Candle before violent upward move)
+        // Bullish Order Block
         if (impulse.close > impulse.open && impulseBody >= 0.45 && base.close <= base.open) {
           const obTop = Math.max(base.open, base.close);
           const obBot = base.low;
@@ -3657,26 +3654,11 @@ class FootprintRenderer {
           }
 
           if (!broken) {
-            const yTop = pToY(obTop);
-            const yBot = pToY(obBot);
-            const boxH = Math.max(3, yBot - yTop);
-            const boxW = Math.max(14, endX - startX);
-            if (yTop >= mainChartTop && yBot <= mainChartBottom) {
-              ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
-              ctx.fillRect(startX, yTop, boxW, boxH);
-              ctx.strokeStyle = '#10b981';
-              ctx.lineWidth = 0.9;
-              ctx.strokeRect(startX, yTop, boxW, boxH);
-
-              ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
-              ctx.fillStyle = '#10b981';
-              ctx.textAlign = 'left';
-              ctx.fillText('OB [BULL]', startX + 3, yTop + 8);
-            }
+            activeObs.push({ type: 'BULL', obTop, obBot, startX, endX });
           }
         }
 
-        // Bearish Order Block (Base Green Candle before violent downward move)
+        // Bearish Order Block
         if (impulse.close < impulse.open && impulseBody >= 0.45 && base.close >= base.open) {
           const obTop = base.high;
           const obBot = Math.min(base.open, base.close);
@@ -3693,30 +3675,41 @@ class FootprintRenderer {
           }
 
           if (!broken) {
-            const yTop = pToY(obTop);
-            const yBot = pToY(obBot);
-            const boxH = Math.max(3, yBot - yTop);
-            const boxW = Math.max(14, endX - startX);
-            if (yTop >= mainChartTop && yBot <= mainChartBottom) {
-              ctx.fillStyle = 'rgba(244, 63, 94, 0.12)';
-              ctx.fillRect(startX, yTop, boxW, boxH);
-              ctx.strokeStyle = '#f43f5e';
-              ctx.lineWidth = 0.9;
-              ctx.strokeRect(startX, yTop, boxW, boxH);
-
-              ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
-              ctx.fillStyle = '#f43f5e';
-              ctx.textAlign = 'left';
-              ctx.fillText('OB [BEAR]', startX + 3, yTop + 8);
-            }
+            activeObs.push({ type: 'BEAR', obTop, obBot, startX, endX });
           }
+        }
+      }
+
+      // Draw top 3 active Order Blocks
+      for (const ob of activeObs.slice(-3)) {
+        const yTop = pToY(ob.obTop);
+        const yBot = pToY(ob.obBot);
+        const boxH = Math.max(3, yBot - yTop);
+        const boxW = Math.max(14, ob.endX - ob.startX);
+        const isBullOb = ob.type === 'BULL';
+
+        if (yTop >= mainChartTop && yBot <= mainChartBottom) {
+          ctx.fillStyle = isBullOb ? 'rgba(16, 185, 129, 0.12)' : 'rgba(244, 63, 94, 0.12)';
+          ctx.fillRect(ob.startX, yTop, boxW, boxH);
+          ctx.strokeStyle = isBullOb ? '#10b981' : '#f43f5e';
+          ctx.lineWidth = 0.9;
+          ctx.strokeRect(ob.startX, yTop, boxW, boxH);
+
+          // Left border accent bar (3px)
+          ctx.fillStyle = isBullOb ? '#10b981' : '#f43f5e';
+          ctx.fillRect(ob.startX, yTop, 2.5, boxH);
+
+          ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+          ctx.fillStyle = isBullOb ? '#10b981' : '#f43f5e';
+          ctx.textAlign = 'left';
+          ctx.fillText(isBullOb ? 'OB [BULL]' : 'OB [BEAR]', ob.startX + 5, yTop + 8);
         }
       }
 
       ctx.restore();
     }
 
-    // 7.8. Feature 2: Smart Market Structure Breaks (BOS / CHoCH)
+    // 7.8. Smart Market Structure Breaks (BOS / CHoCH) - Top 3 Most Recent Only
     const showStructure = this.csShowStructure !== false;
     if (showStructure && candles.length >= 8) {
       ctx.save();
@@ -3731,7 +3724,7 @@ class FootprintRenderer {
         if (isSwingLow)  swings.push({ idx: i, type: 'LOW',  price: c.low });
       }
 
-      // Check breakout of recent swing points
+      const breaks = [];
       for (let sIdx = 0; sIdx < swings.length; sIdx++) {
         const sw = swings[sIdx];
         const startX = getBarX(sw.idx);
@@ -3756,34 +3749,38 @@ class FootprintRenderer {
           const isBOS = prevSame ? (isBullBreak ? sw.price >= prevSame.price : sw.price <= prevSame.price) : true;
           const badgeText = isBOS ? (isBullBreak ? 'BOS ↗' : 'BOS ↘') : (isBullBreak ? 'CHoCH ↗' : 'CHoCH ↘');
           const badgeCol = isBOS ? (isBullBreak ? '#00e676' : '#ff3366') : (isBullBreak ? '#00f0ff' : '#f59e0b');
-
-          ctx.setLineDash([3, 2]);
-          ctx.strokeStyle = badgeCol;
-          ctx.lineWidth = 1.1;
-          ctx.beginPath();
-          ctx.moveTo(startX, y);
-          ctx.lineTo(endX, y);
-          ctx.stroke();
-          ctx.setLineDash([]);
-
-          // Break badge label
-          ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
-          const tw = ctx.measureText(badgeText).width + 6;
-          const bx = endX - tw / 2;
-          ctx.fillStyle = 'rgba(7, 11, 20, 0.92)';
-          ctx.fillRect(bx, y - 6, tw, 12);
-          ctx.strokeStyle = badgeCol;
-          ctx.lineWidth = 0.8;
-          ctx.strokeRect(bx, y - 6, tw, 12);
-          ctx.fillStyle = badgeCol;
-          ctx.textAlign = 'center';
-          ctx.fillText(badgeText, bx + tw / 2, y + 3);
+          breaks.push({ startX, endX, y, badgeText, badgeCol });
         }
+      }
+
+      // Draw only the 3 most recent breaks to keep the chart clean
+      for (const br of breaks.slice(-3)) {
+        ctx.setLineDash([3, 2]);
+        ctx.strokeStyle = br.badgeCol;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(br.startX, br.y);
+        ctx.lineTo(br.endX, br.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Break badge label
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        const tw = ctx.measureText(br.badgeText).width + 6;
+        const bx = br.endX - tw / 2;
+        ctx.fillStyle = 'rgba(7, 11, 20, 0.94)';
+        ctx.fillRect(bx, br.y - 6, tw, 12);
+        ctx.strokeStyle = br.badgeCol;
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(bx, br.y - 6, tw, 12);
+        ctx.fillStyle = br.badgeCol;
+        ctx.textAlign = 'center';
+        ctx.fillText(br.badgeText, bx + tw / 2, br.y + 3);
       }
       ctx.restore();
     }
 
-    // 8. Draw EMA 9 / EMA 21 / EMA 50 Curves
+    // 8. Draw EMA 9 / EMA 21 / EMA 50 Curves (Smooth Bezier)
     if (this.csShowEMA && candles.length > 1) {
       const drawCurve = (arr, col, width) => {
         ctx.save();
@@ -4134,9 +4131,11 @@ class FootprintRenderer {
       const yOpen = pToY(c.open);
       const yClose = pToY(c.close);
       const bodyTop = Math.min(yOpen, yClose);
-      const bodyH = Math.max(2.5, Math.abs(yClose - yOpen));
+      const rawBodyH = Math.abs(yClose - yOpen);
+      const isDoji = rawBodyH < 1.0;
+      const bodyH = isDoji ? 2.5 : Math.max(3.0, rawBodyH);
 
-      // Clean Anti-Aliased High-Low Wick
+      // Clean Anti-Aliased High-Low Wick with Pixel Alignment
       ctx.save();
       ctx.strokeStyle = isBull ? '#00e676' : '#ff3366';
       ctx.lineWidth = isLive ? 1.6 : 1.2;
@@ -4154,7 +4153,11 @@ class FootprintRenderer {
       const bodyX = cx - bodyW / 2;
       const radius = Math.min(2.0, bodyW / 3);
 
-      if (hasBearDivergence) {
+      if (isDoji) {
+        // Crossbar for Doji
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(bodyX, bodyTop - 1, bodyW, 2.5);
+      } else if (hasBearDivergence) {
         // Hidden Bearish Absorption
         drawRoundedRect(bodyX, bodyTop, bodyW, bodyH, radius, '#15803d', '#f59e0b', 1.2);
         drawRoundedRect(bodyX + 1, bodyTop + 1, Math.max(1, bodyW - 2), Math.max(1, bodyH - 2), radius, 'rgba(239, 68, 68, 0.65)', null, 0);
@@ -4177,15 +4180,15 @@ class FootprintRenderer {
       }
 
       // Internal Order Flow POC Golden Dot
-      if (this.csShowLevels && c.poc && bodyW >= 6) {
+      if (this.csShowLevels && c.poc && bodyW >= 7) {
         const yPoc = pToY(c.poc);
         if (yPoc >= yHigh - 2 && yPoc <= yLow + 2) {
           ctx.fillStyle = '#ffd60a';
           ctx.beginPath();
-          ctx.arc(cx, yPoc, Math.min(3.0, Math.max(1.8, bodyW * 0.22)), 0, Math.PI * 2);
+          ctx.arc(cx, yPoc, Math.min(2.8, Math.max(1.6, bodyW * 0.20)), 0, Math.PI * 2);
           ctx.fill();
-          ctx.strokeStyle = '#000000';
-          ctx.lineWidth = 0.7;
+          ctx.strokeStyle = '#04101e';
+          ctx.lineWidth = 0.6;
           ctx.stroke();
         }
       }
@@ -4577,7 +4580,7 @@ class FootprintRenderer {
       ctx.fillText(cursorP.toFixed(2), chartW + rightAxisW / 2, this.mousePos.y + 3.5);
     }
 
-    // 13. Top Interactive Candlestick Telemetry Strip & Quick Action Trade HUD
+    // 13. Top Interactive Candlestick Header: Streamlined, Zero-Overlap, Crystal Clear
     ctx.fillStyle = '#0b1220';
     ctx.fillRect(0, 0, this.width, topBarH);
     ctx.strokeStyle = '#1e293b';
@@ -4586,103 +4589,140 @@ class FootprintRenderer {
     ctx.lineTo(this.width, topBarH);
     ctx.stroke();
 
-    // Define interactive pills: Feature Toggles + Navigation + Quick Action Trade HUD
+    // Streamlined Essential Feature Toggle Pills (Total 6-7 Pills max, clean and focused)
     const pills = [
-      // Replay / Backtesting Mode Quick Toggle
-      { label: this.isReplayMode ? '⏪ REPLAY: ON' : '⏪ REPLAY', active: this.isReplayMode, col: '#818cf8', fn: () => {
-        if (window.app && window.app.toggleReplayMode) window.app.toggleReplayMode();
-        else if (window.orderFlowApp && window.orderFlowApp.toggleReplayMode) window.orderFlowApp.toggleReplayMode();
-      }},
-      // Quick Action Trade HUD
-      { label: '⚡ BUY', active: true, col: '#059669', isTrade: true, fn: () => {
-        if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('BUY');
-      }},
-      { label: '⚡ SELL', active: true, col: '#dc2626', isTrade: true, fn: () => {
-        if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('SELL');
-      }},
-      { label: '🎯 BE', active: false, col: '#0284c7', isTrade: true, fn: () => {
-        fetch('/api/breakeven_all', { method: 'POST' }).then(r => r.json()).then(res => {
-          if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
-        });
-      }},
-      { label: '❌ CLOSE', active: false, col: '#e11d48', isTrade: true, fn: () => {
-        fetch('/api/close_all', { method: 'POST' }).then(r => r.json()).then(res => {
-          if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
-        });
-      }},
-      // Indicator & Analysis Toggles
       { label: '📈 EMA', active: this.csShowEMA, col: '#ffd60a', fn: () => { this.csShowEMA = !this.csShowEMA; } },
       { label: '🌐 VWAP', active: this.csShowVWAP, col: '#00f0ff', fn: () => { this.csShowVWAP = !this.csShowVWAP; } },
-      { label: '⭐ Sesi', active: this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
+      { label: '⭐ Paras', active: this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
       { label: this.csShowFvgOb !== false ? '📦 FVG/OB' : '📦 FVG: OFF', active: this.csShowFvgOb !== false, col: '#34d399', fn: () => { this.csShowFvgOb = !(this.csShowFvgOb !== false); } },
       { label: this.csShowStructure !== false ? '🏛️ BOS' : '🏛️ BOS: OFF', active: this.csShowStructure !== false, col: '#c084fc', fn: () => { this.csShowStructure = !(this.csShowStructure !== false); } },
-      { label: this.csShowSignals ? '🎯 Signal' : '🎯 Signal: OFF', active: this.csShowSignals, col: '#00e676', fn: () => { this.csShowSignals = !this.csShowSignals; } },
-      { label: '◀', active: false, col: '#38bdf8', fn: () => { this.panHorizontal(-1); } },
-      { label: '▶', active: false, col: '#38bdf8', fn: () => { this.panHorizontal(1); } },
-      { label: '▲', active: false, col: '#38bdf8', fn: () => { this.panVertical(1); } },
-      { label: '▼', active: false, col: '#38bdf8', fn: () => { this.panVertical(-1); } }
+      { label: this.csShowSignals ? '🎯 Isyarat' : '🎯 Isyarat: OFF', active: this.csShowSignals, col: '#00e676', fn: () => { this.csShowSignals = !this.csShowSignals; } }
     ];
-    if (Math.abs(this.priceOffset || 0) > 0.05 || (this.barOffset || 0) > 0) {
-      pills.push({ label: '🎯 Cent', active: true, col: '#fbbf24', fn: () => { this.centerVertical(); } });
+
+    // Show Center Reset button if chart is panned or zoomed away
+    if (Math.abs(this.priceOffset || 0) > 0.05 || (this.barOffset || 0) > 0 || Math.abs((this.csVerticalScale || 1.0) - 1.0) > 0.05) {
+      pills.push({ label: '🎯 Pusat', active: true, col: '#fbbf24', fn: () => { this.centerVertical(); this.csVerticalScale = 1.0; } });
     }
-    pills.push({ label: '➖', active: false, col: '#38bdf8', fn: () => { this.csVisibleBars = Math.min(50, (this.csVisibleBars || 34) + 4); } });
-    pills.push({ label: '➕', active: false, col: '#38bdf8', fn: () => { this.csVisibleBars = Math.max(14, (this.csVisibleBars || 34) - 4); } });
 
     // Measure pill widths
     ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
     let totalPillsW = 0;
     const pillMetrics = pills.map(p => {
-      const w = Math.ceil(ctx.measureText(p.label).width) + 10;
+      const w = Math.ceil(ctx.measureText(p.label).width) + 12;
       totalPillsW += (w + 4);
       return { ...p, w };
     });
 
-    // Anchor pills from right edge
-    const pillStartX = Math.max(240, this.width - totalPillsW - 6);
+    // Anchor pills strictly from right edge with 6px margin
+    const pillStartX = Math.max(260, this.width - totalPillsW - 6);
     let curPx = pillStartX;
 
-    // Render Pills
+    // Render Pills with subtle rounded borders
     for (const p of pillMetrics) {
       const y = 6;
-      const h = 20;
+      const h = 22;
       if (curPx + p.w > this.width - 4) break;
-      ctx.fillStyle = p.active ? p.col : '#162238';
-      ctx.fillRect(curPx, y, p.w, h);
-      ctx.strokeStyle = p.active ? (p.isTrade ? '#ffffff' : p.col) : '#334155';
-      ctx.lineWidth = p.isTrade ? 1.0 : 0.8;
-      ctx.strokeRect(curPx, y, p.w, h);
-      ctx.fillStyle = p.active ? '#ffffff' : '#94a3b8';
+      drawRoundedRect(curPx, y, p.w, h, 3, p.active ? (p.col === '#ffd60a' ? 'rgba(255,214,10,0.18)' : (p.col === '#00f0ff' ? 'rgba(0,240,255,0.18)' : (p.col === '#34d399' ? 'rgba(52,211,153,0.18)' : (p.col === '#c084fc' ? 'rgba(192,132,252,0.18)' : 'rgba(0,230,118,0.18)')))) : '#162238', p.active ? p.col : '#334155', p.active ? 1.0 : 0.8);
+      ctx.fillStyle = p.active ? p.col : '#94a3b8';
       ctx.textAlign = 'center';
-      ctx.fillText(p.label, curPx + p.w / 2, y + 13.5);
+      ctx.fillText(p.label, curPx + p.w / 2, y + 14);
       this.cdToolbarHitboxes.push({ x: curPx, y, w: p.w, h, onClick: p.fn });
       curPx += p.w + 4;
     }
 
-    // Left Telemetry in safe space between 0 and pillStartX - 10
+    // Left Telemetry Strip (Spacious, Anti-Collision, Zero-Overlap)
     const chg = dispC.close - dispC.open;
     const isUpC = chg >= 0;
     const availTeleW = pillStartX - 16;
 
-    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-    ctx.textAlign = 'left';
+    // Badge: Instrument & Timeframe
+    ctx.fillStyle = 'rgba(255, 214, 10, 0.12)';
+    ctx.fillRect(8, 6, 92, 22);
+    ctx.strokeStyle = '#ffd60a';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(8, 6, 92, 22);
+    ctx.font = 'bold 9px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
     ctx.fillStyle = '#ffd60a';
-    ctx.fillText(`🕯️ XAUUSD [${this.timeframe || 'M1'}]`, 8, 20);
+    ctx.fillText(`🕯️ XAUUSD [${this.timeframe || 'M1'}]`, 54, 20);
 
-    if (availTeleW > 160) {
-      let ohlcTxt = '';
-      if (availTeleW > 450) {
-        ohlcTxt = `O:${dispC.open.toFixed(2)}  H:${dispC.high.toFixed(2)}  L:${dispC.low.toFixed(2)}  C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})  Vol:${dispC.volume.toFixed(0)}L  Δ:${dispC.delta >= 0 ? '+' : ''}${dispC.delta.toFixed(1)}L`;
-      } else if (availTeleW > 300) {
-        ohlcTxt = `O:${dispC.open.toFixed(2)} H:${dispC.high.toFixed(2)} L:${dispC.low.toFixed(2)} C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`;
+    // Live OHLC Metrics + Volume & Delta
+    if (availTeleW > 120) {
+      ctx.textAlign = 'left';
+      if (availTeleW > 580) {
+        // Complete Desktop Telemetry
+        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`O:`, 110, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`${dispC.open.toFixed(2)}`, 124, 20);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`H:`, 174, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`${dispC.high.toFixed(2)}`, 188, 20);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`L:`, 238, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`${dispC.low.toFixed(2)}`, 252, 20);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`C:`, 302, 20);
+        ctx.fillStyle = isUpC ? '#00e676' : '#ff3366';
+        ctx.fillText(`${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`, 316, 20);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`Vol:`, 414, 20);
+        ctx.fillStyle = '#ffd60a';
+        ctx.fillText(`${(dispC.volume || 0).toFixed(0)}L`, 440, 20);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`Δ:`, 488, 20);
+        ctx.fillStyle = (dispC.delta || 0) >= 0 ? '#00e676' : '#ff3366';
+        ctx.fillText(`${(dispC.delta || 0) >= 0 ? '+' : ''}${(dispC.delta || 0).toFixed(1)}L`, 504, 20);
+
+        // Triple EMA Legend inline
+        if (this.csShowEMA && availTeleW > 740 && ema9.length > 0) {
+          const lastE9 = ema9[ema9.length - 1];
+          const lastE21 = ema21[ema21.length - 1];
+          const lastE50 = ema50[ema50.length - 1];
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          ctx.fillStyle = '#ffd60a';
+          ctx.fillText(`EMA9:${lastE9.toFixed(1)}`, 574, 20);
+          ctx.fillStyle = '#00f0ff';
+          ctx.fillText(`EMA21:${lastE21.toFixed(1)}`, 650, 20);
+          ctx.fillStyle = '#c084fc';
+          ctx.fillText(`EMA50:${lastE50.toFixed(1)}`, 732, 20);
+        }
+      } else if (availTeleW > 380) {
+        // Compact Laptop Telemetry
+        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`O:`, 110, 20);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`${dispC.open.toFixed(2)}`, 124, 20);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`H:`, 172, 20);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`${dispC.high.toFixed(2)}`, 186, 20);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`L:`, 234, 20);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`${dispC.low.toFixed(2)}`, 248, 20);
+        ctx.fillStyle = isUpC ? '#00e676' : '#ff3366';
+        ctx.fillText(`C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`, 296, 20);
       } else {
-        ohlcTxt = `C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`;
+        // Ultra Compact
+        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.fillStyle = isUpC ? '#00e676' : '#ff3366';
+        ctx.fillText(`C: $${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`, 110, 20);
       }
-      ctx.fillStyle = isUpC ? '#4ade80' : '#fb7185';
-      ctx.fillText(ohlcTxt, 114, 20);
     }
 
     ctx.restore();
   }
+
 
   zoomIn() {
     this.candleWidth = Math.min(240, this.candleWidth + 20);
