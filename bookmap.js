@@ -1957,65 +1957,120 @@ class BookmapRenderer {
     ctx.save();
 
     const levels = [
-      // Higher Timeframe SNR M15, M30, H1, H4, H8 Levels
-      { price: sessions.h8_res || sessions.h8_high, label: '🏛️ H8 RES', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.24)' },
-      { price: sessions.h8_sup || sessions.h8_low,  label: '🏛️ H8 SUP', col: '#059669', bg: 'rgba(5, 150, 105, 0.24)' },
-      { price: sessions.h4_res || sessions.h4_high, label: '🏰 H4 RES', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.22)' },
-      { price: sessions.h4_sup || sessions.h4_low,  label: '🏰 H4 SUP', col: '#10b981', bg: 'rgba(16, 185, 129, 0.22)' },
-      { price: sessions.h1_res || sessions.h1_high, label: '⏱️ H1 RES', col: '#f97316', bg: 'rgba(249, 115, 22, 0.20)' },
-      { price: sessions.h1_sup || sessions.h1_low,  label: '⏱️ H1 SUP', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.20)' },
-      { price: sessions.m30_res || sessions.m30_high, label: '⏳ M30 RES', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.18)' },
-      { price: sessions.m30_sup || sessions.m30_low,  label: '⏳ M30 SUP', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.18)' },
-      { price: sessions.m15_res || sessions.m15_high, label: '⚡ M15 RES', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.18)' },
-      { price: sessions.m15_sup || sessions.m15_low,  label: '⚡ M15 SUP', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.18)' },
+      // 1D (Daily) Levels - Major Institutional S/R
+      { price: sessions.pdh,         label: '🏛️ 1D HIGH (PDH)', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.pdl,         label: '🏛️ 1D LOW (PDL)',  col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.daily_open,  label: '⚡ 1D OPEN',       col: '#38bdf8', bg: 'rgba(56, 189, 248, 0.26)', isHtf: true },
 
-      { price: sessions.pdh,         label: '🏛️ PDH (Semalam)', col: '#fde047', bg: 'rgba(253, 224, 71, 0.18)' },
-      { price: sessions.pdl,         label: '🏛️ PDL (Semalam)', col: '#fde047', bg: 'rgba(253, 224, 71, 0.18)' },
-      { price: sessions.daily_open,  label: '⚡ DAILY OPEN',    col: '#38bdf8', bg: 'rgba(56, 189, 248, 0.16)' },
-      { price: sessions.asian_high,  label: '🌏 ASIAN HIGH',    col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)' },
-      { price: sessions.asian_low,   label: '🌏 ASIAN LOW',     col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)' },
-      { price: sessions.london_high, label: '🇬🇧 LONDON HIGH',   col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.16)' },
-      { price: sessions.london_low,  label: '🇬🇧 LONDON LOW',    col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.16)' },
-      { price: sessions.ny_high,     label: '🗽 NY HIGH',       col: '#c084fc', bg: 'rgba(192, 132, 252, 0.16)' },
-      { price: sessions.ny_low,      label: '🗽 NY LOW',        col: '#c084fc', bg: 'rgba(192, 132, 252, 0.16)' }
+      // H8 & H4 Swing Levels
+      { price: sessions.h8_res || sessions.h8_high, label: '🏛️ H8 RES', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.26)', isHtf: true },
+      { price: sessions.h8_sup || sessions.h8_low,  label: '🏛️ H8 SUP', col: '#059669', bg: 'rgba(5, 150, 105, 0.26)', isHtf: true },
+      { price: sessions.h4_res || sessions.h4_high, label: '🏰 H4 RES', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: '🏰 H4 SUP', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
+
+      // H1 Swing Levels
+      { price: sessions.h1_res || sessions.h1_high, label: '⏱️ H1 RES', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: '⏱️ H1 SUP', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
+
+      // M30 Swing Levels
+      { price: sessions.m30_res || sessions.m30_high, label: '⏳ M30 RES', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
+      { price: sessions.m30_sup || sessions.m30_low,  label: '⏳ M30 SUP', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
+
+      // M15 Swing Levels
+      { price: sessions.m15_res || sessions.m15_high, label: '⚡ M15 RES', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
+      { price: sessions.m15_sup || sessions.m15_low,  label: '⚡ M15 SUP', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true },
+
+      // Session Extremes
+      { price: sessions.asian_high,  label: '🌏 ASIAN HIGH',    col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
+      { price: sessions.asian_low,   label: '🌏 ASIAN LOW',     col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
+      { price: sessions.london_high, label: '🇬🇧 LONDON HIGH',   col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
+      { price: sessions.london_low,  label: '🇬🇧 LONDON LOW',    col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
+      { price: sessions.ny_high,     label: '🗽 NY HIGH',       col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false },
+      { price: sessions.ny_low,      label: '🗽 NY LOW',        col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false }
     ];
 
-    const drawnLevelYs = [];
+    const drawnBadges = [];
+    let offScreenAboveCount = 0;
+    let offScreenBelowCount = 0;
+
     for (const lv of levels) {
       if (!lv.price || lv.price <= 0) continue;
       const y = this.priceToY(lv.price);
-      if (y < this.CHART_TOP + 14 || y > this.CHART_BOTTOM - 14) continue;
-      // Prevent vertical badge collisions on the left edge
-      if (drawnLevelYs.some(prevY => Math.abs(prevY - y) < 18)) continue;
-      drawnLevelYs.push(y);
 
-      ctx.setLineDash([6, 4]);
-      ctx.strokeStyle = lv.col;
-      ctx.lineWidth = 1.0;
-      ctx.beginPath();
-      ctx.moveTo(this.CHART_LEFT, y);
-      ctx.lineTo(this.CHART_RIGHT, y);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      // Check if level is on-screen
+      const inView = (y >= this.CHART_TOP - 4 && y <= this.CHART_BOTTOM + 4);
 
-      const text = `${lv.label} $${lv.price.toFixed(2)}`;
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
-      const tw = ctx.measureText(text).width + 8;
-      const bx = this.CHART_LEFT + 6;
-      const by = y - 7;
+      if (inView) {
+        // 1. ALWAYS draw full horizontal dashed SNR ray
+        ctx.setLineDash(lv.isHtf ? [8, 4] : [5, 4]);
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = lv.isHtf ? 1.2 : 0.9;
+        ctx.beginPath();
+        ctx.moveTo(this.CHART_LEFT, y);
+        ctx.lineTo(this.CHART_RIGHT, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
 
-      ctx.fillStyle = 'rgba(8, 13, 24, 0.90)';
-      ctx.fillRect(bx, by, tw, 14);
-      ctx.fillStyle = lv.bg;
-      ctx.fillRect(bx, by, tw, 14);
-      ctx.strokeStyle = lv.col;
-      ctx.lineWidth = 0.8;
-      ctx.strokeRect(bx, by, tw, 14);
+        // 2. Anti-collision badge slotting (offset horizontally if vertically tight)
+        const text = `${lv.label} $${lv.price.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tw = ctx.measureText(text).width + 8;
 
-      ctx.fillStyle = lv.col;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, bx + 4, y);
+        let bx = this.CHART_LEFT + 6;
+        let colShift = 0;
+        while (drawnBadges.some(b => Math.abs(b.y - y) < 16 && Math.abs(b.x - bx) < (tw + 10)) && colShift < 4) {
+          bx += tw + 8;
+          colShift++;
+        }
+        drawnBadges.push({ x: bx, y: y });
+
+        const by = y - 7;
+        ctx.fillStyle = 'rgba(8, 13, 24, 0.92)';
+        ctx.fillRect(bx, by, tw, 14);
+        ctx.fillStyle = lv.bg;
+        ctx.fillRect(bx, by, tw, 14);
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = 0.9;
+        ctx.strokeRect(bx, by, tw, 14);
+
+        ctx.fillStyle = lv.col;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, bx + 4, y);
+      } else if (lv.isHtf) {
+        // Track major off-screen HTF levels (1D, H4, H1)
+        if (y < this.CHART_TOP && offScreenAboveCount < 2) {
+          const offTxt = `▲ ${lv.label.replace(/[^A-Za-z0-9 ]/g, '').trim()} $${lv.price.toFixed(2)}`;
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          const otw = ctx.measureText(offTxt).width + 10;
+          const ox = this.CHART_LEFT + 10 + (offScreenAboveCount * 130);
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+          ctx.fillRect(ox, this.CHART_TOP + 2, otw, 13);
+          ctx.strokeStyle = lv.col;
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(ox, this.CHART_TOP + 2, otw, 13);
+          ctx.fillStyle = lv.col;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(offTxt, ox + 4, this.CHART_TOP + 8.5);
+          offScreenAboveCount++;
+        } else if (y > this.CHART_BOTTOM && offScreenBelowCount < 2) {
+          const offTxt = `▼ ${lv.label.replace(/[^A-Za-z0-9 ]/g, '').trim()} $${lv.price.toFixed(2)}`;
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          const otw = ctx.measureText(offTxt).width + 10;
+          const ox = this.CHART_LEFT + 10 + (offScreenBelowCount * 130);
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+          ctx.fillRect(ox, this.CHART_BOTTOM - 15, otw, 13);
+          ctx.strokeStyle = lv.col;
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(ox, this.CHART_BOTTOM - 15, otw, 13);
+          ctx.fillStyle = lv.col;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(offTxt, ox + 4, this.CHART_BOTTOM - 8.5);
+          offScreenBelowCount++;
+        }
+      }
     }
 
     // Draw Session Liquidity Sweep Alert Banner if active (< 60s old)
