@@ -674,22 +674,39 @@ class BookmapRenderer {
       this._detectLiquiditySweeps(snapshot, now);
     }
 
-    /* ── Smooth Price Center Tracking + Auto-Adaptive Volatility Span ── */
+    /* ── Professional Bookmap Pro Stable Deadzone Tracking (Zero Jitter / Zero Kembang-Kecut) ── */
     const currentPrice = snapshot.last_price || snapshot.bid || (this.minPrice + this.maxPrice) / 2;
-    const priceVel = snapshot.price_velocity_1s !== undefined ? snapshot.price_velocity_1s : 0.0;
-    const isHighVolat = priceVel >= 0.40 || (snapshot.news_shield && snapshot.news_shield.is_danger);
-    const targetHalfSpan = isHighVolat ? Math.max(7.5, (this.bmHalfSpan || 4.5) * 1.45) : (this.bmHalfSpan || 4.5);
-    const halfSpan = this._isDragging ? (this.bmHalfSpan || 4.5) : targetHalfSpan;
-    const centerP = currentPrice + (this.priceOffset || 0);
-    this._targetMin = centerP - halfSpan;
-    this._targetMax = centerP + halfSpan;
+    const halfSpan = Math.max(2.5, this.bmHalfSpan || 4.5);
 
     if (this._isDragging) {
-      this.minPrice = this._targetMin;
-      this.maxPrice = this._targetMax;
+      const centerP = currentPrice + (this.priceOffset || 0);
+      this.minPrice = centerP - halfSpan;
+      this.maxPrice = centerP + halfSpan;
     } else {
-      this.minPrice += (this._targetMin - this.minPrice) * 0.18;
-      this.maxPrice += (this._targetMax - this.maxPrice) * 0.18;
+      // 1. Maintain perfectly rock-solid vertical scale (eliminates jumpy kembang-kecut)
+      const curCenter = (this.minPrice + this.maxPrice) / 2.0;
+      const targetCenter = currentPrice + (this.priceOffset || 0);
+
+      // 2. Deadzone buffer (40% of span): If price moves within central band, keep chart stationary like real Bookmap
+      const deadzone = halfSpan * 0.40;
+      const distFromCenter = targetCenter - curCenter;
+
+      if (isNaN(this.minPrice) || isNaN(this.maxPrice) || this.minPrice <= 0 || Math.abs(distFromCenter) > (halfSpan * 2.5)) {
+        // Direct snap if uninitialized or drifted too far
+        this.minPrice = targetCenter - halfSpan;
+        this.maxPrice = targetCenter + halfSpan;
+      } else if (Math.abs(distFromCenter) > deadzone) {
+        // Smooth, calm drift only when price reaches the outer edges of deadzone
+        const driftAmount = (distFromCenter > 0) ? (distFromCenter - deadzone) : (distFromCenter + deadzone);
+        const smoothRate = 0.08;
+        const newCenter = curCenter + driftAmount * smoothRate;
+        this.minPrice = newCenter - halfSpan;
+        this.maxPrice = newCenter + halfSpan;
+      } else {
+        // Keep fixed span centered calmly
+        this.minPrice = curCenter - halfSpan;
+        this.maxPrice = curCenter + halfSpan;
+      }
     }
 
     this._occupiedBadgeSlots = []; // Reset anti-collision vertical slot registry
