@@ -785,6 +785,19 @@ class App {
     if (btnOpenAdmin) {
       btnOpenAdmin.addEventListener('click', () => this.openAdminModal());
     }
+    const btnAdminDock = document.getElementById('btnAdminDock');
+    if (btnAdminDock) {
+      btnAdminDock.addEventListener('click', () => this.openAdminModal());
+    }
+    // Keyboard Shortcut 'A' for Admin Modal
+    window.addEventListener('keydown', (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target && e.target.tagName) || '')) return;
+      if (e.key === 'a' || e.key === 'A') {
+        if (this.currentUser && this.currentUser.role === 'admin') {
+          this.openAdminModal();
+        }
+      }
+    });
     const btnCloseAdmin = document.getElementById('btnCloseAdminModal');
     if (btnCloseAdmin) {
       btnCloseAdmin.addEventListener('click', () => this.closeAdminModal());
@@ -2075,8 +2088,21 @@ class App {
           elP.textContent = `${u.plan || 'VIP'} (${daysText})`;
           elP.style.borderColor = u.remaining_days > 5 ? '#38bdf8' : '#f59e0b';
         }
-        if (btnAdmin && u.role === 'admin') {
-          btnAdmin.style.display = 'inline-flex';
+        const btnDock = document.getElementById('btnAdminDock');
+        if (u.role === 'admin') {
+          if (btnAdmin) btnAdmin.style.display = 'inline-flex';
+          if (btnDock) btnDock.style.display = 'inline-flex';
+        } else {
+          if (btnAdmin) btnAdmin.style.display = 'none';
+          if (btnDock) btnDock.style.display = 'none';
+        }
+
+        // Auto open admin modal if URL contains admin=1 or hash #admin
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('admin') === '1' || window.location.hash === '#admin') {
+          if (u.role === 'admin') {
+            setTimeout(() => this.openAdminModal(), 250);
+          }
         }
       }
     } catch (e) {
