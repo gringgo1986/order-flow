@@ -1,5 +1,5 @@
 ---
-title: XAUUSD Pro Order Flow Bookmap
+title: Gringgo Orderflow
 emoji: 📈
 colorFrom: yellow
 colorTo: indigo
@@ -8,7 +8,7 @@ app_port: 8000
 pinned: false
 ---
 
-# XAUUSD Pro Order Flow & Bookmap Trading Cockpit ⚡
+# Gringgo Orderflow - Trading Cockpit ⚡
 
 Aplikasi dagangan profesional khusus untuk **XAUUSD (Emas / Gold)** menggunakan visualisasi **Bookmap (Liquidity Heatmap)** dan analisis mendalam **Order Flow (Footprint, CVD & DOM)** berintegrasi terus dengan **MetaTrader 5 (MT5)**.
 
