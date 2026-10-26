@@ -810,6 +810,14 @@ class App {
     if (btnLogoutTop) {
       btnLogoutTop.addEventListener('click', () => this.logout());
     }
+    const btnLogoutDock = document.getElementById('btnLogoutDock');
+    if (btnLogoutDock) {
+      btnLogoutDock.addEventListener('click', () => this.logout());
+    }
+    const btnLogoutModal = document.getElementById('btnLogoutModal');
+    if (btnLogoutModal) {
+      btnLogoutModal.addEventListener('click', () => this.logout());
+    }
     const formCreateUser = document.getElementById('formCreateUser');
     if (formCreateUser) {
       formCreateUser.addEventListener('submit', (e) => this.handleCreateUser(e));
