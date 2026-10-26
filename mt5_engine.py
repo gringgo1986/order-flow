@@ -58,6 +58,7 @@ class OrderFlowEngine:
         
         # Liquidity Heatmap snapshots: list of {timestamp, bid_levels: {price: vol}, ask_levels: {price: vol}}
         self.heatmap_history: List[Dict[str, Any]] = []
+        self._last_supabase_sync_time = 0.0
         self.max_heatmap_records = 850
         
         # Persistent resting order book (price -> volume)
@@ -1051,8 +1052,35 @@ class OrderFlowEngine:
             "asks": asks
         }
         self.heatmap_history.append(snapshot)
+        self._sync_to_cloud_db_if_needed(now)
         if len(self.heatmap_history) > self.max_heatmap_records:
             self.heatmap_history.pop(0)
+
+
+    def _sync_to_cloud_db_if_needed(self, now: float):
+        """Periodically save real-time Order Flow & Bookmap history to Supabase (every 12 seconds)"""
+        if now - self._last_supabase_sync_time < 12.0:
+            return
+        self._last_supabase_sync_time = now
+        try:
+            import threading
+            def _async_push():
+                try:
+                    from supabase_client import supabase
+                    if not supabase.is_connected:
+                        return
+                    # 1. Save latest 15 slices of Bookmap heatmap
+                    if self.heatmap_history:
+                        supabase.save_heatmap_batch(self.heatmap_history[-15:])
+                    # 2. Save latest candles
+                    active_candles = self.candles[-10:] + ([self.current_candle] if self.current_candle else [])
+                    if active_candles:
+                        supabase.save_candles_batch(active_candles, self.timeframe)
+                except Exception:
+                    pass
+            threading.Thread(target=_async_push, daemon=True).start()
+        except Exception:
+            pass
 
     def process_tick(self, bid: float, ask: float, volume: float = 1.0, flag: int = 0):
         """Process incoming tick, update Footprint, Bubbles, Heatmap & CVD"""
