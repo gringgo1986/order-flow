@@ -1262,3 +1262,71 @@ header.app-header {
   padding: 3px 6px !important;
   border-radius: 3px !important;
 }
+
+
+/* ====================================================================
+   V14.0 PRO ENHANCEMENTS: Mobile Smart DOM Toggle, Responsive Split & Battery
+   ==================================================================== */
+
+/* 1. DOM Collapse / Expand (Fullwidth Chart Workspace) */
+.main-workspace.dom-collapsed {
+  grid-template-columns: 1fr 0px !important;
+}
+.main-workspace.dom-collapsed .trading-sidebar {
+  display: none !important;
+}
+
+/* Floating Mobile DOM Trigger Pill (FAB) */
+.mobile-dom-fab {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  right: 14px;
+  z-index: 99999;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  border: 1px solid #38bdf8;
+  color: #ffffff;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 8px 13px;
+  border-radius: 20px;
+  box-shadow: 0 4px 15px rgba(2, 132, 199, 0.5);
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+.mobile-dom-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.7);
+}
+
+/* 2. Responsive Mobile Styles (< 900px) */
+@media (max-width: 900px) {
+  .mobile-dom-fab {
+    display: flex !important;
+  }
+  
+  /* On mobile portrait, default to collapsing DOM if not already opened by user */
+  .main-workspace:not(.dom-forced-open) {
+    grid-template-columns: 1fr 0px !important;
+  }
+  .main-workspace:not(.dom-forced-open) .trading-sidebar {
+    display: none !important;
+  }
+
+  /* Responsive Vertical Split View (Top Bookmap, Bottom Footprint) */
+  .canvas-viewport.split-mode-vertical #bookmapCanvas {
+    width: 100% !important;
+    height: 50% !important;
+    top: 0 !important;
+    left: 0 !important;
+  }
+  .canvas-viewport.split-mode-vertical #footprintCanvas {
+    width: 100% !important;
+    height: 50% !important;
+    top: 50% !important;
+    left: 0 !important;
+  }
+}
