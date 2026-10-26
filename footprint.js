@@ -296,7 +296,16 @@ class FootprintRenderer {
 
   setViewMode(mode) {
     if (['bid_ask', 'delta', 'volume', 'clusterdelta', 'candlestick'].includes(mode)) {
+      const modeChanged = this.viewMode !== mode;
       this.viewMode = mode;
+      if (modeChanged) {
+        this.priceOffset = 0.0;
+        this.barOffset = 0;
+        this.verticalZoom = 1.0;
+        this.csVerticalScale = 1.0;
+        this._boundsInitialized = false;
+        this._cdAnchorMid = null;
+      }
       if (typeof document !== 'undefined') {
         document.querySelectorAll('.fp-mode-btn').forEach(b => {
           b.classList.toggle('active', b.dataset.mode === mode);
@@ -479,6 +488,8 @@ class FootprintRenderer {
     this.priceOffset = 0.0;
     this.barOffset = 0;
     this.csVerticalScale = 1.0;
+    this.verticalZoom = 1.0;
+    this._boundsInitialized = false;
     this._cdAnchorMid = null;
   }
 
@@ -753,22 +764,26 @@ class FootprintRenderer {
       highest = lowest + step * 4;
     }
 
-    // Auto-expand vertical scale so each box has AT LEAST 28px height
-    const totalSteps = (highest - lowest) / step;
-    const availableHeight = this.height - 140;
+    // Auto-expand vertical scale so each box has comfortable height
+    const totalSteps = Math.max(3, (highest - lowest) / step);
+    const availableHeight = Math.max(200, this.height - 140);
     const rawBoxHeight = availableHeight / totalSteps;
-    if (rawBoxHeight < 28 && this.verticalZoom <= 1.0) {
-      this.verticalZoom = 28 / rawBoxHeight;
+    if (rawBoxHeight < 24) {
+      this.verticalZoom = Math.min(3.0, 24 / rawBoxHeight);
+    } else if (rawBoxHeight > 60 && !this._isDragging) {
+      this.verticalZoom = 1.0;
     }
 
-    // Auto vertical bounds initialization & fast-snap
-    if (!this._boundsInitialized || Math.abs(this.minPrice - lowest) > 35.0) {
-      this.minPrice = lowest;
-      this.maxPrice = highest;
+    // Auto vertical bounds: fast-snap on mode switch, smooth track when live
+    const padMin = lowest - step;
+    const padMax = highest + step;
+    if (!this._boundsInitialized || Math.abs(this.minPrice - padMin) > 6.0) {
+      this.minPrice = padMin;
+      this.maxPrice = padMax;
       this._boundsInitialized = true;
     } else {
-      this.minPrice += (lowest - this.minPrice) * 0.18;
-      this.maxPrice += (highest - this.maxPrice) * 0.18;
+      this.minPrice += (padMin - this.minPrice) * 0.35;
+      this.maxPrice += (padMax - this.maxPrice) * 0.35;
     }
 
     ctx.save();
