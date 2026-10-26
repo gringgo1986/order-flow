@@ -27,6 +27,9 @@ Penggunaan:
   python manage_users.py list
       -> Senaraikan semua pengguna, baki hari & status
 
+  python manage_users.py trial <username> <password> <nama_whatsapp>
+      -> Cipta ID Percubaan 1 Hari (24 Jam) & paparkan teks WhatsApp rasmi
+
   python manage_users.py add <username> <password> <nama_whatsapp> [hari=30] [pakej="Bulanan 30 Hari"]
       -> Cipta ID pembeli baharu & paparkan teks WhatsApp siap format
       (Gunakan hari=-1 untuk akses Seumur Hidup / VIP Lifetime)
@@ -100,6 +103,12 @@ Selamat berdagang dan semoga beroleh profit konsisten!"""
     print(wa_msg)
     print("="*65)
     print("Salin mesej di atas dan hantarkan kepada pembeli anda.\n")
+
+def cmd_trial(args):
+    if len(args) < 3:
+        print("Format: python manage_users.py trial <username> <password> <nama_whatsapp>")
+        return
+    cmd_add([args[0], args[1], args[2], "1", "Trial 1 Hari (24 Jam)"])
 
 def cmd_renew(args):
     if len(args) < 2:
