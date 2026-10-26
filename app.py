@@ -255,6 +255,40 @@ def admin_delete_user(user_id: int, request: Request):
         "message": "Akaun berjaya dipadam."
     }
 
+
+class RestoreBackupRequest(BaseModel):
+    users: List[Dict[str, Any]]
+
+@app.get("/api/admin/backup")
+def admin_download_backup(request: Request):
+    """Allows Admin to download a full JSON backup of all customer accounts"""
+    user = get_current_user(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Akses ditolak. Kebenaran Admin diperlukan.")
+    backup_file = auth_db.export_backup_json()
+    if not backup_file or not os.path.exists(backup_file):
+        raise HTTPException(status_code=500, detail="Gagal menjana fail sandaran.")
+    return FileResponse(
+        backup_file,
+        media_type="application/json",
+        filename=f"xauusd_users_backup_{datetime.utcnow().strftime('%Y%m%d')}.json"
+    )
+
+@app.post("/api/admin/restore")
+def admin_upload_restore(req: RestoreBackupRequest, request: Request):
+    """Allows Admin to restore all customer accounts from a JSON backup"""
+    user = get_current_user(request)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Akses ditolak. Kebenaran Admin diperlukan.")
+    if not req.users:
+        raise HTTPException(status_code=400, detail="Data pengguna sandaran kosong.")
+    count = auth_db.restore_from_dict_list(req.users)
+    return {
+        "status": "success",
+        "message": f"Berjaya memulihkan {count} akaun pelanggan!",
+        "count": count
+    }
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # Authenticate WebSocket connection
