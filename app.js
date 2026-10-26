@@ -1183,6 +1183,9 @@ class App {
       this.footprintCanvas.style.width = '100%';
       if (this.footprint) {
         this.footprint.setViewMode('candlestick');
+        this.footprint.priceOffset = 0.0;
+        this.footprint.csVerticalScale = 1.0;
+        this.footprint.barOffset = 0;
         document.querySelectorAll('.fp-mode-btn').forEach(b => {
           b.classList.toggle('active', b.dataset.mode === 'candlestick');
         });
