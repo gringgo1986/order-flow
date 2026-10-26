@@ -1,7 +1,7 @@
 {
-  "name": "XAUUSD Pro Order Flow & Bookmap",
-  "short_name": "XAUUSD Flow",
-  "description": "Terminal Dagangan Institusi XAUUSD: Bookmap Heatmap, Footprint Bid x Ask, ClusterDelta & Candlestick Cockpit",
+  "name": "Gringgo Orderflow",
+  "short_name": "Gringgo OF",
+  "description": "Terminal Dagangan Institusi Gringgo Orderflow: Bookmap Heatmap, Footprint Bid x Ask, ClusterDelta & Candlestick Cockpit",
   "start_url": "/login",
   "scope": "/",
   "display": "standalone",
