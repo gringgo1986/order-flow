@@ -121,6 +121,15 @@ async def background_tick_stream():
 
 # --- Authentication & Membership SaaS Endpoints ---
 
+@app.get("/admin")
+def admin_page_redirect(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?error=admin_required")
+    if user.get("role") != "admin":
+        return RedirectResponse(url="/?error=unauthorized")
+    return RedirectResponse(url="/?admin=1")
+
 @app.get("/login")
 def login_page(request: Request):
     user = get_current_user(request)
