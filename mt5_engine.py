@@ -417,7 +417,7 @@ class OrderFlowEngine:
             except Exception:
                 pass
 
-        base_price = self.current_bid if self.current_bid > 0 else 4120.0
+        base_price = self.current_bid if self.current_bid > 0 else 4008.0
         now_ms = int(time.time() * 1000)
         
         self._init_persistent_walls(base_price)
@@ -1330,7 +1330,7 @@ class OrderFlowEngine:
     def _seed_candles_for_timeframe(self, interval_sec: int, count: int = 1000):
         """Pre-populate 1000 connected OHLCV + Order Flow candles ending smoothly at current price (for deep lookback and backtesting)"""
         now = int(time.time())
-        target_end = self.last_price if self.last_price > 0 else (self.current_bid if self.current_bid > 0 else 4120.0)
+        target_end = self.last_price if self.last_price > 0 else (self.current_bid if self.current_bid > 0 else 4008.0)
         base_time = now - (now % interval_sec)
         tf_scale = max(0.5, min(3.5, (interval_sec / 60.0) ** 0.38))
 
@@ -1892,7 +1892,7 @@ class OrderFlowEngine:
         Synthesizes raw order flow (CVD, VWAP, Book Depth, Whales) into a single executive status
         so any trader can immediately understand market state in plain Malay.
         """
-        price = self.last_price if self.last_price > 0 else 4120.0
+        price = self.last_price if self.last_price > 0 else 4008.0
         vwap = self.current_vwap if self.current_vwap > 0 else price
         cvd = self.cvd
         
@@ -2121,7 +2121,7 @@ class OrderFlowEngine:
         - M15: Price Location vs Institutional Session VWAP
         - H1: Asian / London Liquidity Sweep & PDH/PDL Range Acceptance
         """
-        price = self.last_price if self.last_price > 0 else 4120.0
+        price = self.last_price if self.last_price > 0 else 4008.0
         vwap = self.current_vwap if self.current_vwap > 0 else price
         cvd = self.cvd
 
