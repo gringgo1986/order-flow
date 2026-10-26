@@ -843,7 +843,7 @@ class FootprintRenderer {
 
     // 2.3. Draw Strict Location-First Footprint Signals at SNR
     if (this.showFpsignals !== false) {
-      this._drawFootprintSignals(ctx, snapshot, candles, startX);
+      this._drawFootprintSignals(ctx, snapshot, candles, rightAnchorX);
     }
 
     // 2.5. Manual Analysis Drawing Tools Overlay (Ray & Trend)
