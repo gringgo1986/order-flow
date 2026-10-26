@@ -152,7 +152,7 @@ class SupabaseClient:
             return True
         record = {
             "timestamp": int(sig.get("time", time.time())),
-            "signal_type": sig.get("type", "SIGNAL"),
+            "type": sig.get("type", "SIGNAL"),
             "direction": sig.get("direction", "BUY"),
             "price": float(sig.get("price", 0.0)),
             "sl": float(sig.get("sl", 0.0)),
