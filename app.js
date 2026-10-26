@@ -546,7 +546,7 @@ class App {
           this.footprint.toggleSessionLevels();
         }
         this.btnToggleSessionLevels.classList.toggle('active', isShown);
-        this.showToast(isShown ? 'Garisan Sesi (Asia/London/NY + PDH/PDL) diaktifkan' : 'Garisan Sesi disembunyikan');
+        this.showToast(isShown ? 'Garisan SNR HTF (1D, H4, H1, M30, M15) & Sesi diaktifkan' : 'Garisan SNR & Sesi disembunyikan');
       });
     }
 
