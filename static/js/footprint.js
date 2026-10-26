@@ -479,6 +479,7 @@ class FootprintRenderer {
     this.priceOffset = 0.0;
     this.barOffset = 0;
     this.csVerticalScale = 1.0;
+    this._cdAnchorMid = null;
   }
 
   _sliceCandlesWithOffset(rawCandles, count) {
@@ -1983,7 +1984,7 @@ class FootprintRenderer {
 
     const step = this.clusterStep || 0.50;
 
-    // 1. Compute price bounds across visible candles
+    // 1. Compute price bounds across visible candles with Hysteresis Deadband Smoothing (Anti-Jitter)
     let lowest = Infinity;
     let highest = -Infinity;
     for (const c of candles) {
@@ -1991,27 +1992,40 @@ class FootprintRenderer {
       if (c.high > highest) highest = c.high;
     }
     const lastPrice = snapshot.last_price || snapshot.bid || candles[candles.length - 1].close;
-    lowest = Math.floor((Math.min(lowest, lastPrice) - step * 2) / step) * step;
-    highest = Math.ceil((Math.max(highest, lastPrice) + step * 2) / step) * step;
+    if (lowest === Infinity || highest === -Infinity) {
+      lowest = lastPrice - 5.0;
+      highest = lastPrice + 5.0;
+    }
 
     const targetMaxRows = Math.max(20, Math.min(50, this.cdMaxRows || 30));
-    const offsetSteps = Math.round((this.priceOffset || 0) / step) * step;
-    lowest += offsetSteps;
-    highest += offsetSteps;
+    const targetMid = (lowest + highest) / 2.0;
 
-    let numRows = Math.round((highest - lowest) / step);
-    if (numRows < 14) {
-      const pad = Math.ceil((14 - numRows) / 2) * step;
-      lowest -= pad;
-      highest += pad;
-      numRows = Math.round((highest - lowest) / step);
-    } else if (numRows > targetMaxRows) {
-      const half = Math.floor(targetMaxRows / 2);
-      const mid = Math.round((lastPrice + offsetSteps) / step) * step;
-      lowest = mid - half * step;
-      highest = mid + half * step;
-      numRows = targetMaxRows;
+    // Hysteresis Deadband: Mencegah carta melompat ke atas/bawah pada getaran harga kecil
+    if (this._cdAnchorMid === undefined || this._cdAnchorMid === null || isNaN(this._cdAnchorMid)) {
+      this._cdAnchorMid = targetMid;
+    } else {
+      const deltaMid = targetMid - this._cdAnchorMid;
+      const deadband = step * 2.5; // Deadband .25 - .50
+      if (Math.abs(deltaMid) > deadband) {
+        const excess = deltaMid > 0 ? (deltaMid - deadband) : (deltaMid + deadband);
+        this._cdAnchorMid += excess * 0.15; // Kejar secara tenang & perlahan
+      }
     }
+
+    // Safety Guard: Pastikan harga semasa (lastPrice) sentiasa berada di dalam kawasan pandangan
+    const halfVisibleSpan = (targetMaxRows / 2 - 3) * step;
+    if (lastPrice > this._cdAnchorMid + halfVisibleSpan) {
+      this._cdAnchorMid = lastPrice - halfVisibleSpan;
+    } else if (lastPrice < this._cdAnchorMid - halfVisibleSpan) {
+      this._cdAnchorMid = lastPrice + halfVisibleSpan;
+    }
+
+    const effectiveMid = this._cdAnchorMid + (this.priceOffset || 0);
+    const roundedMid = Math.round(effectiveMid / step) * step;
+    const halfRows = Math.floor(targetMaxRows / 2);
+    const numRows = targetMaxRows;
+    lowest = roundedMid - halfRows * step;
+    highest = roundedMid + halfRows * step;
 
     const rowH = chartH / numRows;
     const priceToRowY = (p) => {
@@ -2494,11 +2508,12 @@ class FootprintRenderer {
       ctx.stroke();
     }
 
-    // 6. Calculate Column Width (Supports up to 50 Tightly Packed ClusterDelta Columns)
-    const maxColW = Math.floor((chartW - 10) / Math.max(6, candles.length));
-    const colW = Math.max(15, Math.min(82, maxColW));
-    const totalColsW = colW * candles.length;
-    const startX = Math.max(4, chartW - totalColsW - 4);
+    // 6. Calculate Column Width with Right-Anchored Fixed Slot Grid (Anti-Shifting Left/Right)
+    const fixedColW = Math.floor((chartW - 12) / maxCols);
+    const colW = Math.max(15, Math.min(82, fixedColW));
+    // Lilin terkini sentiasa terpasak kukuh di slot paling kanan berhampiran panel profile
+    const rightAnchorX = chartW - 6 - colW;
+    const startX = rightAnchorX - (candles.length - 1) * colW;
     const hdrFontPx = colW >= 42 ? 10 : (colW >= 26 ? 8.2 : 7.0);
     const cellFontPx = Math.min(10.5, Math.max(6.8, Math.min(Math.floor(rowH - 1.2), Math.floor(colW * 0.42))));
 
