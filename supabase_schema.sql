@@ -1,5 +1,5 @@
 -- ====================================================================
--- XAUUSD ORDER FLOW & BOOKMAP COCKPIT - SUPABASE SCHEMA
+-- XAUUSD ORDER FLOW & BOOKMAP COCKPIT - SUPABASE SCHEMA (5 DAYS RETENTION)
 -- Jalankan skrip ini di Supabase SQL Editor (1 Klik Sahaja)
 -- ====================================================================
 
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS bookmap_heatmap (
 );
 CREATE INDEX IF NOT EXISTS idx_bookmap_heatmap_ts ON bookmap_heatmap(timestamp DESC);
 
--- 2. Jadual Lilin, Footprint & ClusterDelta (Volume & Delta Ladders)
+-- 2. Jadual Lilin, Footprint & ClusterDelta (Volume & Delta Ladders - 5 Hari Penuh)
 CREATE TABLE IF NOT EXISTS candles_history (
     id BIGSERIAL PRIMARY KEY,
     timeframe VARCHAR(10) NOT NULL DEFAULT 'M1',
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS candles_history (
 );
 CREATE INDEX IF NOT EXISTS idx_candles_tf_time ON candles_history(timeframe, time DESC);
 
--- 3. Jadual Rekod Isyarat Institusi Disahkan (Signal Journal)
+-- 3. Jadual Rekod Isyarat Institusi Disahkan (Signal Journal - 5 Hari)
 CREATE TABLE IF NOT EXISTS signals_history (
     id BIGSERIAL PRIMARY KEY,
     timestamp BIGINT NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS signals_history (
 );
 CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals_history(timestamp DESC);
 
--- 4. Polisi Keselamatan Akses Penuh untuk Pelayan (RLS Policies)
+-- 4. Polisi Keselamatan Akses Penuh untuk Pelayan (Bypass RLS)
 ALTER TABLE bookmap_heatmap ENABLE ROW LEVEL SECURITY;
 ALTER TABLE candles_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE signals_history ENABLE ROW LEVEL SECURITY;
@@ -60,3 +60,21 @@ BEGIN
     DROP POLICY IF EXISTS "Full Access signals_history" ON signals_history;
     CREATE POLICY "Full Access signals_history" ON signals_history FOR ALL USING (true) WITH CHECK (true);
 END $$;
+
+-- 5. Fungsi Pembersihan Automatik Rekod Melebihi 5 Hari (5-Day Rolling Retention)
+CREATE OR REPLACE FUNCTION prune_older_than_5_days()
+RETURNS void AS $$
+BEGIN
+    -- Padam hirisan peta haba melebihi 5 hari
+    DELETE FROM bookmap_heatmap 
+    WHERE timestamp < ((EXTRACT(EPOCH FROM (NOW() - INTERVAL '5 days')) * 1000)::BIGINT);
+
+    -- Padam lilin Footprint & Cluster melebihi 5 hari
+    DELETE FROM candles_history 
+    WHERE time < EXTRACT(EPOCH FROM (NOW() - INTERVAL '5 days'))::BIGINT;
+
+    -- Padam isyarat lama melebihi 5 hari
+    DELETE FROM signals_history 
+    WHERE timestamp < EXTRACT(EPOCH FROM (NOW() - INTERVAL '5 days'))::BIGINT;
+END;
+$$ LANGUAGE plpgsql;
