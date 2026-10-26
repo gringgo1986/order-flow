@@ -612,11 +612,13 @@ class App {
         const mode = btn.dataset.mode;
         if (this.footprint && this.footprint.setViewMode) {
           this.footprint.setViewMode(mode);
-          if ((mode === 'clusterdelta' || mode === 'candlestick') && this.currentView === 'bookmap') {
+          const clusterWrap = document.getElementById('clusterJalurWrap');
+          if (clusterWrap) clusterWrap.style.display = (mode === 'clusterdelta') ? 'inline-flex' : 'none';
+          if (mode === 'candlestick' && this.currentView !== 'candlestick') {
             document.querySelectorAll('.view-switchers .nav-btn').forEach(b => {
-              b.classList.toggle('active', b.dataset.view === mode);
+              b.classList.toggle('active', b.dataset.view === 'candlestick');
             });
-            this.setView(mode);
+            this.setView('candlestick');
           }
           const labels = {
             'candlestick': '🕯️ Mod Carta Candlestick Biasa + EMA 9/21/50 + Signal Orderflow',
@@ -973,10 +975,9 @@ class App {
 
       // 1-5 View Switching
       if (e.key === '1') { e.preventDefault(); this.setView('bookmap'); this.showToast('Mod Paparan: Bookmap Heatmap (Kekunci [1])'); return; }
-      if (e.key === '2') { e.preventDefault(); this.setView('clusterdelta'); this.showToast('Mod Paparan: ClusterDelta (Kekunci [2])'); return; }
-      if (e.key === '3') { e.preventDefault(); this.setView('footprint'); this.showToast('Mod Paparan: Footprint (Kekunci [3])'); return; }
-      if (e.key === '4') { e.preventDefault(); this.setView('candlestick'); this.showToast('Mod Paparan: Carta Candle (Kekunci [4])'); return; }
-      if (e.key === '5') { e.preventDefault(); this.setView('split'); this.showToast('Mod Paparan: Split View (Kekunci [5])'); return; }
+      if (e.key === '2') { e.preventDefault(); this.setView('footprint'); this.showToast('Mod Paparan: Footprint Order Flow (Kekunci [2])'); return; }
+      if (e.key === '3') { e.preventDefault(); this.setView('candlestick'); this.showToast('Mod Paparan: Carta Candle (Kekunci [3])'); return; }
+      if (e.key === '4' || e.key === '5') { e.preventDefault(); this.setView('split'); this.showToast('Mod Paparan: Split View (Kekunci [4])'); return; }
 
       // B: Quick Buy Market
       if (e.code === 'KeyB') {
@@ -1130,14 +1131,9 @@ class App {
       if (clusterWrap) clusterWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'inline-flex';
       if (csTechBar) csTechBar.style.display = 'none';
-    } else if (view === 'clusterdelta') {
-      if (fpTools) fpTools.style.display = 'none';
-      if (clusterWrap) clusterWrap.style.display = 'inline-flex';
-      if (bookmapWrap) bookmapWrap.style.display = 'none';
-      if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'footprint') {
       if (fpTools) fpTools.style.display = 'inline-flex';
-      if (clusterWrap) clusterWrap.style.display = 'none';
+      if (clusterWrap) clusterWrap.style.display = (this.footprint && this.footprint.viewMode === 'clusterdelta') ? 'inline-flex' : 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'candlestick') {
