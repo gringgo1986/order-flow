@@ -975,9 +975,10 @@ class App {
 
       // 1-5 View Switching
       if (e.key === '1') { e.preventDefault(); this.setView('bookmap'); this.showToast('Mod Paparan: Bookmap Heatmap (Kekunci [1])'); return; }
-      if (e.key === '2') { e.preventDefault(); this.setView('footprint'); this.showToast('Mod Paparan: Footprint Order Flow (Kekunci [2])'); return; }
-      if (e.key === '3') { e.preventDefault(); this.setView('candlestick'); this.showToast('Mod Paparan: Carta Candle (Kekunci [3])'); return; }
-      if (e.key === '4' || e.key === '5') { e.preventDefault(); this.setView('split'); this.showToast('Mod Paparan: Split View (Kekunci [4])'); return; }
+      if (e.key === '2') { e.preventDefault(); this.setView('clusterdelta'); this.showToast('Mod Paparan: ClusterDelta (Kekunci [2])'); return; }
+      if (e.key === '3') { e.preventDefault(); this.setView('footprint'); this.showToast('Mod Paparan: Footprint (Kekunci [3])'); return; }
+      if (e.key === '4') { e.preventDefault(); this.setView('candlestick'); this.showToast('Mod Paparan: Carta Candle (Kekunci [4])'); return; }
+      if (e.key === '5') { e.preventDefault(); this.setView('split'); this.showToast('Mod Paparan: Split View (Kekunci [5])'); return; }
 
       // B: Quick Buy Market
       if (e.code === 'KeyB') {
@@ -1131,9 +1132,14 @@ class App {
       if (clusterWrap) clusterWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'inline-flex';
       if (csTechBar) csTechBar.style.display = 'none';
+    } else if (view === 'clusterdelta') {
+      if (fpTools) fpTools.style.display = 'none';
+      if (clusterWrap) clusterWrap.style.display = 'inline-flex';
+      if (bookmapWrap) bookmapWrap.style.display = 'none';
+      if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'footprint') {
       if (fpTools) fpTools.style.display = 'inline-flex';
-      if (clusterWrap) clusterWrap.style.display = (this.footprint && this.footprint.viewMode === 'clusterdelta') ? 'inline-flex' : 'none';
+      if (clusterWrap) clusterWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'candlestick') {
