@@ -1,6 +1,5 @@
 -- ====================================================================
 -- XAUUSD ORDER FLOW & BOOKMAP COCKPIT - SUPABASE SCHEMA (5 DAYS RETENTION)
--- Jalankan skrip ini di Supabase SQL Editor (1 Klik Sahaja)
 -- ====================================================================
 
 -- 1. Jadual Peta Haba Bookmap (Heatmap Depth History)
@@ -30,11 +29,11 @@ CREATE TABLE IF NOT EXISTS candles_history (
 );
 CREATE INDEX IF NOT EXISTS idx_candles_tf_time ON candles_history(timeframe, time DESC);
 
--- 3. Jadual Rekod Isyarat Institusi Disahkan (Signal Journal - 5 Hari)
+-- 3. Jadual Rekod Isyarat Institusi Disahkan (Gunakan signal_type elak konflik PostgreSQL)
 CREATE TABLE IF NOT EXISTS signals_history (
     id BIGSERIAL PRIMARY KEY,
     timestamp BIGINT NOT NULL,
-    type VARCHAR(50) NOT NULL,
+    signal_type VARCHAR(50) NOT NULL,
     direction VARCHAR(10) NOT NULL,
     price NUMERIC(10,2) NOT NULL,
     sl NUMERIC(10,2),
@@ -65,15 +64,12 @@ END $$;
 CREATE OR REPLACE FUNCTION prune_older_than_5_days()
 RETURNS void AS $$
 BEGIN
-    -- Padam hirisan peta haba melebihi 5 hari
     DELETE FROM bookmap_heatmap 
     WHERE timestamp < ((EXTRACT(EPOCH FROM (NOW() - INTERVAL '5 days')) * 1000)::BIGINT);
 
-    -- Padam lilin Footprint & Cluster melebihi 5 hari
     DELETE FROM candles_history 
     WHERE time < EXTRACT(EPOCH FROM (NOW() - INTERVAL '5 days'))::BIGINT;
 
-    -- Padam isyarat lama melebihi 5 hari
     DELETE FROM signals_history 
     WHERE timestamp < EXTRACT(EPOCH FROM (NOW() - INTERVAL '5 days'))::BIGINT;
 END;
