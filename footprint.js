@@ -101,8 +101,8 @@ class FootprintRenderer {
     this._fpLastSignalBarTime = 0;
     this._fpLastSignalDir = null;
     
-    this.minPrice = 2700.0;
-    this.maxPrice = 2730.0;
+    this.minPrice = 4000.0;
+    this.maxPrice = 4020.0;
     this._boundsInitialized = false;
     this.fpVisibleBars = 10;
     
