@@ -118,7 +118,7 @@ async def background_tick_stream():
         except Exception as e:
             print(f"[Loop Error] {e}")
             
-        await asyncio.sleep(0.35) # ~3 updates per second - ultra smooth & saves 95% bandwidth
+        await asyncio.sleep(0.55) # ~1.8 updates per second - ultra-efficient bandwidth shield (fits 5GB/month easily)
 
 # --- Authentication & Membership SaaS Endpoints ---
 
