@@ -2404,10 +2404,41 @@ class BookmapRenderer {
 
     if (!this._bmSignalsHistory) this._bmSignalsHistory = [];
 
+    // 1. Seamlessly Sync Confirmed Backend Signals from MT5 Engine & Supabase
+    if (snapshot.bookmap_signals && Array.isArray(snapshot.bookmap_signals)) {
+      for (const bs of snapshot.bookmap_signals) {
+        if (!this._bmSignalsHistory.some(s => s.id === bs.id)) {
+          this._bmSignalsHistory.push({
+            id: bs.id,
+            time: (bs.timestamp * 1000) || now,
+            price: bs.price,
+            dir: bs.direction,
+            zoneName: bs.zone,
+            sl: bs.sl,
+            tp1: bs.tp1,
+            tp2: bs.tp2,
+            trigger: bs.type,
+            wallLots: bs.wall_lots || 25.0,
+            status: bs.status || 'ACTIVE'
+          });
+          if (this._bmSignalsHistory.length > 12) this._bmSignalsHistory.shift();
+
+          // Trigger sound and toast
+          this.playZoneSound();
+          if (this.speakAlert) {
+            this.speakAlert(`Isyarat Bookmap: ${bs.direction === 'BUY' ? 'Belian' : 'Jualan'} dikesan di zon ${bs.zone}.`);
+          }
+          if (window.orderFlowApp && window.orderFlowApp.showToast) {
+            window.orderFlowApp.showToast(`🎯 [BOOKMAP ISYARAT] ${bs.direction} [${bs.zone}] @ $${bs.price.toFixed(2)} | TP1: $${bs.tp1.toFixed(2)}`);
+          }
+        }
+      }
+    }
+
     const sess = snapshot.sessions || {};
     const svp = snapshot.session_vp || {};
 
-    // 1. Higher Timeframe SNR Pools (M15, M30, H1, H4, H8 + Session Levels)
+    // 2. Higher Timeframe Institutional SNR Pools (M15, M30, H1, H4, H8 + VP + Sessions)
     const demandLevels = [
       { p: sess.h8_sup || sess.h8_low, name: 'H8 DEMAND' },
       { p: sess.h4_sup || sess.h4_low, name: 'H4 DEMAND' },
@@ -2432,35 +2463,50 @@ class BookmapRenderer {
       { p: sess.london_high, name: 'LONDON HIGH' }
     ].filter(l => l.p && l.p > 0);
 
-    // Strict Location Gate Tolerance: ±$0.70 on Gold
-    const tol = 0.70;
+    // Strict Location Gatekeeper: Tolerance ±$0.60 on Gold
+    const tol = 0.60;
     const activeDemand = demandLevels.find(l => Math.abs(l.p - p) <= tol);
     const activeSupply = supplyLevels.find(l => Math.abs(l.p - p) <= tol);
 
-    // 2. Evaluate Signals (75s cooldown to strictly eliminate zigzag noise)
-    const cooldownMs = 75000;
+    // Scan Resting Order Book Walls (Bids & Asks)
+    let maxBidWall = 0;
+    let maxAskWall = 0;
+    const ob = snapshot.order_book || {};
+    if (ob.bids) {
+      for (const [bp, bvol] of Object.entries(ob.bids)) {
+        const fbp = parseFloat(bp);
+        if (Math.abs(fbp - p) <= 0.70 && fbp <= p + 0.15) {
+          if (bvol > maxBidWall) maxBidWall = bvol;
+        }
+      }
+    }
+    if (ob.asks) {
+      for (const [ap, avol] of Object.entries(ob.asks)) {
+        const fap = parseFloat(ap);
+        if (Math.abs(fap - p) <= 0.70 && fap >= p - 0.15) {
+          if (avol > maxAskWall) maxAskWall = avol;
+        }
+      }
+    }
+
+    // 3. Strict Front-End Signal Generator (Cooldown 70s)
+    const cooldownMs = 70000;
     const canFire = !this._bmLastSignalTime || (now - this._bmLastSignalTime >= cooldownMs);
 
     if (canFire) {
-      // ── EVALUATE BUY (Strictly at Demand / Support ONLY) ──
-      if (activeDemand) {
+      // ── EVALUATE BUY (Strict: Demand Zone + Bid Wall >= 18L + Trigger) ──
+      if (activeDemand && (maxBidWall >= 18.0 || ['H8 DEMAND', 'H4 DEMAND', 'VAL 70% DEMAND'].includes(activeDemand.name))) {
         let triggerFound = null;
         if (snapshot.icebergs && snapshot.icebergs.some(ic => ic.bias === 'BUY' && Math.abs(ic.price - p) <= 0.85)) {
           triggerFound = 'ICEBERG BID ABSORPTION';
         } else if (snapshot.trapped_traders && snapshot.trapped_traders.some(tr => tr.type === 'TRAPPED_SELLERS' && Math.abs(tr.price - p) <= 0.85)) {
-          triggerFound = 'TRAPPED SELLERS';
+          triggerFound = 'TRAPPED SELLERS AT LOW';
         } else if (snapshot.divergence && snapshot.divergence.type === 'bullish') {
           triggerFound = 'BULLISH CVD DIVERGENCE';
-        } else if (sess.sweep_alert && sess.sweep_alert.bias === 'BUY' && (now - sess.sweep_alert.timestamp < 30000)) {
+        } else if (sess.sweep_alert && sess.sweep_alert.bias === 'BUY' && (now - sess.sweep_alert.timestamp < 35000)) {
           triggerFound = 'LIQUIDITY SWEEP & REVERSAL';
-        } else if (window.orderFlowApp && window.orderFlowApp.footprint && window.orderFlowApp.footprint._cdConfirmedSignalsCache) {
-          const cache = window.orderFlowApp.footprint._cdConfirmedSignalsCache;
-          for (const item of cache.values()) {
-            if (item && item.signal && item.signal.direction === 'BUY' && (now - item.signal.time * 1000 < 90000)) {
-              triggerFound = 'CLUSTERDELTA CONFLUENCE';
-              break;
-            }
-          }
+        } else if (maxBidWall >= 38.0) {
+          triggerFound = `WHALE BID WALL (${maxBidWall.toFixed(0)}L)`;
         }
 
         if (triggerFound && this._bmLastSignalDir !== 'BUY') {
@@ -2479,6 +2525,7 @@ class BookmapRenderer {
             tp1: tp1,
             tp2: tp2,
             trigger: triggerFound,
+            wallLots: maxBidWall,
             status: 'ACTIVE'
           };
 
@@ -2492,30 +2539,24 @@ class BookmapRenderer {
             this.speakAlert(`Isyarat Bookmap: Belian dikesan di zon ${activeDemand.name}.`);
           }
           if (window.orderFlowApp && window.orderFlowApp.showToast) {
-            window.orderFlowApp.showToast(`🎯 [BOOKMAP] BUY [${activeDemand.name}] @ $${p.toFixed(2)} | TP1: $${tp1.toFixed(2)}`);
+            window.orderFlowApp.showToast(`🎯 [BOOKMAP ISYARAT] BUY [${activeDemand.name}] @ $${p.toFixed(2)} | TP1: $${tp1.toFixed(2)}`);
           }
         }
       }
 
-      // ── EVALUATE SELL (Strictly at Supply / Resistance ONLY) ──
-      else if (activeSupply) {
+      // ── EVALUATE SELL (Strict: Supply Zone + Ask Wall >= 18L + Trigger) ──
+      else if (activeSupply && (maxAskWall >= 18.0 || ['H8 SUPPLY', 'H4 SUPPLY', 'VAH 70% SUPPLY'].includes(activeSupply.name))) {
         let triggerFound = null;
         if (snapshot.icebergs && snapshot.icebergs.some(ic => ic.bias === 'SELL' && Math.abs(ic.price - p) <= 0.85)) {
           triggerFound = 'ICEBERG ASK ABSORPTION';
         } else if (snapshot.trapped_traders && snapshot.trapped_traders.some(tr => tr.type === 'TRAPPED_BUYERS' && Math.abs(tr.price - p) <= 0.85)) {
-          triggerFound = 'TRAPPED BUYERS';
+          triggerFound = 'TRAPPED BUYERS AT HIGH';
         } else if (snapshot.divergence && snapshot.divergence.type === 'bearish') {
           triggerFound = 'BEARISH CVD DIVERGENCE';
-        } else if (sess.sweep_alert && sess.sweep_alert.bias === 'SELL' && (now - sess.sweep_alert.timestamp < 30000)) {
+        } else if (sess.sweep_alert && sess.sweep_alert.bias === 'SELL' && (now - sess.sweep_alert.timestamp < 35000)) {
           triggerFound = 'LIQUIDITY SWEEP & REVERSAL';
-        } else if (window.orderFlowApp && window.orderFlowApp.footprint && window.orderFlowApp.footprint._cdConfirmedSignalsCache) {
-          const cache = window.orderFlowApp.footprint._cdConfirmedSignalsCache;
-          for (const item of cache.values()) {
-            if (item && item.signal && item.signal.direction === 'SELL' && (now - item.signal.time * 1000 < 90000)) {
-              triggerFound = 'CLUSTERDELTA CONFLUENCE';
-              break;
-            }
-          }
+        } else if (maxAskWall >= 38.0) {
+          triggerFound = `WHALE ASK WALL (${maxAskWall.toFixed(0)}L)`;
         }
 
         if (triggerFound && this._bmLastSignalDir !== 'SELL') {
@@ -2534,6 +2575,7 @@ class BookmapRenderer {
             tp1: tp1,
             tp2: tp2,
             trigger: triggerFound,
+            wallLots: maxAskWall,
             status: 'ACTIVE'
           };
 
@@ -2547,13 +2589,13 @@ class BookmapRenderer {
             this.speakAlert(`Isyarat Bookmap: Jualan dikesan di zon ${activeSupply.name}.`);
           }
           if (window.orderFlowApp && window.orderFlowApp.showToast) {
-            window.orderFlowApp.showToast(`🎯 [BOOKMAP] SELL [${activeSupply.name}] @ $${p.toFixed(2)} | TP1: $${tp1.toFixed(2)}`);
+            window.orderFlowApp.showToast(`🎯 [BOOKMAP ISYARAT] SELL [${activeSupply.name}] @ $${p.toFixed(2)} | TP1: $${tp1.toFixed(2)}`);
           }
         }
       }
     }
 
-    // 3. Render Confirmed Signals & Trajectory on Bookmap Canvas
+    // 4. Render Confirmed Signals & Forward Trajectory Lines on Bookmap Canvas
     ctx.save();
     for (const sig of this._bmSignalsHistory) {
       const isBuy = sig.dir === 'BUY';
@@ -2561,10 +2603,12 @@ class BookmapRenderer {
       // Update win/loss status in real-time
       if (sig.status === 'ACTIVE') {
         if (isBuy) {
-          if (p >= sig.tp1) sig.status = 'TP1_HIT';
+          if (p >= sig.tp2) sig.status = 'TP2_HIT';
+          else if (p >= sig.tp1) sig.status = 'TP1_HIT';
           else if (p <= sig.sl) sig.status = 'SL_HIT';
         } else {
-          if (p <= sig.tp1) sig.status = 'TP1_HIT';
+          if (p <= sig.tp2) sig.status = 'TP2_HIT';
+          else if (p <= sig.tp1) sig.status = 'TP1_HIT';
           else if (p >= sig.sl) sig.status = 'SL_HIT';
         }
       }
@@ -2573,6 +2617,7 @@ class BookmapRenderer {
       const sigY = this.priceToY(sig.price);
       const slY  = this.priceToY(sig.sl);
       const tp1Y = this.priceToY(sig.tp1);
+      const tp2Y = this.priceToY(sig.tp2);
 
       const col = isBuy ? '#00e676' : '#ff3366';
       const bgCol = isBuy ? 'rgba(5, 38, 22, 0.94)' : 'rgba(45, 10, 20, 0.94)';
@@ -2602,7 +2647,6 @@ class BookmapRenderer {
             ctx.lineTo(endLineX, tp1Y);
             ctx.stroke();
 
-            // Right-side TP1 Tag
             const tpText = `🎯 TP1 $${sig.tp1.toFixed(2)}`;
             ctx.font = 'bold 8px "JetBrains Mono", monospace';
             const tpW = ctx.measureText(tpText).width + 8;
@@ -2617,6 +2661,30 @@ class BookmapRenderer {
             ctx.fillText(tpText, endLineX - tpW, tp1Y);
           }
 
+          // TP2 Level Ray (Gold)
+          if (tp2Y && tp2Y >= this.CHART_TOP && tp2Y <= this.CHART_BOTTOM) {
+            ctx.setLineDash([2, 4]);
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(startLineX, tp2Y);
+            ctx.lineTo(endLineX, tp2Y);
+            ctx.stroke();
+
+            const tp2Text = `🚀 TP2 $${sig.tp2.toFixed(2)}`;
+            ctx.font = 'bold 8px "JetBrains Mono", monospace';
+            const tp2W = ctx.measureText(tp2Text).width + 8;
+            ctx.fillStyle = 'rgba(38, 25, 5, 0.88)';
+            ctx.fillRect(endLineX - tp2W - 4, tp2Y - 6.5, tp2W, 13);
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(endLineX - tp2W - 4, tp2Y - 6.5, tp2W, 13);
+            ctx.fillStyle = '#fbbf24';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(tp2Text, endLineX - tp2W, tp2Y);
+          }
+
           // SL Level Ray (Red/Pink)
           if (slY >= this.CHART_TOP && slY <= this.CHART_BOTTOM) {
             ctx.setLineDash([2, 4]);
@@ -2627,7 +2695,6 @@ class BookmapRenderer {
             ctx.lineTo(endLineX, slY);
             ctx.stroke();
 
-            // Right-side SL Tag
             const slText = `🛑 SL $${sig.sl.toFixed(2)}`;
             ctx.font = 'bold 8px "JetBrains Mono", monospace';
             const slW = ctx.measureText(slText).width + 8;
@@ -2669,8 +2736,9 @@ class BookmapRenderer {
 
         // Badge
         let statusBadge = '';
-        if (sig.status === 'TP1_HIT') statusBadge = ' ✅ TP1';
-        else if (sig.status === 'SL_HIT') statusBadge = ' ❌ SL';
+        if (sig.status === 'TP2_HIT') statusBadge = ' 🏆 TP2 HIT';
+        else if (sig.status === 'TP1_HIT') statusBadge = ' ✅ TP1 HIT';
+        else if (sig.status === 'SL_HIT') statusBadge = ' ❌ SL HIT';
 
         const mainText = `🎯 [BM] ${sig.dir} [${sig.zoneName}]${statusBadge}`;
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
@@ -2692,25 +2760,25 @@ class BookmapRenderer {
       }
     }
 
-    // 4. Live Order Flow Radar Status Strip (Top-Left under HUD)
+    // 5. Institutional Order Flow Radar Status Strip (Top-Left under HUD)
     const activeSig = this._bmSignalsHistory.slice(-1)[0];
-    let radarText = `🎯 RADAR BOOKMAP: MENELITI ZON SNR (M15-H8)...`;
+    let radarText = '⚖️ ZON NEUTRAL (CHOP) — TIADA SETUP (MENANTI HARGA KE ZON SNR & DINDING KECAIRAN)';
     let radarCol = '#94a3b8';
-    let radarBg = 'rgba(8, 15, 26, 0.88)';
+    let radarBg = 'rgba(8, 15, 26, 0.90)';
 
     if (activeSig && (now - activeSig.time < 90000)) {
       const isBuy = activeSig.dir === 'BUY';
       radarCol = isBuy ? '#00e676' : '#ff3366';
       radarBg = isBuy ? 'rgba(5, 30, 16, 0.94)' : 'rgba(38, 8, 16, 0.94)';
-      radarText = `🎯 [BOOKMAP] ${activeSig.dir} [${activeSig.zoneName}] @ $${activeSig.price.toFixed(2)} | SL: $${activeSig.sl.toFixed(2)} | TP: $${activeSig.tp1.toFixed(2)}`;
+      radarText = `🎯 [BOOKMAP] ${activeSig.dir} [${activeSig.zoneName}] @ $${activeSig.price.toFixed(2)} | SL: $${activeSig.sl.toFixed(2)} | TP1: $${activeSig.tp1.toFixed(2)} | TP2: $${activeSig.tp2.toFixed(2)}`;
     } else if (activeDemand) {
-      radarText = `⚡ LOKASI DEMAND: ${activeDemand.name} ($${activeDemand.p.toFixed(2)}) — MENANTI ABSORPTION BUY...`;
+      radarText = `🟢 ZON DEMAND: ${activeDemand.name} ($${activeDemand.p.toFixed(2)}) + DINDING BIDS (${maxBidWall.toFixed(0)}L) — MEMERIKSA ABSORPTION BUY...`;
       radarCol = '#00e676';
-      radarBg = 'rgba(5, 30, 16, 0.88)';
+      radarBg = 'rgba(5, 30, 16, 0.90)';
     } else if (activeSupply) {
-      radarText = `⚡ LOKASI SUPPLY: ${activeSupply.name} ($${activeSupply.p.toFixed(2)}) — MENANTI ABSORPTION SELL...`;
+      radarText = `🔴 ZON SUPPLY: ${activeSupply.name} ($${activeSupply.p.toFixed(2)}) + DINDING ASKS (${maxAskWall.toFixed(0)}L) — MEMERIKSA ABSORPTION SELL...`;
       radarCol = '#ff3366';
-      radarBg = 'rgba(38, 8, 16, 0.88)';
+      radarBg = 'rgba(38, 8, 16, 0.90)';
     }
 
     ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
@@ -2728,7 +2796,6 @@ class BookmapRenderer {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(radarText, rx + 7, ry + 8.5);
-
     ctx.restore();
   }
 
