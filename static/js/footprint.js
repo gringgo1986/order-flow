@@ -1732,25 +1732,27 @@ class FootprintRenderer {
     const svp = snapshot.session_vp || {};
 
     const demandLevels = [
-      { p: sess.h8_sup || sess.h8_low, name: 'H8 DEMAND' },
-      { p: sess.h4_sup || sess.h4_low, name: 'H4 DEMAND' },
-      { p: sess.h1_sup || sess.h1_low, name: 'H1 SUPPORT' },
-      { p: sess.m30_sup || sess.m30_low, name: 'M30 SUPPORT' },
-      { p: sess.m15_sup || sess.m15_low, name: 'M15 SUPPORT' },
-      { p: svp.val, name: 'VAL 70% DEMAND' },
-      { p: sess.pdl, name: 'PDL FLOOR' },
-      { p: sess.asian_low, name: 'ASIAN LOW' }
+      { p: sess.pdl || sess.d1_low, name: '1D (DAILY) DEMAND' },
+      { p: sess.h8_sup || sess.h8_low, name: 'H8 SND DEMAND' },
+      { p: sess.h4_sup || sess.h4_low, name: 'H4 SND DEMAND' },
+      { p: sess.h1_sup || sess.h1_low, name: 'H1 SNR SUPPORT' },
+      { p: sess.m30_sup || sess.m30_low, name: 'M30 SNR SUPPORT' },
+      { p: sess.m15_sup || sess.m15_low, name: 'M15 SNR SUPPORT' },
+      { p: svp.val, name: 'VAL 70% VALUE DEMAND' },
+      { p: sess.asian_low, name: 'ASIAN LOW DEMAND' },
+      { p: sess.london_low, name: 'LONDON LOW DEMAND' }
     ].filter(l => l.p && l.p > 0);
 
     const supplyLevels = [
-      { p: sess.h8_res || sess.h8_high, name: 'H8 SUPPLY' },
-      { p: sess.h4_res || sess.h4_high, name: 'H4 SUPPLY' },
-      { p: sess.h1_res || sess.h1_high, name: 'H1 RESISTANCE' },
-      { p: sess.m30_res || sess.m30_high, name: 'M30 RESISTANCE' },
-      { p: sess.m15_res || sess.m15_high, name: 'M15 RESISTANCE' },
-      { p: svp.vah, name: 'VAH 70% SUPPLY' },
-      { p: sess.pdh, name: 'PDH CEILING' },
-      { p: sess.asian_high, name: 'ASIAN HIGH' }
+      { p: sess.pdh || sess.d1_high, name: '1D (DAILY) SUPPLY' },
+      { p: sess.h8_res || sess.h8_high, name: 'H8 SND SUPPLY' },
+      { p: sess.h4_res || sess.h4_high, name: 'H4 SND SUPPLY' },
+      { p: sess.h1_res || sess.h1_high, name: 'H1 SNR RESISTANCE' },
+      { p: sess.m30_res || sess.m30_high, name: 'M30 SNR RESISTANCE' },
+      { p: sess.m15_res || sess.m15_high, name: 'M15 SNR RESISTANCE' },
+      { p: svp.vah, name: 'VAH 70% VALUE SUPPLY' },
+      { p: sess.asian_high, name: 'ASIAN HIGH SUPPLY' },
+      { p: sess.london_high, name: 'LONDON HIGH SUPPLY' }
     ].filter(l => l.p && l.p > 0);
 
     const tol = 0.75;
@@ -2210,26 +2212,30 @@ class FootprintRenderer {
     // Compile Active Institutional Support & Demand Zones
     const sess = snapshot.sessions || snapshot.htf_snr || {};
     const supDemandLevels = [];
-    if (sess.h8_sup > 0) supDemandLevels.push({ price: sess.h8_sup, name: 'H8 DEMAND' });
-    if (sess.h4_sup > 0) supDemandLevels.push({ price: sess.h4_sup, name: 'H4 DEMAND' });
-    if (sess.h1_sup > 0) supDemandLevels.push({ price: sess.h1_sup, name: 'H1 SUPPORT' });
-    if (sess.m30_sup > 0) supDemandLevels.push({ price: sess.m30_sup, name: 'M30 SUPPORT' });
-    if (sess.pdl > 0) supDemandLevels.push({ price: sess.pdl, name: 'PDL FLOOR' });
-    if (sess.asian_low > 0) supDemandLevels.push({ price: sess.asian_low, name: 'ASIAN LOW' });
+    if ((sess.pdl || sess.d1_low) > 0) supDemandLevels.push({ price: sess.pdl || sess.d1_low, name: '1D (DAILY) DEMAND' });
+    if (sess.h8_sup > 0) supDemandLevels.push({ price: sess.h8_sup, name: 'H8 SND DEMAND' });
+    if (sess.h4_sup > 0) supDemandLevels.push({ price: sess.h4_sup, name: 'H4 SND DEMAND' });
+    if (sess.h1_sup > 0) supDemandLevels.push({ price: sess.h1_sup, name: 'H1 SNR SUPPORT' });
+    if (sess.m30_sup > 0) supDemandLevels.push({ price: sess.m30_sup, name: 'M30 SNR SUPPORT' });
+    if (sess.m15_sup > 0) supDemandLevels.push({ price: sess.m15_sup, name: 'M15 SNR SUPPORT' });
+    if (sess.asian_low > 0) supDemandLevels.push({ price: sess.asian_low, name: 'ASIAN LOW DEMAND' });
+    if (sess.london_low > 0) supDemandLevels.push({ price: sess.london_low, name: 'LONDON LOW DEMAND' });
     if (snapshot.session_vp && snapshot.session_vp.val > 0) {
-      supDemandLevels.push({ price: snapshot.session_vp.val, name: 'VAL DEMAND' });
+      supDemandLevels.push({ price: snapshot.session_vp.val, name: 'VAL 70% VALUE DEMAND' });
     }
 
     // Compile Active Institutional Resistance & Supply Zones
     const resSupplyLevels = [];
-    if (sess.h8_res > 0) resSupplyLevels.push({ price: sess.h8_res, name: 'H8 SUPPLY' });
-    if (sess.h4_res > 0) resSupplyLevels.push({ price: sess.h4_res, name: 'H4 SUPPLY' });
-    if (sess.h1_res > 0) resSupplyLevels.push({ price: sess.h1_res, name: 'H1 RESISTANCE' });
-    if (sess.m30_res > 0) resSupplyLevels.push({ price: sess.m30_res, name: 'M30 RESISTANCE' });
-    if (sess.pdh > 0) resSupplyLevels.push({ price: sess.pdh, name: 'PDH CEILING' });
-    if (sess.asian_high > 0) resSupplyLevels.push({ price: sess.asian_high, name: 'ASIAN HIGH' });
+    if ((sess.pdh || sess.d1_high) > 0) resSupplyLevels.push({ price: sess.pdh || sess.d1_high, name: '1D (DAILY) SUPPLY' });
+    if (sess.h8_res > 0) resSupplyLevels.push({ price: sess.h8_res, name: 'H8 SND SUPPLY' });
+    if (sess.h4_res > 0) resSupplyLevels.push({ price: sess.h4_res, name: 'H4 SND SUPPLY' });
+    if (sess.h1_res > 0) resSupplyLevels.push({ price: sess.h1_res, name: 'H1 SNR RESISTANCE' });
+    if (sess.m30_res > 0) resSupplyLevels.push({ price: sess.m30_res, name: 'M30 SNR RESISTANCE' });
+    if (sess.m15_res > 0) resSupplyLevels.push({ price: sess.m15_res, name: 'M15 SNR RESISTANCE' });
+    if (sess.asian_high > 0) resSupplyLevels.push({ price: sess.asian_high, name: 'ASIAN HIGH SUPPLY' });
+    if (sess.london_high > 0) resSupplyLevels.push({ price: sess.london_high, name: 'LONDON HIGH SUPPLY' });
     if (snapshot.session_vp && snapshot.session_vp.vah > 0) {
-      resSupplyLevels.push({ price: snapshot.session_vp.vah, name: 'VAH SUPPLY' });
+      resSupplyLevels.push({ price: snapshot.session_vp.vah, name: 'VAH 70% VALUE SUPPLY' });
     }
 
     const vwapVal = snapshot.vwap && (snapshot.vwap.value || snapshot.vwap.vwap);
