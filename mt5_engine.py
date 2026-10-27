@@ -2191,29 +2191,29 @@ class OrderFlowEngine:
 
         # Higher Timeframe Demand & Support Pools
         demand_levels = [
-            {"p": sess.get("h8_sup") or sess.get("h8_low"), "name": "H8 DEMAND"},
-            {"p": sess.get("h4_sup") or sess.get("h4_low"), "name": "H4 DEMAND"},
-            {"p": sess.get("h1_sup") or sess.get("h1_low"), "name": "H1 SUPPORT"},
-            {"p": sess.get("m30_sup") or sess.get("m30_low"), "name": "M30 SUPPORT"},
-            {"p": sess.get("m15_sup") or sess.get("m15_low"), "name": "M15 SUPPORT"},
-            {"p": svp.get("val"), "name": "VAL 70% DEMAND"},
-            {"p": sess.get("pdl"), "name": "PDL FLOOR"},
-            {"p": sess.get("asian_low"), "name": "ASIAN LOW"},
-            {"p": sess.get("london_low"), "name": "LONDON LOW"}
+            {"p": sess.get("pdl") or sess.get("d1_low"), "name": "1D (DAILY) DEMAND"},
+            {"p": sess.get("h8_sup") or sess.get("h8_low"), "name": "H8 SND DEMAND"},
+            {"p": sess.get("h4_sup") or sess.get("h4_low"), "name": "H4 SND DEMAND"},
+            {"p": sess.get("h1_sup") or sess.get("h1_low"), "name": "H1 SNR SUPPORT"},
+            {"p": sess.get("m30_sup") or sess.get("m30_low"), "name": "M30 SNR SUPPORT"},
+            {"p": sess.get("m15_sup") or sess.get("m15_low"), "name": "M15 SNR SUPPORT"},
+            {"p": svp.get("val"), "name": "VAL 70% VALUE DEMAND"},
+            {"p": sess.get("asian_low"), "name": "ASIAN LOW DEMAND"},
+            {"p": sess.get("london_low"), "name": "LONDON LOW DEMAND"}
         ]
         demand_levels = [d for d in demand_levels if d.get("p") and d["p"] > 0]
 
         # Higher Timeframe Supply & Resistance Pools
         supply_levels = [
-            {"p": sess.get("h8_res") or sess.get("h8_high"), "name": "H8 SUPPLY"},
-            {"p": sess.get("h4_res") or sess.get("h4_high"), "name": "H4 SUPPLY"},
-            {"p": sess.get("h1_res") or sess.get("h1_high"), "name": "H1 RESISTANCE"},
-            {"p": sess.get("m30_res") or sess.get("m30_high"), "name": "M30 RESISTANCE"},
-            {"p": sess.get("m15_res") or sess.get("m15_high"), "name": "M15 RESISTANCE"},
-            {"p": svp.get("vah"), "name": "VAH 70% SUPPLY"},
-            {"p": sess.get("pdh"), "name": "PDH CEILING"},
-            {"p": sess.get("asian_high"), "name": "ASIAN HIGH"},
-            {"p": sess.get("london_high"), "name": "LONDON HIGH"}
+            {"p": sess.get("pdh") or sess.get("d1_high"), "name": "1D (DAILY) SUPPLY"},
+            {"p": sess.get("h8_res") or sess.get("h8_high"), "name": "H8 SND SUPPLY"},
+            {"p": sess.get("h4_res") or sess.get("h4_high"), "name": "H4 SND SUPPLY"},
+            {"p": sess.get("h1_res") or sess.get("h1_high"), "name": "H1 SNR RESISTANCE"},
+            {"p": sess.get("m30_res") or sess.get("m30_high"), "name": "M30 SNR RESISTANCE"},
+            {"p": sess.get("m15_res") or sess.get("m15_high"), "name": "M15 SNR RESISTANCE"},
+            {"p": svp.get("vah"), "name": "VAH 70% VALUE SUPPLY"},
+            {"p": sess.get("asian_high"), "name": "ASIAN HIGH SUPPLY"},
+            {"p": sess.get("london_high"), "name": "LONDON HIGH SUPPLY"}
         ]
         supply_levels = [s for s in supply_levels if s.get("p") and s["p"] > 0]
 
