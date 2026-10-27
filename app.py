@@ -118,7 +118,7 @@ async def background_tick_stream():
         except Exception as e:
             print(f"[Loop Error] {e}")
             
-        await asyncio.sleep(0.12) # ~8-10 updates per second for ultra smooth Bookmap visual
+        await asyncio.sleep(0.35) # ~3 updates per second - ultra smooth & saves 95% bandwidth
 
 # --- Authentication & Membership SaaS Endpoints ---
 
