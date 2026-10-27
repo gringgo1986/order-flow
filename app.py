@@ -501,6 +501,7 @@ def index(request: Request):
             return FileResponse(str(c))
     return {"status": "error", "message": "index.html not found"}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+if __name__ == '__main__':
+    import uvicorn, os
+    port = int(os.environ.get('SERVER_PORT', os.environ.get('PORT', 8000)))
+    uvicorn.run('app:app', host='0.0.0.0', port=port, reload=False)
