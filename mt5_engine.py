@@ -2784,17 +2784,27 @@ class OrderFlowEngine:
             "market_radar": self._evaluate_market_radar(),
             "account": self.account_info,
             "positions": self.positions,
-            "trades": self.recent_trades[-60:] if initial else self.recent_trades[-12:],
-            "heatmap": (self.heatmap_history[-350:] if initial else self.heatmap_history[-12:]),
+            "trades": self.recent_trades[-60:] if initial else self.recent_trades[-4:],
+            "heatmap": self.heatmap_history[-350:] if initial else (
+                [{
+                    "timestamp": self.heatmap_history[-1].get("timestamp", 0),
+                    "mid_price": self.heatmap_history[-1].get("mid_price", self.last_price or 4008.0),
+                    "bids": {k: v for k, v in self.heatmap_history[-1].get("bids", {}).items() if abs(float(k) - (self.last_price or 4008.0)) <= 6.0},
+                    "asks": {k: v for k, v in self.heatmap_history[-1].get("asks", {}).items() if abs(float(k) - (self.last_price or 4008.0)) <= 6.0}
+                }] if self.heatmap_history else []
+            ),
             "candles": (self.candles[-50:] + ([self.current_candle] if self.current_candle else [])) if initial else ([self.current_candle] if self.current_candle else []),
             "total_candles_count": len(self.candles) + (1 if self.current_candle else 0),
             "current_candle": self.current_candle,
-            "spoof_events": self.spoof_events[-6:],
+            "spoof_events": self.spoof_events[-4:],
             "mtf_confluence": self._evaluate_mtf_confluence(),
             "prop_firm_shield": self._evaluate_prop_firm_shield(),
             "bookmap_signals": self._evaluate_bookmap_signals(),
             "order_book": {
                 "bids": self.order_book_bids,
                 "asks": self.order_book_asks
+            } if initial else {
+                "bids": {k: v for k, v in self.order_book_bids.items() if abs(float(k) - (self.last_price or 4008.0)) <= 4.0},
+                "asks": {k: v for k, v in self.order_book_asks.items() if abs(float(k) - (self.last_price or 4008.0)) <= 4.0}
             }
         }
