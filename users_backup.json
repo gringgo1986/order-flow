@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exported_at": "2026-10-27T05:14:07.157927",
+  "exported_at": "2026-10-27T09:11:59.613678",
   "users": [
     {
       "username": "admin",
@@ -11,7 +11,7 @@
       "created_at": "2026-10-25T08:50:41.012595",
       "expires_at": "never",
       "is_active": 1,
-      "last_login": "2026-10-26T09:32:03.549322",
+      "last_login": "2026-10-27T08:22:35.554257",
       "notes": "Default Root Administrator"
     },
     {
