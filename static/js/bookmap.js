@@ -750,21 +750,50 @@ class BookmapRenderer {
 
     this._drawHeatmap(ctx, effectiveHeatmap, snapshot.order_book, now, snapshot.spoof_events || []);
 
+    /* ── 3B. Persistent Rolling Trades Buffer across WebSocket Updates ── */
+    if (!this._tradesHistoryBuffer) this._tradesHistoryBuffer = [];
+    if (snapshot.trades && snapshot.trades.length) {
+      if (snapshot.trades.length >= 40) {
+        // Full initial buffer delivered on connect/refresh (e.g. 60 trades)
+        this._tradesHistoryBuffer = [...snapshot.trades];
+      } else {
+        // Real-time incremental stream updates: append newer trades avoiding duplicates
+        const seenIds = new Set(this._tradesHistoryBuffer.map(t => t.id != null ? t.id : `${t.timestamp}_${t.price}`));
+        for (const tr of snapshot.trades) {
+          const tid = tr.id != null ? tr.id : `${tr.timestamp}_${tr.price}`;
+          if (!seenIds.has(tid)) {
+            this._tradesHistoryBuffer.push(tr);
+            seenIds.add(tid);
+          }
+        }
+      }
+      // Prune trades older than the visible chart time horizon (keep 2.5x timeWindow for smooth scrolling)
+      const visibleHorizonMs = Math.max(180000, (this.timeWindowMs || 60000) * 2.5);
+      const pruneCutoff = now - visibleHorizonMs;
+      this._tradesHistoryBuffer = this._tradesHistoryBuffer.filter(t => (t.timestamp || 0) >= pruneCutoff);
+      if (this._tradesHistoryBuffer.length > 500) {
+        this._tradesHistoryBuffer = this._tradesHistoryBuffer.slice(-500);
+      }
+    }
+    const effectiveTrades = (this._tradesHistoryBuffer && this._tradesHistoryBuffer.length > 0)
+      ? this._tradesHistoryBuffer
+      : (snapshot.trades || []);
+
     /* ── 4. Chart Gridlines & "NOW" Time Line Separator ── */
     this._drawGrid(ctx, now);
 
     /* ── 5. Bottom Stacked Volume Histogram + Live CVD Curve Overlay ── */
-    this._drawHistogram(ctx, snapshot.trades || [], now);
+    this._drawHistogram(ctx, effectiveTrades, now);
 
     /* ── 6. Best Bid & Best Ask Spread Channel + Stepped Price Line ── */
-    this._drawSteppedPriceLine(ctx, snapshot.trades || [], now, currentPrice, snapshot.spread);
+    this._drawSteppedPriceLine(ctx, effectiveTrades, now, currentPrice, snapshot.spread);
 
     /* ── 7. Bookmap Split 3D Spherical Bubbles + Whale Callout Labels ── */
-    this._drawSplitBubbles(ctx, snapshot.trades || [], now);
+    this._drawSplitBubbles(ctx, effectiveTrades, now);
 
     /* ── 8. Buyer & Seller Volume Zones ── */
     if (this.showVolumeZones) {
-      this._drawVolumeZones(ctx, snapshot.trades || [], currentPrice);
+      this._drawVolumeZones(ctx, effectiveTrades, currentPrice);
     }
 
     /* ── 8B. Session VWAP & StdDev Bands ── */
@@ -3370,7 +3399,7 @@ class BookmapRenderer {
 
     let buyVolTotal = 0;
     let sellVolTotal = 0;
-    for (const t of (snapshot.trades || []).slice(-40)) {
+    for (const t of (effectiveTrades || []).slice(-40)) {
       buyVolTotal  += t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
       sellVolTotal += t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
     }
