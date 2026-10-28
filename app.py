@@ -2,6 +2,7 @@
 FastAPI Server & WebSocket Hub for XAUUSD Bookmap & Order Flow
 """
 import os
+import json
 import asyncio
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -316,6 +317,12 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # Keep alive & listen for client messages
             data = await websocket.receive_text()
+            try:
+                msg = json.loads(data)
+                if isinstance(msg, dict) and msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong", "ts": msg.get("ts")})
+            except Exception:
+                pass
     except WebSocketDisconnect:
         connected_clients.discard(websocket)
     except Exception:
