@@ -13,11 +13,16 @@ class App {
     this.selectedLot = 0.01;
     this.latestSnapshot = null;
 
-    // V14.0 Enhancements state
+    // V14.0 & V16.0 Enhancements state
     this.audioEnabled = true;
     this._audioCtx = null;
     this.isPageHidden = false;
     this._lastBgRenderTime = 0;
+    this._lastWhaleChimeTime = 0;
+    this._lastIcebergChimeTime = 0;
+    this._lastSweepChimeTime = 0;
+    this._pingInterval = null;
+    this.sessionStats = { realizedPnl: 0.0, winCount: 0, lossCount: 0, totalTrades: 0 };
 
     this.needsRedraw = true;
     this._lastInsightsHTML = "";
@@ -51,6 +56,8 @@ class App {
     this._initAudioEngine();
     this._setupDomToggle();
     this._setupMobileTouchGestures();
+    this._initSessionStats();
+    this._setupLotCalculator();
 
     // Battery Saver Visibility Listener
     document.addEventListener('visibilitychange', () => {
@@ -282,14 +289,30 @@ class App {
       });
     }
 
-    // Screenshot Button
+    // Screenshot Button (Universal across all 4 modules with HD Watermark)
     const btnScreenshot = document.getElementById('btnScreenshot');
     if (btnScreenshot) {
       btnScreenshot.addEventListener('click', () => {
-        if (this.bookmap && this.bookmap.takeScreenshot) {
-          this.bookmap.takeScreenshot();
-          this.showToast('📸 Tangkapan skrin Bookmap berjaya dimuat turun!');
-        }
+        this.takeUniversalScreenshot();
+      });
+    }
+
+    // Export Time & Sales Tape to CSV
+    const btnExportCSV = document.getElementById('btnExportTapeCSV');
+    if (btnExportCSV) {
+      btnExportCSV.addEventListener('click', () => {
+        this.exportTapeToCSV();
+      });
+    }
+
+    // Reset Session Stats Button
+    const btnResetStats = document.getElementById('btnResetSessionStats');
+    if (btnResetStats) {
+      btnResetStats.addEventListener('click', () => {
+        this.sessionStats = { realizedPnl: 0.0, winCount: 0, lossCount: 0, totalTrades: 0 };
+        try { sessionStorage.removeItem('gringgo_session_stats'); } catch (e) {}
+        this._updateSessionStatsUI();
+        this.showToast('⟲ Statistik Sesi Dagangan telah diset semula!');
       });
     }
 
@@ -1325,6 +1348,14 @@ class App {
     this.ws.onmessage = (event) => {
       try {
         const snapshot = JSON.parse(event.data);
+        if (snapshot && snapshot.type === 'pong' && snapshot.ts) {
+          const rtt = Math.max(1, Date.now() - snapshot.ts);
+          if (this.elTickLatency) {
+            this.elTickLatency.textContent = `${rtt}ms RTT`;
+            this.elTickLatency.style.color = rtt <= 120 ? '#22c55e' : (rtt <= 300 ? '#f59e0b' : '#ef4444');
+          }
+          return;
+        }
         this.latestSnapshot = snapshot;
         // Battery Saver: throttle background rendering when tab/screen is hidden
         if (this.isPageHidden) {
@@ -1342,6 +1373,7 @@ class App {
     };
 
     this.ws.onclose = () => {
+      if (this._pingInterval) clearInterval(this._pingInterval);
       console.log('[WS] Disconnected, retrying in 2s...');
       const banner = document.getElementById('reconnectBanner');
       if (banner) banner.style.display = 'flex';
@@ -1387,6 +1419,10 @@ class App {
       const sw = s.sessions.sweep_alert;
       const hasFreshSweep = sw && (Date.now() - sw.timestamp < 45000);
       this.elActiveSession.textContent = hasFreshSweep ? `${sw.badge}` : `SESI: ${s.sessions.active_session}`;
+      if (hasFreshSweep && this.audioEnabled && (Date.now() - this._lastSweepChimeTime > 20000)) {
+        this._lastSweepChimeTime = Date.now();
+        this.playInstitutionalChime('SWEEP');
+      }
     }
     if (this.btnToggleNewsShield && s.news_shield) {
       const ns = s.news_shield;
@@ -2563,6 +2599,55 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
         osc2.start(now);
         osc1.stop(now + 0.38);
         osc2.stop(now + 0.38);
+
+      } else if (type === 'ICEBERG') {
+        // High harmonic crystal shimmer for institutional iceberg absorption
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc1.type = 'sine';
+        osc2.type = 'triangle';
+        osc1.frequency.setValueAtTime(1046.50, now); // C6
+        osc1.frequency.exponentialRampToValueAtTime(1318.51, now + 0.15); // E6
+        osc2.frequency.setValueAtTime(1567.98, now); // G6
+        osc2.frequency.exponentialRampToValueAtTime(2093.00, now + 0.15); // C7
+        gain.gain.setValueAtTime(0.20, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.40);
+        osc2.stop(now + 0.40);
+
+      } else if (type === 'WHALE') {
+        // Deep sub-bass pulse (sonar thud) for heavy institutional sweep
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(130, now);
+        osc.frequency.exponentialRampToValueAtTime(45, now + 0.45);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.50);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.50);
+
+      } else if (type === 'SWEEP') {
+        // Two-tone alerting chime for Session & Liquidity Sweeps
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.setValueAtTime(1174.66, now + 0.12);
+        gain.gain.setValueAtTime(0.20, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.38);
 
       } else {
         const osc = ctx.createOscillator();
