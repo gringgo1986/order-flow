@@ -53,6 +53,9 @@ class FootprintRenderer {
     this.csShowVWAP = true;
     this.csShowLevels = true;
     this.csShowSignals = true;
+    this.csShowEqhl = true;       // NEW: Equal Highs & Equal Lows (EQH/EQL Liquidity Pools)
+    this.csShowSweeps = true;     // NEW: Liquidity Sweeps (Turtle Soup Reversal Alerts)
+    this.csShowPatterns = true;   // NEW: Reversal Patterns (Hammer, Shooting Star, Engulfing)
     this.csVerticalScale = 1.0;
 
     // Deep Historical Buffer (1,000+ bars across timeframes)
@@ -4469,6 +4472,87 @@ class FootprintRenderer {
       ctx.restore();
     }
 
+    // 7.9. Institutional Equal Highs (EQH) & Equal Lows (EQL) Liquidity Pools
+    const eqHighs = [];
+    const eqLows = [];
+    const showEqhl = !this.csZenMode && (this.csShowEqhl !== false);
+
+    if (showEqhl && typeof swings !== 'undefined' && swings.length >= 2) {
+      for (let a = 0; a < swings.length - 1; a++) {
+        for (let b = a + 1; b < Math.min(swings.length, a + 5); b++) {
+          const sw1 = swings[a];
+          const sw2 = swings[b];
+          if (sw1.type === 'HIGH' && sw2.type === 'HIGH') {
+            if (Math.abs(sw1.price - sw2.price) <= 0.28) {
+              const avgP = (sw1.price + sw2.price) / 2;
+              eqHighs.push({ price: avgP, startX: getBarX(sw1.idx), endX: getBarX(sw2.idx) });
+            }
+          } else if (sw1.type === 'LOW' && sw2.type === 'LOW') {
+            if (Math.abs(sw1.price - sw2.price) <= 0.28) {
+              const avgP = (sw1.price + sw2.price) / 2;
+              eqLows.push({ price: avgP, startX: getBarX(sw1.idx), endX: getBarX(sw2.idx) });
+            }
+          }
+        }
+      }
+
+      // Draw active EQH lines
+      for (const eq of eqHighs.slice(-3)) {
+        const y = pToY(eq.price);
+        if (y < mainChartTop + 10 || y > mainChartBottom - 10) continue;
+        ctx.save();
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(eq.startX, y);
+        ctx.lineTo(chartW, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        const txt = `💲 EQH [Buy-side Liq] $${eq.price.toFixed(2)}`;
+        const tw = ctx.measureText(txt).width + 8;
+        ctx.fillStyle = 'rgba(7, 11, 20, 0.94)';
+        ctx.fillRect(chartW - tw - 6, y - 6, tw, 13);
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(chartW - tw - 6, y - 6, tw, 13);
+        ctx.fillStyle = '#facc15';
+        ctx.textAlign = 'center';
+        ctx.fillText(txt, chartW - tw / 2 - 6, y + 3.5);
+        ctx.restore();
+      }
+
+      // Draw active EQL lines
+      for (const eq of eqLows.slice(-3)) {
+        const y = pToY(eq.price);
+        if (y < mainChartTop + 10 || y > mainChartBottom - 10) continue;
+        ctx.save();
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(eq.startX, y);
+        ctx.lineTo(chartW, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        const txt = `💲 EQL [Sell-side Liq] $${eq.price.toFixed(2)}`;
+        const tw = ctx.measureText(txt).width + 8;
+        ctx.fillStyle = 'rgba(7, 11, 20, 0.94)';
+        ctx.fillRect(chartW - tw - 6, y - 6, tw, 13);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(chartW - tw - 6, y - 6, tw, 13);
+        ctx.fillStyle = '#38bdf8';
+        ctx.textAlign = 'center';
+        ctx.fillText(txt, chartW - tw / 2 - 6, y + 3.5);
+        ctx.restore();
+      }
+    }
+
     // 8. Draw EMA 9 / EMA 21 / EMA 50 Curves (Smooth Bezier)
     if (this.csShowEMA && candles.length > 1) {
       const drawCurve = (arr, col, width) => {
@@ -5001,6 +5085,113 @@ class FootprintRenderer {
         }
       }
 
+      // 9.5. Candlestick Liquidity Sweeps & Reversal Patterns
+      const cRange = Math.max(0.1, c.high - c.low);
+      const cBody = Math.abs(c.close - c.open);
+      const cUpperWick = c.high - Math.max(c.open, c.close);
+      const cLowerWick = Math.min(c.open, c.close) - c.low;
+
+      // Check Sweeps
+      if (!this.csZenMode && (this.csShowSweeps !== false)) {
+        let sweptHigh = false;
+        if (typeof eqHighs !== 'undefined') {
+          for (const eq of eqHighs) {
+            if (c.high >= eq.price + 0.12 && c.close < eq.price && cUpperWick / cRange >= 0.35) {
+              sweptHigh = true;
+              break;
+            }
+          }
+        }
+        if (sweptHigh) {
+          ctx.save();
+          const sY = yHigh - 14;
+          const sTxt = '⚡ SWEEP 🧹';
+          ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(sTxt).width + 8;
+          ctx.fillStyle = 'rgba(76, 5, 25, 0.95)';
+          ctx.fillRect(cx - tw / 2, sY - 6, tw, 13);
+          ctx.strokeStyle = '#f43f5e';
+          ctx.lineWidth = 0.9;
+          ctx.strokeRect(cx - tw / 2, sY - 6, tw, 13);
+          ctx.fillStyle = '#f43f5e';
+          ctx.textAlign = 'center';
+          ctx.fillText(sTxt, cx, sY + 3.5);
+          ctx.restore();
+        }
+
+        let sweptLow = false;
+        if (typeof eqLows !== 'undefined') {
+          for (const eq of eqLows) {
+            if (c.low <= eq.price - 0.12 && c.close > eq.price && cLowerWick / cRange >= 0.35) {
+              sweptLow = true;
+              break;
+            }
+          }
+        }
+        if (sweptLow) {
+          ctx.save();
+          const sY = yLow + 14;
+          const sTxt = '⚡ SWEEP 🧹';
+          ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(sTxt).width + 8;
+          ctx.fillStyle = 'rgba(6, 78, 59, 0.95)';
+          ctx.fillRect(cx - tw / 2, sY - 6, tw, 13);
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 0.9;
+          ctx.strokeRect(cx - tw / 2, sY - 6, tw, 13);
+          ctx.fillStyle = '#10b981';
+          ctx.textAlign = 'center';
+          ctx.fillText(sTxt, cx, sY + 3.5);
+          ctx.restore();
+        }
+      }
+
+      // Check Reversal Patterns (Hammer, Shooting Star, Engulfing)
+      if (!this.csZenMode && (this.csShowPatterns !== false) && cRange >= 0.30) {
+        let patTxt = null;
+        let patCol = '#10b981';
+        let patY = yLow + 12;
+
+        const isHammer = cLowerWick / cRange >= 0.52 && cBody / cRange <= 0.32;
+        const isStar = cUpperWick / cRange >= 0.52 && cBody / cRange <= 0.32;
+        const prevC = i > 0 ? candles[i - 1] : null;
+        const isBullEngulf = prevC && c.close > c.open && prevC.close < prevC.open && c.close >= prevC.open && c.open <= prevC.close && cBody >= 0.40;
+        const isBearEngulf = prevC && c.close < c.open && prevC.close > prevC.open && c.close <= prevC.open && c.open >= prevC.close && cBody >= 0.40;
+
+        if (isHammer) {
+          patTxt = '🔨 HAMMER';
+          patCol = '#10b981';
+          patY = yLow + 12;
+        } else if (isStar) {
+          patTxt = '⭐ STAR';
+          patCol = '#f43f5e';
+          patY = yHigh - 12;
+        } else if (isBullEngulf) {
+          patTxt = '🔥 ENGULF';
+          patCol = '#00e676';
+          patY = yLow + 12;
+        } else if (isBearEngulf) {
+          patTxt = '🔥 ENGULF';
+          patCol = '#ff3366';
+          patY = yHigh - 12;
+        }
+
+        if (patTxt) {
+          ctx.save();
+          ctx.font = 'bold 7px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(patTxt).width + 6;
+          ctx.fillStyle = 'rgba(7, 11, 20, 0.92)';
+          ctx.fillRect(cx - tw / 2, patY - 5, tw, 11);
+          ctx.strokeStyle = patCol;
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(cx - tw / 2, patY - 5, tw, 11);
+          ctx.fillStyle = patCol;
+          ctx.textAlign = 'center';
+          ctx.fillText(patTxt, cx, patY + 3);
+          ctx.restore();
+        }
+      }
+
       if (i === hoveredCandleIdx) {
         const d = new Date(c.time * 1000);
         hoveredCandle = {
@@ -5252,8 +5443,24 @@ class FootprintRenderer {
     ctx.lineTo(this.width, topBarH);
     ctx.stroke();
 
-    // Streamlined Essential Feature Toggle Pills (Total 6-7 Pills max, clean and focused)
+    // Streamlined Essential Feature Toggle Pills
     const pills = [
+      // 1-Click Quick Action Trading HUD
+      { label: '⚡ BUY', active: true, col: '#059669', fn: () => { if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('BUY'); } },
+      { label: '⚡ SELL', active: true, col: '#dc2626', fn: () => { if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('SELL'); } },
+      { label: '🎯 BE', active: false, col: '#38bdf8', fn: () => { fetch('/api/breakeven_all', { method: 'POST' }).then(r=>r.json()).then(res=>{ if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message); }); } },
+      { label: '❌ CLOSE', active: false, col: '#f43f5e', fn: () => { fetch('/api/close_all', { method: 'POST' }).then(r=>r.json()).then(res=>{ if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message); }); } },
+
+      // Zoom presets
+      { label: '15L', active: (this.csVisibleBars || 34) === 15, col: '#38bdf8', fn: () => { this.csVisibleBars = 15; } },
+      { label: '30L', active: (this.csVisibleBars || 34) === 30, col: '#38bdf8', fn: () => { this.csVisibleBars = 30; } },
+      { label: '50L', active: (this.csVisibleBars || 34) === 50, col: '#38bdf8', fn: () => { this.csVisibleBars = 50; } },
+
+      // Feature toggles
+      { label: this.csShowEqhl !== false ? '💲 EQH/L' : '💲 EQH: OFF', active: this.csShowEqhl !== false, col: '#facc15', fn: () => { this.csShowEqhl = (this.csShowEqhl === false); } },
+      { label: this.csShowSweeps !== false ? '⚡ SWEEP' : '⚡ SWEEP: OFF', active: this.csShowSweeps !== false, col: '#f43f5e', fn: () => { this.csShowSweeps = (this.csShowSweeps === false); } },
+      { label: this.csShowPatterns !== false ? '🕯️ PATTERN' : '🕯️ PATTERN: OFF', active: this.csShowPatterns !== false, col: '#4ade80', fn: () => { this.csShowPatterns = (this.csShowPatterns === false); } },
+
       {
         label: this.csZenMode ? '🧘 Zen: ON' : '🧘 Zen: OFF',
         active: this.csZenMode,
