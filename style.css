@@ -493,6 +493,22 @@ canvas#cvdCanvas {
   background: var(--sell-red);
 }
 
+.dom-bar-traded {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  z-index: 0;
+  opacity: 0.22;
+  border-radius: 2px;
+  background: #38bdf8;
+}
+.dom-bar-traded.ask-side {
+  right: 0;
+}
+.dom-bar-traded.bid-side {
+  left: 0;
+}
+
 /* Trade Order Entry Cockpit */
 .order-entry-panel {
   padding: 14px;
