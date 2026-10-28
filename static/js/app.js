@@ -1874,9 +1874,31 @@ class App {
   }
 
   _renderTape(trades) {
-    if (!this.tapeTableBody || !trades || trades.length === 0) return;
+    if (!this._tapeHistoryBuffer) this._tapeHistoryBuffer = [];
+    if (trades && trades.length) {
+      if (trades.length >= 25) {
+        this._tapeHistoryBuffer = [...trades];
+      } else {
+        const seen = new Set(this._tapeHistoryBuffer.map(t => t.id != null ? t.id : `${t.timestamp}_${t.price}`));
+        for (const tr of trades) {
+          const tid = tr.id != null ? tr.id : `${tr.timestamp}_${tr.price}`;
+          if (!seen.has(tid)) {
+            this._tapeHistoryBuffer.push(tr);
+            seen.add(tid);
+          }
+        }
+      }
+      if (this._tapeHistoryBuffer.length > 80) {
+        this._tapeHistoryBuffer = this._tapeHistoryBuffer.slice(-80);
+      }
+    }
+    const effectiveTrades = (this._tapeHistoryBuffer && this._tapeHistoryBuffer.length > 0)
+      ? this._tapeHistoryBuffer
+      : (trades || []);
+
+    if (!this.tapeTableBody || !effectiveTrades || effectiveTrades.length === 0) return;
     const minLot = this.tapeMinLot || 0.0;
-    const filtered = minLot > 0 ? trades.filter(t => (t.volume || 0) >= minLot) : trades;
+    const filtered = minLot > 0 ? effectiveTrades.filter(t => (t.volume || 0) >= minLot) : effectiveTrades;
     const slice = filtered.slice(-25).reverse();
     let html = '';
 
