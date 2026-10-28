@@ -2847,6 +2847,582 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       }, { passive: true });
     });
   }
+
+  // ==================== V16.0 & V17.0 PRO ENHANCEMENTS METHODS ====================
+
+  takeUniversalScreenshot() {
+    let sourceCanvas = null;
+    let moduleName = 'Bookmap Heatmap';
+
+    if (this.currentView === 'bookmap') {
+      sourceCanvas = this.bookmapCanvas;
+      moduleName = 'Bookmap Heatmap';
+    } else if (this.currentView === 'clusterdelta') {
+      sourceCanvas = this.footprintCanvas;
+      moduleName = 'ClusterDelta Profile';
+    } else if (this.currentView === 'footprint') {
+      sourceCanvas = this.footprintCanvas;
+      moduleName = 'Footprint Order Flow';
+    } else if (this.currentView === 'candlestick') {
+      sourceCanvas = this.footprintCanvas;
+      moduleName = 'Candlestick Pro';
+    } else {
+      sourceCanvas = this.bookmapCanvas || this.footprintCanvas;
+      moduleName = 'Order Flow Split';
+    }
+
+    if (!sourceCanvas || sourceCanvas.width === 0 || sourceCanvas.height === 0) {
+      this.showToast('❌ Kanvas tidak sedia untuk tangkapan skrin.');
+      return;
+    }
+
+    try {
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = sourceCanvas.width;
+      exportCanvas.height = sourceCanvas.height;
+      const ctx = exportCanvas.getContext('2d');
+
+      ctx.drawImage(sourceCanvas, 0, 0);
+
+      const headerHeight = 36;
+      ctx.fillStyle = 'rgba(7, 11, 20, 0.88)';
+      ctx.fillRect(0, 0, exportCanvas.width, headerHeight);
+
+      const grad = ctx.createLinearGradient(0, headerHeight - 2, exportCanvas.width, headerHeight - 2);
+      grad.addColorStop(0, '#00f0ff');
+      grad.addColorStop(0.5, '#ffd60a');
+      grad.addColorStop(1, '#ff3366');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, headerHeight - 2, exportCanvas.width, 2);
+
+      ctx.font = 'bold 12px Inter, -apple-system, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⚡ GRINGGO ORDER FLOW TERMINAL', 14, headerHeight / 2);
+
+      const curPrice = (this.latestSnapshot && this.latestSnapshot.current_price) 
+        ? `$${this.latestSnapshot.current_price.toFixed(2)}` 
+        : '';
+      const curTF = (this.latestSnapshot && this.latestSnapshot.timeframe) || 'M1';
+      ctx.font = 'bold 11px "JetBrains Mono", Consolas, monospace';
+      ctx.fillStyle = '#ffd60a';
+      ctx.fillText(`XAUUSD • ${curTF} • ${moduleName.toUpperCase()} • ${curPrice}`, 240, headerHeight / 2);
+
+      const nowStr = new Date().toLocaleString('en-GB', { 
+        year: 'numeric', month: 'short', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false 
+      });
+      ctx.textAlign = 'right';
+      ctx.font = '10px "JetBrains Mono", Consolas, monospace';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(`${nowStr} UTC+8`, exportCanvas.width - 14, headerHeight / 2);
+
+      const bottomText = 'Auction Market Theory & Order Flow • order-flow-whfl.onrender.com';
+      ctx.font = '9.5px "JetBrains Mono", Consolas, monospace';
+      const textWidth = ctx.measureText(bottomText).width;
+      const pillX = exportCanvas.width - textWidth - 28;
+      const pillY = exportCanvas.height - 24;
+      ctx.fillStyle = 'rgba(7, 11, 20, 0.80)';
+      ctx.fillRect(pillX, pillY, textWidth + 20, 18);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.strokeRect(pillX, pillY, textWidth + 20, 18);
+      ctx.fillStyle = '#94a3b8';
+      ctx.textAlign = 'left';
+      ctx.fillText(bottomText, pillX + 10, pillY + 12);
+
+      const fileSlug = moduleName.toLowerCase().replace(/\s+/g, '-');
+      const timeSlug = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `gringgo-${fileSlug}-${timeSlug}.png`;
+
+      exportCanvas.toBlob((blob) => {
+        if (!blob) return;
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        URL.revokeObjectURL(link.href);
+        this.showToast(`📸 Tangkapan skrin ${moduleName} berjaya dimuat turun!`);
+      }, 'image/png');
+    } catch (e) {
+      console.error('[Screenshot Error]', e);
+      this.showToast('Ralat mengambil tangkapan skrin: ' + e.message);
+    }
+  }
+
+  exportTapeToCSV() {
+    const trades = this._tapeHistoryBuffer || (this.latestSnapshot && this.latestSnapshot.trades) || [];
+    if (!trades || trades.length === 0) {
+      this.showToast('⚠️ Tiada rekod transaksi untuk dieksport.');
+      return;
+    }
+
+    let csv = "Masa,Harga,Saiz_Lots,Pihak,Kategori,Nilai_USD\n";
+    trades.forEach(t => {
+      const timeStr = t.time || (t.timestamp ? new Date(t.timestamp).toLocaleTimeString() : '');
+      const price = parseFloat(t.price || 0).toFixed(2);
+      const vol = parseFloat(t.volume || t.vol || 0).toFixed(2);
+      const side = t.side ? t.side.toUpperCase() : 'UNKNOWN';
+      const cat = t.category || (parseFloat(vol) >= 5.0 ? 'WHALE' : (parseFloat(vol) >= 1.0 ? 'LARGE' : 'RETAIL'));
+      const valUsd = (parseFloat(price) * parseFloat(vol) * 100).toFixed(2);
+      csv += `${timeStr},${price},${vol},${side},${cat},${valUsd}\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const timeSlug = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `gringgo-tape-xauusd-${timeSlug}.csv`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    this.showToast(`📥 ${trades.length} rekod transaksi berjaya dimuat turun ke CSV!`);
+  }
+
+  _initSessionStats() {
+    try {
+      const saved = sessionStorage.getItem('gringgo_session_stats');
+      if (saved) {
+        this.sessionStats = JSON.parse(saved);
+      } else {
+        this.sessionStats = { realizedPnl: 0.0, winCount: 0, lossCount: 0, totalTrades: 0 };
+      }
+    } catch (e) {
+      this.sessionStats = { realizedPnl: 0.0, winCount: 0, lossCount: 0, totalTrades: 0 };
+    }
+    this._updateSessionStatsUI();
+  }
+
+  _recordClosedTrade(pnl) {
+    if (typeof pnl !== 'number' || isNaN(pnl)) return;
+    this.sessionStats.realizedPnl += pnl;
+    this.sessionStats.totalTrades += 1;
+    if (pnl > 0) this.sessionStats.winCount += 1;
+    else if (pnl < 0) this.sessionStats.lossCount += 1;
+    try {
+      sessionStorage.setItem('gringgo_session_stats', JSON.stringify(this.sessionStats));
+    } catch (e) {}
+    this._updateSessionStatsUI();
+  }
+
+  _updateSessionStatsUI() {
+    const elPnl = document.getElementById('txtSessionPnl');
+    const elWr = document.getElementById('txtSessionWinRate');
+    if (!elPnl || !elWr) return;
+    const pnl = this.sessionStats.realizedPnl || 0.0;
+    const sign = pnl >= 0 ? '+' : '-';
+    elPnl.textContent = `${sign}$${Math.abs(pnl).toFixed(2)}`;
+    elPnl.style.color = pnl >= 0 ? '#22c55e' : '#ef4444';
+
+    const total = this.sessionStats.totalTrades || 0;
+    const wins = this.sessionStats.winCount || 0;
+    const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
+    elWr.textContent = `WR: ${wr}% (${wins}/${total})`;
+  }
+
+  _setupLotCalculator() {
+    const modal = document.getElementById('lotCalcModal');
+    const btnOpen = document.getElementById('btnOpenLotCalc');
+    const btnClose = document.getElementById('btnCloseLotCalc');
+    const inputRisk = document.getElementById('calcInputRiskUsd');
+    const inputPips = document.getElementById('calcInputSlPips');
+    const lblDist = document.getElementById('lblCalcSlDistDollars');
+    const resLot = document.getElementById('calcResultLot');
+    const resLoss = document.getElementById('calcLossUsd');
+    const resProfit = document.getElementById('calcProfitUsd');
+    const btnApply = document.getElementById('btnApplyCalculatedLot');
+
+    if (!modal) return;
+
+    const calc = () => {
+      const risk = Math.max(1, parseFloat(inputRisk ? inputRisk.value : 50) || 50);
+      const pips = Math.max(5, parseFloat(inputPips ? inputPips.value : 30) || 30);
+      const dollarsMove = pips * 0.10; // 1 pip = $0.10 on XAUUSD
+      if (lblDist) lblDist.textContent = `${pips} pip = $${dollarsMove.toFixed(2)}`;
+
+      const calculatedLot = Math.max(0.01, Math.min(20.0, risk / (dollarsMove * 100)));
+      const roundedLot = Math.round(calculatedLot * 100) / 100;
+
+      if (resLot) resLot.textContent = `${roundedLot.toFixed(2)} LOT`;
+      if (resLoss) resLoss.textContent = `-$${risk.toFixed(2)}`;
+      if (resProfit) resProfit.textContent = `+$${(risk * 2).toFixed(2)}`;
+      return roundedLot;
+    };
+
+    if (btnOpen) {
+      btnOpen.addEventListener('click', () => {
+        modal.style.display = 'flex';
+        calc();
+      });
+    }
+
+    if (btnClose) {
+      btnClose.addEventListener('click', () => {
+        modal.style.display = 'none';
+      });
+    }
+
+    document.querySelectorAll('.calc-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.calc-preset-btn').forEach(b => {
+          b.classList.remove('active');
+          b.style.borderColor = '#1e293b';
+          b.style.color = '#cbd5e1';
+        });
+        btn.classList.add('active');
+        btn.style.borderColor = '#ffd60a';
+        btn.style.color = '#ffd60a';
+        if (inputRisk) inputRisk.value = btn.dataset.val;
+        calc();
+      });
+    });
+
+    if (inputRisk) inputRisk.addEventListener('input', calc);
+    if (inputPips) inputPips.addEventListener('input', calc);
+
+    if (btnApply) {
+      btnApply.addEventListener('click', () => {
+        const lot = calc();
+        this.selectedLot = lot;
+        if (this.inputLot) this.inputLot.value = lot;
+        const inputFast = document.getElementById('inputFastLot');
+        if (inputFast) inputFast.value = lot;
+        this._updateRRPreview();
+        modal.style.display = 'none';
+        this.showToast(`✅ Saiz lot ${lot.toFixed(2)} telah diterapkan ke panel dagangan!`);
+      });
+    }
+  }
+
+  openSignalsTab() {
+    const tabBtn = document.getElementById('tabBtnSignals');
+    if (tabBtn) tabBtn.click();
+    if (this.isDockCollapsed) this.toggleBottomDock(false);
+    this.showToast('📡 Modul Rekod Isyarat (Win/Loss) Dibuka');
+  }
+
+  _initSignalsTracker() {
+    try {
+      const saved = localStorage.getItem('gringgo_signals_journal');
+      if (saved) {
+        this.signalsList = JSON.parse(saved);
+      }
+    } catch (e) {
+      this.signalsList = [];
+    }
+
+    if (!this.signalsList || this.signalsList.length === 0) {
+      const now = Date.now();
+      const p = 4053.90;
+      this.signalsList = [
+        {
+          id: 'SIG-101',
+          timestamp: now - 3600000 * 3,
+          timeStr: new Date(now - 3600000 * 3).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+          type: '⭐ SMC Asian High Sweep (Turtle Soup)',
+          direction: 'SELL',
+          entryPrice: p + 8.50,
+          slPrice: p + 12.00,
+          tpPrice: p + 1.50,
+          status: 'WIN',
+          resultPips: 70.0,
+          closedAt: now - 3600000 * 2,
+          closePrice: p + 1.50
+        },
+        {
+          id: 'SIG-102',
+          timestamp: now - 3600000 * 2,
+          timeStr: new Date(now - 3600000 * 2).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+          type: '⚡ Order Flow Absorption Reversal',
+          direction: 'BUY',
+          entryPrice: p - 5.00,
+          slPrice: p - 8.50,
+          tpPrice: p + 2.00,
+          status: 'WIN',
+          resultPips: 70.0,
+          closedAt: now - 3600000,
+          closePrice: p + 2.00
+        },
+        {
+          id: 'SIG-103',
+          timestamp: now - 3600000,
+          timeStr: new Date(now - 3600000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+          type: '🏛️ Volume Profile dPOC Retest',
+          direction: 'BUY',
+          entryPrice: p - 2.00,
+          slPrice: p - 5.50,
+          tpPrice: p + 5.00,
+          status: 'LOSS',
+          resultPips: -35.0,
+          closedAt: now - 1800000,
+          closePrice: p - 5.50
+        },
+        {
+          id: 'SIG-104',
+          timestamp: now - 900000,
+          timeStr: new Date(now - 900000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+          type: '🎯 Quad-Confluence 4/4 A+ Setup',
+          direction: 'BUY',
+          entryPrice: p,
+          slPrice: p - 3.50,
+          tpPrice: p + 7.00,
+          status: 'ACTIVE',
+          resultPips: 0.0,
+          floatingPips: 14.5,
+          closedAt: null,
+          closePrice: null
+        }
+      ];
+      this._saveSignals();
+    }
+
+    this._renderSignalsUI();
+  }
+
+  _saveSignals() {
+    try {
+      localStorage.setItem('gringgo_signals_journal', JSON.stringify(this.signalsList));
+    } catch (e) {}
+  }
+
+  addSignal({ type, direction, entryPrice, slPips = 35, tpPips = 70 }) {
+    if (!entryPrice || entryPrice <= 0) return;
+    const now = Date.now();
+    const slDist = (slPips * 0.10); // 1 pip = $0.10
+    const tpDist = (tpPips * 0.10);
+
+    const slPrice = direction === 'BUY' ? (entryPrice - slDist) : (entryPrice + slDist);
+    const tpPrice = direction === 'BUY' ? (entryPrice + tpDist) : (entryPrice - tpDist);
+
+    const newSig = {
+      id: `SIG-${now.toString().slice(-4)}`,
+      timestamp: now,
+      timeStr: new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}),
+      type: type || '🎯 Quad-Confluence Signal',
+      direction: direction.toUpperCase(),
+      entryPrice: parseFloat(entryPrice.toFixed(2)),
+      slPrice: parseFloat(slPrice.toFixed(2)),
+      tpPrice: parseFloat(tpPrice.toFixed(2)),
+      status: 'ACTIVE',
+      resultPips: 0.0,
+      floatingPips: 0.0,
+      closedAt: null,
+      closePrice: null
+    };
+
+    this.signalsList.unshift(newSig);
+    if (this.signalsList.length > 50) this.signalsList = this.signalsList.slice(0, 50);
+    this._saveSignals();
+    this._renderSignalsUI();
+    this.showToast(`📡 Isyarat Baharu: ${newSig.direction} @ $${newSig.entryPrice.toFixed(2)} (SL: $${newSig.slPrice.toFixed(2)}, TP: $${newSig.tpPrice.toFixed(2)})`);
+    if (this.audioEnabled) this.playInstitutionalChime('SWEEP');
+  }
+
+  _evaluateSignals(s) {
+    if (!s || !this.signalsList || this.signalsList.length === 0) return;
+    const curPrice = s.last_price || s.ask || s.bid || 0;
+    if (!curPrice) return;
+
+    let hasChange = false;
+
+    this.signalsList.forEach(sig => {
+      if (sig.status !== 'ACTIVE') return;
+
+      if (sig.direction === 'BUY') {
+        if (curPrice >= sig.tpPrice) {
+          sig.status = 'WIN';
+          sig.closePrice = sig.tpPrice;
+          sig.closedAt = Date.now();
+          sig.resultPips = parseFloat(((sig.tpPrice - sig.entryPrice) * 10).toFixed(1));
+          hasChange = true;
+          this.showToast(`🎉 ISYARAT #${sig.id} (BUY) MENANG! Hit TP (+${sig.resultPips} pip)`);
+          if (this.audioEnabled) this.playInstitutionalChime('BUY');
+        } else if (curPrice <= sig.slPrice) {
+          sig.status = 'LOSS';
+          sig.closePrice = sig.slPrice;
+          sig.closedAt = Date.now();
+          sig.resultPips = -parseFloat(((sig.entryPrice - sig.slPrice) * 10).toFixed(1));
+          hasChange = true;
+          this.showToast(`⚠️ ISYARAT #${sig.id} (BUY) KALAH! Hit SL (${sig.resultPips} pip)`);
+          if (this.audioEnabled) this.playInstitutionalChime('SELL');
+        } else {
+          sig.floatingPips = parseFloat(((curPrice - sig.entryPrice) * 10).toFixed(1));
+        }
+      } else if (sig.direction === 'SELL') {
+        if (curPrice <= sig.tpPrice) {
+          sig.status = 'WIN';
+          sig.closePrice = sig.tpPrice;
+          sig.closedAt = Date.now();
+          sig.resultPips = parseFloat(((sig.entryPrice - sig.tpPrice) * 10).toFixed(1));
+          hasChange = true;
+          this.showToast(`🎉 ISYARAT #${sig.id} (SELL) MENANG! Hit TP (+${sig.resultPips} pip)`);
+          if (this.audioEnabled) this.playInstitutionalChime('BUY');
+        } else if (curPrice >= sig.slPrice) {
+          sig.status = 'LOSS';
+          sig.closePrice = sig.slPrice;
+          sig.closedAt = Date.now();
+          sig.resultPips = -parseFloat(((sig.slPrice - sig.entryPrice) * 10).toFixed(1));
+          hasChange = true;
+          this.showToast(`⚠️ ISYARAT #${sig.id} (SELL) KALAH! Hit SL (${sig.resultPips} pip)`);
+          if (this.audioEnabled) this.playInstitutionalChime('SELL');
+        } else {
+          sig.floatingPips = parseFloat(((sig.entryPrice - curPrice) * 10).toFixed(1));
+        }
+      }
+    });
+
+    if (hasChange) {
+      this._saveSignals();
+    }
+    this._renderSignalsUI();
+  }
+
+  _renderSignalsUI() {
+    const tbody = document.getElementById('signalsTableBody');
+    const badgeHdr = document.getElementById('hdrSigWinLossBadge');
+    const badgeDock = document.getElementById('badgeSignalWinLoss');
+    const txtWinRate = document.getElementById('sigStatWinRate');
+    const txtWins = document.getElementById('sigStatWins');
+    const txtLosses = document.getElementById('sigStatLosses');
+    const txtActive = document.getElementById('sigStatActive');
+    const txtNetPips = document.getElementById('sigStatNetPips');
+
+    const total = this.signalsList.length;
+    const wins = this.signalsList.filter(s => s.status === 'WIN').length;
+    const losses = this.signalsList.filter(s => s.status === 'LOSS').length;
+    const active = this.signalsList.filter(s => s.status === 'ACTIVE').length;
+    const closed = wins + losses;
+    const winRate = closed > 0 ? Math.round((wins / closed) * 100) : 0;
+
+    let netPips = 0;
+    this.signalsList.forEach(s => {
+      if (s.status === 'WIN' || s.status === 'LOSS') netPips += (s.resultPips || 0);
+      else if (s.status === 'ACTIVE') netPips += (s.floatingPips || 0);
+    });
+
+    const badgeStr = `${wins}W / ${losses}L`;
+    if (badgeHdr) badgeHdr.textContent = `(${badgeStr})`;
+    if (badgeDock) badgeDock.textContent = badgeStr;
+
+    if (txtWinRate) {
+      txtWinRate.textContent = `${winRate}%`;
+      txtWinRate.style.color = winRate >= 60 ? '#00e676' : (winRate >= 45 ? '#f59e0b' : '#ff3366');
+    }
+    if (txtWins) txtWins.textContent = `${wins} MENANG`;
+    if (txtLosses) txtLosses.textContent = `${losses} KALAH`;
+    if (txtActive) txtActive.textContent = `${active} AKTIF ⏳`;
+    if (txtNetPips) {
+      const sign = netPips >= 0 ? '+' : '';
+      txtNetPips.textContent = `${sign}${netPips.toFixed(1)} PIP`;
+      txtNetPips.style.color = netPips >= 0 ? '#ffd60a' : '#ff3366';
+    }
+
+    if (!tbody) return;
+
+    const filtered = this.signalsList.filter(s => {
+      if (this.signalFilter === 'active') return s.status === 'ACTIVE';
+      if (this.signalFilter === 'win') return s.status === 'WIN';
+      if (this.signalFilter === 'loss') return s.status === 'LOSS';
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:12px; color:#64748b;">Tiada rekod isyarat dalam kategori ini.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(sig => {
+      const isBuy = sig.direction === 'BUY';
+      const dirCol = isBuy ? '#00e676' : '#ff3366';
+      const dirText = isBuy ? '🟢 BUY' : '🔴 SELL';
+
+      let statusBadge = '';
+      let pipsBadge = '';
+
+      if (sig.status === 'WIN') {
+        statusBadge = `<span style="background:rgba(0,230,118,0.18); color:#00e676; border:1px solid #00e676; padding:1px 5px; border-radius:3px; font-weight:900;">MENANG ✅</span>`;
+        pipsBadge = `<b style="color:#00e676;">+${sig.resultPips} pip</b>`;
+      } else if (sig.status === 'LOSS') {
+        statusBadge = `<span style="background:rgba(239,68,68,0.18); color:#f87171; border:1px solid #ef4444; padding:1px 5px; border-radius:3px; font-weight:900;">KALAH ❌</span>`;
+        pipsBadge = `<b style="color:#ff3366;">${sig.resultPips} pip</b>`;
+      } else {
+        const fp = sig.floatingPips || 0;
+        const fpCol = fp >= 0 ? '#00e676' : '#ff3366';
+        statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#38bdf8; border:1px solid #38bdf8; padding:1px 5px; border-radius:3px; font-weight:800;">SEDANG JALAN ⏳</span>`;
+        pipsBadge = `<span style="color:${fpCol}; font-weight:700;">${fp >= 0 ? '+' : ''}${fp.toFixed(1)} pip</span>`;
+      }
+
+      const actions = sig.status === 'ACTIVE' 
+        ? `<button class="tool-btn btn-sig-follow" data-id="${sig.id}" style="padding:1px 5px; font-size:9px; color:#00e676; border-color:#00e676; font-weight:800; cursor:pointer;" title="Buka posisi sekarang mengikut isyarat ini">⚡ Ikut</button>
+           <button class="tool-btn btn-sig-copy" data-id="${sig.id}" style="padding:1px 4px; font-size:9px; color:#ffd60a; margin-left:2px; cursor:pointer;" title="Salin parameter isyarat">📋</button>`
+        : `<button class="tool-btn btn-sig-copy" data-id="${sig.id}" style="padding:1px 5px; font-size:9px; color:#ffd60a; cursor:pointer;" title="Salin ringkasan keputusan isyarat">📋 Salin</button>`;
+
+      return `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+          <td style="padding:5px 6px; color:#94a3b8; font-weight:700;">${sig.id}</td>
+          <td style="padding:5px 6px; color:#cbd5e1;">${sig.timeStr}</td>
+          <td style="padding:5px 6px; color:#f8fafc; font-weight:700;">${sig.type}</td>
+          <td style="padding:5px 6px; color:${dirCol}; font-weight:900;">${dirText}</td>
+          <td style="padding:5px 6px; color:#ffffff; font-weight:800;">$${sig.entryPrice.toFixed(2)}</td>
+          <td style="padding:5px 6px; color:#ff3366;">$${sig.slPrice.toFixed(2)}</td>
+          <td style="padding:5px 6px; color:#00e676;">$${sig.tpPrice.toFixed(2)}</td>
+          <td style="padding:5px 6px;">${statusBadge}</td>
+          <td style="padding:5px 6px;">${pipsBadge}</td>
+          <td style="padding:5px 6px; text-align:center;">${actions}</td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('.btn-sig-follow').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sig = this.signalsList.find(s => s.id === btn.dataset.id);
+        if (sig) {
+          const slPips = Math.round(Math.abs(sig.entryPrice - sig.slPrice) * 10);
+          const tpPips = Math.round(Math.abs(sig.entryPrice - sig.tpPrice) * 10);
+          if (this.inputSL) this.inputSL.value = slPips;
+          if (this.inputTP) this.inputTP.value = tpPips;
+          this.sendTrade(sig.direction);
+          this.showToast(`⚡ Mengikuti isyarat #${sig.id} (${sig.direction})!`);
+        }
+      });
+    });
+
+    tbody.querySelectorAll('.btn-sig-copy').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sig = this.signalsList.find(s => s.id === btn.dataset.id);
+        if (sig) {
+          const text = `📡 [GRINGGO ORDERFLOW SIGNAL #${sig.id}]\nSetup: ${sig.type}\nArah: ${sig.direction}\nEntry: $${sig.entryPrice.toFixed(2)}\nSL: $${sig.slPrice.toFixed(2)}\nTP: $${sig.tpPrice.toFixed(2)}\nStatus: ${sig.status} (${sig.resultPips || sig.floatingPips || 0} Pip)`;
+          navigator.clipboard.writeText(text).then(() => {
+            this.showToast(`📋 Parameter isyarat #${sig.id} disalin ke clipboard!`);
+          });
+        }
+      });
+    });
+  }
+
+  exportSignalsToCSV() {
+    if (!this.signalsList || this.signalsList.length === 0) {
+      this.showToast('⚠️ Tiada data isyarat untuk dieksport.');
+      return;
+    }
+
+    let csv = "ID,Masa,Setup,Arah,Entry,SL,TP,Status,Result_Pips,Close_Price,Closed_At\n";
+    this.signalsList.forEach(s => {
+      const closedTime = s.closedAt ? new Date(s.closedAt).toLocaleTimeString() : '';
+      csv += `${s.id},"${s.timeStr}","${s.type}",${s.direction},${s.entryPrice},${s.slPrice},${s.tpPrice},${s.status},${s.resultPips || s.floatingPips || 0},${s.closePrice || ''},"${closedTime}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const filename = `gringgo-signals-journal-${new Date().toISOString().slice(0, 10)}.csv`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    this.showToast(`📥 Jurnal isyarat (${this.signalsList.length} rekod) dimuat turun ke CSV!`);
+  }
+
 }
 
 window.addEventListener('DOMContentLoaded', () => {
