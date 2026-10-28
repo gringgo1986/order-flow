@@ -13,6 +13,7 @@ class DOMManager {
     this.selectedLot = 0.01;
     this.maxVolScale = 95.0;
     this.levelsEachSide = 16; // 16 Asks + 1 Center Spread Row + 16 Bids = 33 rows full height
+    this._attachCenterBtn();
     this._initEvents();
   }
 
@@ -32,6 +33,24 @@ class DOMManager {
         window.app.handleDOMClick('BUY', price);
       }
     });
+  }
+
+  _attachCenterBtn() {
+    setTimeout(() => {
+      const btn = document.getElementById('btnDomCenter');
+      if (btn && !btn._attached) {
+        btn._attached = true;
+        btn.addEventListener('click', () => { this.centerDOM(); });
+      }
+    }, 200);
+  }
+
+  centerDOM() {
+    if (!this.container) return;
+    const centerRow = this.container.querySelector('.dom-center-spread');
+    if (centerRow) {
+      centerRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
   }
 
   render(snapshot) {
@@ -66,6 +85,17 @@ class DOMManager {
     let totalAskVol = 0;
     let totalBidVol = 0;
     let maxObservedVol = 60.0;
+
+    // Traded Volume Profile Map from Session VP
+    const tradedMap = {};
+    let maxTraded = 10.0;
+    if (snapshot.session_vp && snapshot.session_vp.buckets) {
+      for (const b of snapshot.session_vp.buckets) {
+        const bp = b.price.toFixed(2);
+        tradedMap[bp] = b.total || 0;
+        if (b.total > maxTraded) maxTraded = b.total;
+      }
+    }
 
     const askRows = [];
     for (let i = this.levelsEachSide; i >= 1; i--) {
@@ -153,8 +183,9 @@ class DOMManager {
 
       html += `
         <div class="dom-row dom-ask-row" data-price="${pStr}" style="cursor:pointer; ${rowBgStyle}" title="⚡ Klik untuk pasang SELL LIMIT @ $${pStr}">
-          <div class="dom-col bid-vol">
-            <span class="dom-wall-tag" style="${isShark ? 'color:#ff2a55; font-weight:900;' : ''}">${isShark ? '🦈JERUNG' : (isWall ? 'WALL' : '')}</span>
+          <div class="dom-col bid-vol" style="position:relative;" title="Volum Terlaksana Sesi @ $${pStr}: ${(tradedMap[pStr] || 0).toFixed(1)}L">
+            <div class="dom-bar-traded ask-side" style="width:${Math.min(100, ((tradedMap[pStr] || 0) / maxTraded) * 100).toFixed(1)}%;"></div>
+            <span class="dom-wall-tag" style="${isShark ? 'color:#ff2a55; font-weight:900;' : ''}">${isShark ? '🦈JERUNG' : (isWall ? 'WALL' : ((tradedMap[pStr] || 0) > 0 ? (tradedMap[pStr] || 0).toFixed(0) + 'v' : ''))}</span>
           </div>
           <div class="dom-col price" style="${priceColor}">${badgePrefix}${pStr}</div>
           <div class="dom-col ask-vol" title="Kecairan Offer (Ask) @ $${pStr}: ${vol.toFixed(1)} Lots">
@@ -249,8 +280,9 @@ class DOMManager {
             <span style="${isShark ? 'color:#fff; font-weight:900;' : (isWall ? 'color:#fff; font-weight:800;' : '')}">${vol > 0 ? vol.toFixed(1) : ''}</span>
           </div>
           <div class="dom-col price" style="${priceColor}">${badgePrefix}${pStr}</div>
-          <div class="dom-col ask-vol">
-            <span class="dom-wall-tag" style="${isShark ? 'color:#00f59b; font-weight:900;' : ''}">${isShark ? '🦈JERUNG' : (isWall ? 'WALL' : '')}</span>
+          <div class="dom-col ask-vol" style="position:relative;" title="Volum Terlaksana Sesi @ $${pStr}: ${(tradedMap[pStr] || 0).toFixed(1)}L">
+            <div class="dom-bar-traded bid-side" style="width:${Math.min(100, ((tradedMap[pStr] || 0) / maxTraded) * 100).toFixed(1)}%;"></div>
+            <span class="dom-wall-tag" style="${isShark ? 'color:#00f59b; font-weight:900;' : ''}">${isShark ? '🦈JERUNG' : (isWall ? 'WALL' : ((tradedMap[pStr] || 0) > 0 ? (tradedMap[pStr] || 0).toFixed(0) + 'v' : ''))}</span>
           </div>
         </div>
       `;
