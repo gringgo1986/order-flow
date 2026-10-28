@@ -3,7 +3,7 @@
    High-Speed Cache for Shell Assets + Network-First for Live Market Feed
    ==================================================================== */
 
-const CACHE_NAME = 'gringgo-orderflow-v14.7';
+const CACHE_NAME = 'gringgo-orderflow-v14.8';
 const STATIC_SHELL_ASSETS = [
   '/static/css/style.css',
   '/static/manifest.json',
