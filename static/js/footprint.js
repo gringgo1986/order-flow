@@ -100,6 +100,9 @@ class FootprintRenderer {
     this.showWickAbsorption = true;   // NEW: Extreme Wick Absorption Detector (Trapped Traders)
     this.showCandleDeltaDiv = true;   // NEW: Candle Delta Divergence (Δ DIV)
     this.showFpsignals = true;        // NEW: Strict Location-First Footprint Signals at SNR
+    this.fpShowUnfinished = true;     // NEW: Unfinished Auction High & Low Rays
+    this.fpShowPocMigration = true;   // NEW: Stepped POC Migration Flow Line
+    this.fpShowCvdSparkline = true;   // NEW: Cumulative Delta Sparkline
     this.imbThreshold = 3.0;          // NEW: 3.0 (300% Standard) | 4.0 (400% Whale)
     this.fpToolbarHitboxes = [];      // NEW: Top HUD Interactive Hitboxes
     this._fpConfirmedSignals = [];    // NEW: Confirmed signals history
@@ -846,6 +849,15 @@ class FootprintRenderer {
       }
     }
 
+    // 2.2. Draw Stepped POC Migration Flow Line across bars
+    this._drawFootprintPocMigration(ctx, candles);
+
+    // 2.25. Draw Unfinished Auction Rays across bars
+    this._drawFootprintUnfinishedRays(ctx, candles, rightAnchorX);
+
+    // 2.28. Draw Cumulative Delta Sparkline
+    this._drawFootprintCvdSparkline(ctx, candles);
+
     // 2.3. Draw Strict Location-First Footprint Signals at SNR
     if (this.showFpsignals !== false) {
       this._drawFootprintSignals(ctx, snapshot, candles, rightAnchorX);
@@ -1122,6 +1134,20 @@ class FootprintRenderer {
         pocPrice = cl.price;
       }
     }
+    rawCandle._pocPrice = pocPrice;
+    rawCandle._centerX = centerX;
+
+    // Detect Unfinished Auction at extremes of this candle
+    if (sortedKeys.length >= 2) {
+      const topNode = grouped[sortedKeys[sortedKeys.length - 1]];
+      const btmNode = grouped[sortedKeys[0]];
+      if (topNode && topNode.bid > 0 && topNode.ask > 0 && topNode.total >= 0.4) {
+        rawCandle._unfinishedHigh = topNode.price;
+      }
+      if (btmNode && btmNode.bid > 0 && btmNode.ask > 0 && btmNode.total >= 0.4) {
+        rawCandle._unfinishedLow = btmNode.price;
+      }
+    }
 
     // Calculate Value Area (VAH 70% & VAL 70%)
     let vahPrice = pocPrice;
@@ -1279,22 +1305,26 @@ class FootprintRenderer {
         ctx.lineTo(x + halfW, boxY + boxHeight);
         ctx.stroke();
 
-        // High-Contrast Text Rendering
+        // High-Contrast Text Rendering (Smart Compact & Mobile Optimized)
         if (boxHeight >= 15) {
-          ctx.font = 'bold 11px "JetBrains Mono", monospace';
+          const isCompact = this.candleWidth < 125;
+          const fontSize = isCompact ? 9.5 : 11;
+          ctx.font = `bold ${fontSize}px "JetBrains Mono", monospace`;
           const textY = boxY + boxHeight / 2 + 4;
 
           // Bid Text (Left) - Mini Directional Sweep Indicator
           ctx.textAlign = 'center';
           ctx.fillStyle = isSellImbalance ? '#ffffff' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
-          const bidRatioStr = (boxHeight >= 18 && cl.sellRatio) ? `↘${cl.sellRatio}x ` : (isSellImbalance ? '↘ ' : '');
-          const bidStr = bidRatioStr + cl.bid.toFixed(1);
+          const bidRatioStr = (boxHeight >= 18 && cl.sellRatio && !isCompact) ? `↘${cl.sellRatio}x ` : (isSellImbalance ? '↘ ' : '');
+          const bidValStr = isCompact ? Math.round(cl.bid).toString() : cl.bid.toFixed(1);
+          const bidStr = bidRatioStr + bidValStr;
           ctx.fillText(bidStr, x + halfW / 2, textY);
 
           // Ask Text (Right) - Mini Directional Sweep Indicator
           ctx.fillStyle = isBuyImbalance ? '#ffffff' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
-          const askRatioStr = (boxHeight >= 18 && cl.buyRatio) ? ` ↗${cl.buyRatio}x` : (isBuyImbalance ? ' ↗' : '');
-          const askStr = cl.ask.toFixed(1) + askRatioStr;
+          const askRatioStr = (boxHeight >= 18 && cl.buyRatio && !isCompact) ? ` ↗${cl.buyRatio}x` : (isBuyImbalance ? ' ↗' : '');
+          const askValStr = isCompact ? Math.round(cl.ask).toString() : cl.ask.toFixed(1);
+          const askStr = askValStr + askRatioStr;
           ctx.fillText(askStr, x + halfW + halfW / 2, textY);
         }
 
@@ -1731,6 +1761,170 @@ class FootprintRenderer {
   }
 
   /* ─── Strict Location-First Footprint Signals at Institutional SNR ─────────────── */
+
+  /* ─── Stepped POC Migration Flow Line across Footprint Candles ─ */
+  _drawFootprintPocMigration(ctx, candles) {
+    if (this.fpShowPocMigration === false) return;
+    const pts = candles.filter(c => c._pocPrice != null && c._centerX != null).map(c => ({
+      x: c._centerX,
+      y: this.priceToY(c._pocPrice),
+      price: c._pocPrice
+    }));
+    if (pts.length < 2) return;
+
+    ctx.save();
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = 'rgba(250, 204, 21, 0.45)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      ctx.lineTo(p2.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    for (const pt of pts) {
+      ctx.fillStyle = '#fde047';
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* ─── Unfinished Auction High & Low Rays ─ */
+  _drawFootprintUnfinishedRays(ctx, candles, rightAnchorX) {
+    if (this.fpShowUnfinished === false) return;
+    const step = this.clusterStep;
+    const maxChartX = this.width - 85;
+
+    ctx.save();
+    for (let i = 0; i < candles.length - 1; i++) {
+      const c = candles[i];
+      if (!c._centerX) continue;
+
+      if (c._unfinishedHigh) {
+        const p = c._unfinishedHigh;
+        let tested = false;
+        let sweptX = maxChartX;
+        for (let k = i + 1; k < candles.length; k++) {
+          if (candles[k].high >= p) {
+            tested = true;
+            sweptX = candles[k]._centerX || maxChartX;
+            break;
+          }
+        }
+        const y = this.priceToY(p + step * 0.5);
+        if (y >= 15 && y <= this.height - 75) {
+          ctx.strokeStyle = tested ? 'rgba(244, 63, 94, 0.28)' : '#f43f5e';
+          ctx.lineWidth = tested ? 0.9 : 1.6;
+          ctx.setLineDash(tested ? [3, 3] : [6, 3]);
+          ctx.beginPath();
+          ctx.moveTo(c._centerX, y);
+          ctx.lineTo(sweptX, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          if (!tested) {
+            ctx.fillStyle = '#f43f5e';
+            ctx.font = 'bold 8px "JetBrains Mono", monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(`⚡UF HIGH $${p.toFixed(2)}`, maxChartX - 4, y - 3);
+          }
+        }
+      }
+
+      if (c._unfinishedLow) {
+        const p = c._unfinishedLow;
+        let tested = false;
+        let sweptX = maxChartX;
+        for (let k = i + 1; k < candles.length; k++) {
+          if (candles[k].low <= p) {
+            tested = true;
+            sweptX = candles[k]._centerX || maxChartX;
+            break;
+          }
+        }
+        const y = this.priceToY(p + step * 0.5);
+        if (y >= 15 && y <= this.height - 75) {
+          ctx.strokeStyle = tested ? 'rgba(16, 185, 129, 0.28)' : '#10b981';
+          ctx.lineWidth = tested ? 0.9 : 1.6;
+          ctx.setLineDash(tested ? [3, 3] : [6, 3]);
+          ctx.beginPath();
+          ctx.moveTo(c._centerX, y);
+          ctx.lineTo(sweptX, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          if (!tested) {
+            ctx.fillStyle = '#10b981';
+            ctx.font = 'bold 8px "JetBrains Mono", monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(`⚡UF LOW $${p.toFixed(2)}`, maxChartX - 4, y - 3);
+          }
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /* ─── Multi-Bar Cumulative Delta (CVD) Sparkline ─ */
+  _drawFootprintCvdSparkline(ctx, candles) {
+    if (this.fpShowCvdSparkline === false) return;
+    const pts = candles.filter(c => c._centerX != null);
+    if (pts.length < 2) return;
+
+    let cum = 0;
+    const data = pts.map(c => {
+      cum += (c.delta || 0);
+      return { x: c._centerX, cum };
+    });
+
+    let minC = Infinity, maxC = -Infinity;
+    for (const d of data) {
+      if (d.cum < minC) minC = d.cum;
+      if (d.cum > maxC) maxC = d.cum;
+    }
+    const span = Math.max(2.0, maxC - minC);
+    const footerY = (this.height || 600) - 72;
+    const sparkH = 14;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(11, 19, 34, 0.75)';
+    ctx.fillRect(data[0].x - 20, footerY - sparkH - 2, (data[data.length - 1].x - data[0].x) + 40, sparkH + 4);
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(data[0].x - 20, footerY - sparkH - 2, (data[data.length - 1].x - data[0].x) + 40, sparkH + 4);
+
+    ctx.beginPath();
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i];
+      const sy = footerY - ((d.cum - minC) / span) * sparkH;
+      if (i === 0) ctx.moveTo(d.x, sy);
+      else ctx.lineTo(d.x, sy);
+    }
+    ctx.strokeStyle = cum >= 0 ? '#38bdf8' : '#fb7185';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    const last = data[data.length - 1];
+    const lastY = footerY - ((last.cum - minC) / span) * sparkH;
+    ctx.fillStyle = cum >= 0 ? '#38bdf8' : '#fb7185';
+    ctx.beginPath();
+    ctx.arc(last.x, lastY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = 'bold 8px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`CVD: ${(cum >= 0 ? '+' : '') + cum.toFixed(1)}L`, last.x + 6, footerY - sparkH / 2 + 2);
+    ctx.restore();
+  }
+
   _drawFootprintSignals(ctx, snapshot, candles, startX) {
     if (!candles || candles.length < 2) return;
     const sess = snapshot.sessions || {};
@@ -1895,6 +2089,34 @@ class FootprintRenderer {
       this.fpToolbarHitboxes.push({ x: pillX, y, w, h, onClick });
       pillX += w + 5;
     };
+
+    // On-Canvas Quick Action Trade HUD
+    drawPill('⚡ BUY', true, '#059669', () => {
+      if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('BUY');
+    });
+    drawPill('⚡ SELL', true, '#dc2626', () => {
+      if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('SELL');
+    });
+    drawPill('🎯 BE', false, '#38bdf8', () => {
+      fetch('/api/breakeven_all', { method: 'POST' }).then(r => r.json()).then(res => {
+        if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
+      });
+    });
+    drawPill('❌ CLOSE', false, '#f43f5e', () => {
+      fetch('/api/close_all', { method: 'POST' }).then(r => r.json()).then(res => {
+        if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
+      });
+    });
+
+    drawPill(`🎯 UF: ${this.fpShowUnfinished !== false ? 'ON' : 'OFF'}`, this.fpShowUnfinished !== false, '#f43f5e', () => {
+      this.fpShowUnfinished = (this.fpShowUnfinished === false);
+    });
+    drawPill(`📈 POC: ${this.fpShowPocMigration !== false ? 'ON' : 'OFF'}`, this.fpShowPocMigration !== false, '#facc15', () => {
+      this.fpShowPocMigration = (this.fpShowPocMigration === false);
+    });
+    drawPill(`📊 CVD: ${this.fpShowCvdSparkline !== false ? 'ON' : 'OFF'}`, this.fpShowCvdSparkline !== false, '#38bdf8', () => {
+      this.fpShowCvdSparkline = (this.fpShowCvdSparkline === false);
+    });
 
     // Mode Switcher Pills (1-Click Direct Toggle)
     drawPill(
