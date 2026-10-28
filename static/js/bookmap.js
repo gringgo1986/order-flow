@@ -3399,7 +3399,10 @@ class BookmapRenderer {
 
     let buyVolTotal = 0;
     let sellVolTotal = 0;
-    for (const t of (effectiveTrades || []).slice(-40)) {
+    const hudTrades = (this._tradesHistoryBuffer && this._tradesHistoryBuffer.length > 0)
+      ? this._tradesHistoryBuffer
+      : (snapshot.trades || []);
+    for (const t of hudTrades.slice(-40)) {
       buyVolTotal  += t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
       sellVolTotal += t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
     }
