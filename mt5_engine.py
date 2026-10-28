@@ -2784,7 +2784,7 @@ class OrderFlowEngine:
             "market_radar": self._evaluate_market_radar(),
             "account": self.account_info,
             "positions": self.positions,
-            "trades": self.recent_trades[-60:] if initial else self.recent_trades[-4:],
+            "trades": self.recent_trades[-60:] if initial else self.recent_trades[-8:],
             "heatmap": self.heatmap_history[-350:] if initial else (
                 [{
                     "timestamp": self.heatmap_history[-1].get("timestamp", 0),
