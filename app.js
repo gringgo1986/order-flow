@@ -23,6 +23,9 @@ class App {
     this._lastSweepChimeTime = 0;
     this._pingInterval = null;
     this.sessionStats = { realizedPnl: 0.0, winCount: 0, lossCount: 0, totalTrades: 0 };
+    this.signalsList = [];
+    this.signalFilter = 'all';
+    this._lastAutoSignalTime = 0;
 
     this.needsRedraw = true;
     this._lastInsightsHTML = "";
@@ -58,6 +61,7 @@ class App {
     this._setupMobileTouchGestures();
     this._initSessionStats();
     this._setupLotCalculator();
+    this._initSignalsTracker();
 
     // Battery Saver Visibility Listener
     document.addEventListener('visibilitychange', () => {
@@ -144,10 +148,12 @@ class App {
         const elPos = document.getElementById('tabPanePositions');
         const elTape = document.getElementById('tabPaneTape');
         const elIns = document.getElementById('tabPaneInsights');
+        const elSig = document.getElementById('tabPaneSignals');
         const tapeFilterGroup = document.getElementById('tapeFilterGroup');
         if (elPos) elPos.style.display = this.activeDockTab === 'positions' ? 'block' : 'none';
         if (elTape) elTape.style.display = this.activeDockTab === 'tape' ? 'block' : 'none';
         if (elIns) elIns.style.display = this.activeDockTab === 'insights' ? 'block' : 'none';
+        if (elSig) elSig.style.display = this.activeDockTab === 'signals' ? 'block' : 'none';
         if (tapeFilterGroup) tapeFilterGroup.style.display = this.activeDockTab === 'tape' ? 'inline-flex' : 'none';
       });
     });
@@ -277,6 +283,63 @@ class App {
     }
 
     // Sound Toggle Button
+    // Top Header [📡 ISYARAT [6]] Button
+    const btnTopSig = document.getElementById('btnTopSignalsBadge');
+    if (btnTopSig) {
+      btnTopSig.addEventListener('click', () => this.openSignalsTab());
+    }
+
+    // Record Signal Button in Confluence Dashboard
+    const btnDashRec = document.getElementById('btnDashRecordSignal');
+    if (btnDashRec) {
+      btnDashRec.addEventListener('click', () => {
+        if (!this.latestSnapshot) return;
+        const p = this.latestSnapshot.last_price || this.latestSnapshot.current_price || 0;
+        const dir = (this.latestSnapshot.cvd >= 0) ? 'BUY' : 'SELL';
+        this.addSignal({
+          type: '🎯 Confluence Dashboard A+',
+          direction: dir,
+          entryPrice: p,
+          slPips: 35,
+          tpPips: 70
+        });
+        this.showToast('📡 Isyarat Confluence direkodkan ke Jurnal Menang/Kalah!');
+      });
+    }
+
+    // Filter Buttons in Signals Tab
+    document.querySelectorAll('.sig-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.sig-filter-btn').forEach(b => {
+          b.classList.remove('active');
+          b.style.borderColor = '#1e293b';
+        });
+        btn.classList.add('active');
+        btn.style.borderColor = '#38bdf8';
+        this.signalFilter = btn.dataset.filter || 'all';
+        this._renderSignalsUI();
+      });
+    });
+
+    // Export Signals to CSV
+    const btnExpSigCSV = document.getElementById('btnExportSignalsCSV');
+    if (btnExpSigCSV) {
+      btnExpSigCSV.addEventListener('click', () => this.exportSignalsToCSV());
+    }
+
+    // Clear Signals History
+    const btnClrSig = document.getElementById('btnClearSignalsHistory');
+    if (btnClrSig) {
+      btnClrSig.addEventListener('click', () => {
+        if (confirm('Padam semua rekod sejarah isyarat?')) {
+          this.signalsList = [];
+          this._saveSignals();
+          this._renderSignalsUI();
+          this.showToast('🗑️ Sejarah isyarat telah dipadam.');
+        }
+      });
+    }
+
     const btnToggleSound = document.getElementById('btnToggleSound');
     if (btnToggleSound) {
       btnToggleSound.addEventListener('click', () => {
@@ -998,6 +1061,13 @@ class App {
         return;
       }
 
+      // 6: Open Signal Win/Loss Tracker Tab
+      if (e.key === '6' || e.code === 'Digit6') {
+        e.preventDefault();
+        this.openSignalsTab();
+        return;
+      }
+
       // R: Toggle Replay Mode
       if (e.code === 'KeyR') {
         e.preventDefault();
@@ -1618,6 +1688,9 @@ class App {
     this._renderPositions(s.positions || []);
     this._renderTape(s.trades || []);
     this._detectInsights(s);
+
+    // Evaluate Live Signals Win/Loss Status against Real-Time Price
+    this._evaluateSignals(s);
 
     // Update Quad-Confluence Signal Dashboard
     this._updateConfluenceDashboard(s);
