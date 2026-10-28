@@ -1898,8 +1898,21 @@ class App {
 
     if (!this.tapeTableBody || !effectiveTrades || effectiveTrades.length === 0) return;
     const minLot = this.tapeMinLot || 0.0;
-    const filtered = minLot > 0 ? effectiveTrades.filter(t => (t.volume || 0) >= minLot) : effectiveTrades;
+    let filtered = minLot > 0 ? effectiveTrades.filter(t => (t.volume || 0) >= minLot) : effectiveTrades;
+    if (this.tapeSideFilter && this.tapeSideFilter !== 'all') {
+      filtered = filtered.filter(t => t.side === this.tapeSideFilter);
+    }
     const slice = filtered.slice(-25).reverse();
+
+    // Tape Velocity Meter (Ticks per second over last 3s)
+    const nowMs = Date.now();
+    const recentCount = effectiveTrades.filter(t => nowMs - (t.timestamp || 0) <= 3000).length;
+    const tps = (recentCount / 3.0).toFixed(1);
+    const speedMeter = document.getElementById('tapeSpeedMeter');
+    if (speedMeter) {
+      speedMeter.textContent = `⚡ ${tps} tps`;
+      speedMeter.style.color = Number(tps) >= 8.0 ? '#ff0055' : (Number(tps) >= 4.0 ? '#00f0ff' : '#facc15');
+    }
     let html = '';
 
     if (slice.length === 0) {
