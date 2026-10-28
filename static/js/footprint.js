@@ -36,6 +36,11 @@ class FootprintRenderer {
     this.cdShowBenchmarks = true;
     this.cdShowSignals = true;
     this.cdShowSNR = true; // H1, H4 & H8 Support and Resistance Levels
+    this.cdShowUnfinished = true; // Unfinished Auction High & Low Rays
+    this.cdShowProfilePanel = true; // Collapsible Right-Side Volume + Delta Profile Panel
+    this.cdShowAbsorption = true; // Passive Institutional Limit Order Absorption Shield
+    this.cdShowDivMarkers = true; // On-Chart Delta Divergence Alert Markers
+    this.cdMinVolFilter = 0; // 0 = All, 1.0 = >=1.0L, 2.5 = >=2.5L
     this.cdVisibleCols = 30; // Adjustable between 20 and 50 jalur
     this.cdMaxRows = 30;     // Adjustable between 20 and 50 baris
     this.cdToolbarHitboxes = [];
@@ -2021,7 +2026,11 @@ class FootprintRenderer {
     const topTableH = 68;   // 4-row institutional telemetry header (Vol, Delta, Δ%/Div, Time)
     const topHeaderH = topControlH + topTableH; // 92px total header
     const bottomStripH = 26;
-    const rightPanelW = 204; // 84px Vol+VA70% + 54px Delta + 66px Price Scale
+    const isProfileCollapsed = this.cdShowProfilePanel === false || this.width < 560;
+    const volColW = isProfileCollapsed ? 0 : 84;
+    const deltaColW = isProfileCollapsed ? 0 : 54;
+    const priceColW = 66;
+    const rightPanelW = volColW + deltaColW + priceColW; // 66px on mobile/collapsed, 204px on wide
     const chartW = Math.max(220, this.width - rightPanelW);
     const chartH = Math.max(160, this.height - topHeaderH - bottomStripH);
 
@@ -2161,6 +2170,26 @@ class FootprintRenderer {
     });
     drawPill(this.cdShowSignals ? '🎯 SGNL: ON' : '🎯 SGNL: OFF', this.cdShowSignals, '#00e676', () => {
       this.cdShowSignals = !this.cdShowSignals;
+    });
+    drawPill(`🎯 UF: ${this.cdShowUnfinished !== false ? 'ON' : 'OFF'}`, this.cdShowUnfinished !== false, '#f43f5e', () => {
+      this.cdShowUnfinished = this.cdShowUnfinished === false;
+    });
+    drawPill(`⚠️ DIV: ${this.cdShowDivMarkers !== false ? 'ON' : 'OFF'}`, this.cdShowDivMarkers !== false, '#fb923c', () => {
+      this.cdShowDivMarkers = this.cdShowDivMarkers === false;
+    });
+    drawPill(`🛡️ Serap: ${this.cdShowAbsorption !== false ? 'ON' : 'OFF'}`, this.cdShowAbsorption !== false, '#fbbf24', () => {
+      this.cdShowAbsorption = this.cdShowAbsorption === false;
+    });
+    const filterLabel = (this.cdMinVolFilter || 0) === 0 ? '🫧 Tapis: SEMUA' : `🫧 Tapis: ≥${this.cdMinVolFilter.toFixed(1)}L`;
+    drawPill(filterLabel, (this.cdMinVolFilter || 0) > 0, '#a78bfa', () => {
+      const cur = this.cdMinVolFilter || 0;
+      if (cur === 0) this.cdMinVolFilter = 1.0;
+      else if (cur === 1.0) this.cdMinVolFilter = 2.5;
+      else this.cdMinVolFilter = 0;
+    });
+    const isProfileActive = this.cdShowProfilePanel !== false && this.width >= 560;
+    drawPill(`📊 Profil: ${isProfileActive ? 'ON' : 'MINI'}`, isProfileActive, '#38bdf8', () => {
+      this.cdShowProfilePanel = !isProfileActive;
     });
 
     // Adjustable 20-50 Jalur Controls (Synced with Toolbar Slider)
@@ -2514,6 +2543,20 @@ class FootprintRenderer {
         climaxSignal = { type: 'SELL_CLIMAX', label: '⚡ SELL CLIMAX', col: '#f43f5e' };
       }
 
+      // Detect Unfinished Auction at extremes of closed candles
+      let unfinishedHigh = null;
+      let unfinishedLow = null;
+      if (sortedKeys.length >= 2) {
+        const highNode = grouped[sortedKeys[sortedKeys.length - 1]];
+        const lowNode = grouped[sortedKeys[0]];
+        if (highNode && highNode.bid > 0 && highNode.ask > 0 && highNode.total >= 0.4) {
+          unfinishedHigh = { price: highNode.price, total: highNode.total };
+        }
+        if (lowNode && lowNode.bid > 0 && lowNode.ask > 0 && lowNode.total >= 0.4) {
+          unfinishedLow = { price: lowNode.price, total: lowNode.total };
+        }
+      }
+
       return {
         raw: c,
         grouped,
@@ -2524,6 +2567,8 @@ class FootprintRenderer {
         stackedSellZone,
         climaxSignal,
         cdSignal,
+        unfinishedHigh,
+        unfinishedLow,
         isLatest: idx === candles.length - 1
       };
     });
@@ -2576,6 +2621,79 @@ class FootprintRenderer {
     const cellFontPx = Math.min(10.5, Math.max(6.8, Math.min(Math.floor(rowH - 1.2), Math.floor(colW * 0.42))));
 
     this.hoverCell = null;
+
+    // 6.5 Draw Unfinished Auction Rays (Untested Highs / Lows)
+    if (this.cdShowUnfinished !== false) {
+      ctx.save();
+      for (let i = 0; i < processedCandles.length - 1; i++) {
+        const pc = processedCandles[i];
+        const colStartX = startX + i * colW + colW / 2;
+
+        if (pc.unfinishedHigh) {
+          const ufPrice = pc.unfinishedHigh.price;
+          // Check if any subsequent candle swept this high
+          let tested = false;
+          let sweptX = chartW;
+          for (let k = i + 1; k < processedCandles.length; k++) {
+            if (processedCandles[k].raw.high >= ufPrice) {
+              tested = true;
+              sweptX = startX + k * colW + colW / 2;
+              break;
+            }
+          }
+          if (ufPrice >= lowest && ufPrice <= highest) {
+            const uy = priceToRowY(ufPrice + step * 0.5);
+            ctx.strokeStyle = tested ? 'rgba(244, 63, 94, 0.28)' : '#f43f5e';
+            ctx.lineWidth = tested ? 0.9 : 1.6;
+            ctx.setLineDash(tested ? [3, 3] : [6, 3]);
+            ctx.beginPath();
+            ctx.moveTo(colStartX, uy);
+            ctx.lineTo(sweptX, uy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (!tested) {
+              ctx.fillStyle = '#f43f5e';
+              ctx.font = 'bold 8px "JetBrains Mono", monospace';
+              ctx.textAlign = 'right';
+              ctx.fillText(`⚡UF HIGH $${ufPrice.toFixed(2)}`, chartW - 4, uy - 3);
+            }
+          }
+        }
+
+        if (pc.unfinishedLow) {
+          const ufPrice = pc.unfinishedLow.price;
+          let tested = false;
+          let sweptX = chartW;
+          for (let k = i + 1; k < processedCandles.length; k++) {
+            if (processedCandles[k].raw.low <= ufPrice) {
+              tested = true;
+              sweptX = startX + k * colW + colW / 2;
+              break;
+            }
+          }
+          if (ufPrice >= lowest && ufPrice <= highest) {
+            const uy = priceToRowY(ufPrice + step * 0.5);
+            ctx.strokeStyle = tested ? 'rgba(16, 185, 129, 0.28)' : '#10b981';
+            ctx.lineWidth = tested ? 0.9 : 1.6;
+            ctx.setLineDash(tested ? [3, 3] : [6, 3]);
+            ctx.beginPath();
+            ctx.moveTo(colStartX, uy);
+            ctx.lineTo(sweptX, uy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (!tested) {
+              ctx.fillStyle = '#10b981';
+              ctx.font = 'bold 8px "JetBrains Mono", monospace';
+              ctx.textAlign = 'right';
+              ctx.fillText(`⚡UF LOW $${ufPrice.toFixed(2)}`, chartW - 4, uy - 3);
+            }
+          }
+        }
+      }
+      ctx.restore();
+    }
 
     // 7. Draw Institutional Support/Resistance Zone Rays (from 3x Imbalances & Extreme Purple Clusters)
     if (this.cdShowZoneRays) {
@@ -2710,6 +2828,14 @@ class FootprintRenderer {
           (vNorm >= 0.50 && Math.abs(cl.delta) / Math.max(1, cl.total) <= 0.12)
         );
 
+        // Feature 2B: Passive Institutional Limit Order Absorption Shield (Wick Absorption)
+        const isUpperWick = p >= Math.max(c.open, c.close);
+        const isLowerWick = p <= Math.min(c.open, c.close);
+        const isWickAbsorption = this.cdShowAbsorption !== false && !isPOC && (
+          (isUpperWick && cl.total >= 8.0 && cl.ask >= cl.bid * 1.4 && (c.high - Math.max(c.open, c.close)) >= step * 0.8) ||
+          (isLowerWick && cl.total >= 8.0 && cl.bid >= cl.ask * 1.4 && (Math.min(c.open, c.close) - c.low) >= step * 0.8)
+        );
+
         if (isPOC) {
           pocPoints.push({ x: x + colW / 2, y: boxY + boxH / 2, price: p });
         }
@@ -2817,11 +2943,14 @@ class FootprintRenderer {
           ctx.strokeRect(x, boxY, colW, boxH);
 
           if (boxH >= 7.8) {
-            const dispVol = Math.max(1, Math.round(cl.total * 10));
-            ctx.fillStyle = txtCol;
-            ctx.font = `${isPOC || vNorm >= 0.55 ? 'bold ' : ''}${cellFontPx}px "JetBrains Mono", monospace`;
-            ctx.textAlign = colW >= 26 ? 'right' : 'center';
-            ctx.fillText(dispVol.toString(), colW >= 26 ? (x + colW - 3) : (x + colW / 2), boxY + boxH / 2 + 3);
+            const minThresh = this.cdMinVolFilter || 0;
+            if (minThresh === 0 || cl.total >= minThresh) {
+              const dispVol = Math.max(1, Math.round(cl.total * 10));
+              ctx.fillStyle = txtCol;
+              ctx.font = `${isPOC || vNorm >= 0.55 ? 'bold ' : ''}${cellFontPx}px "JetBrains Mono", monospace`;
+              ctx.textAlign = colW >= 26 ? 'right' : 'center';
+              ctx.fillText(dispVol.toString(), colW >= 26 ? (x + colW - 3) : (x + colW / 2), boxY + boxH / 2 + 3);
+            }
           }
         }
 
@@ -2833,6 +2962,19 @@ class FootprintRenderer {
           ctx.strokeStyle = '#000000';
           ctx.lineWidth = 1.8;
           ctx.strokeRect(x + 2, boxY + 1.5, colW - 4, boxH - 3);
+        } else if (isWickAbsorption) {
+          // Feature 2B: Golden Institutional Absorption Shield Frame (Passive Limit Defense)
+          ctx.save();
+          ctx.strokeStyle = '#fbbf24'; // Vivid Golden Amber
+          ctx.lineWidth = 2.0;
+          ctx.strokeRect(x + 1, boxY + 1, colW - 2, boxH - 2);
+          if (boxH >= 11 && colW >= 24) {
+            ctx.fillStyle = '#fbbf24';
+            ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText('🛡️', x + 2, boxY + 8.5);
+          }
+          ctx.restore();
         } else if (isAbsorbNode) {
           // Feature 2: High-Volume Neutral Delta Absorption Node Frame (Neon Violet with 🧱 icon)
           ctx.save();
@@ -2920,6 +3062,28 @@ class FootprintRenderer {
           }
           ctx.restore();
         }
+      }
+
+      // Feature: On-Chart Delta Divergence Warning Marker
+      if (this.cdShowDivMarkers !== false && isDivergent && !pc.climaxSignal) {
+        ctx.save();
+        const isBullDiv = !isBull && c.delta > 1.5;
+        const isBearDiv = isBull && c.delta < -1.5;
+        const divY = isBearDiv ? (yHigh - 16) : (yLow + 6);
+        const divCol = isBearDiv ? '#fb923c' : '#38bdf8';
+        const divBg = isBearDiv ? 'rgba(67, 20, 7, 0.95)' : 'rgba(8, 47, 73, 0.95)';
+        const tagW = Math.max(colW - 2, 42);
+        const tagX = cx - tagW / 2;
+        ctx.fillStyle = divBg;
+        ctx.strokeStyle = divCol;
+        ctx.lineWidth = 1.0;
+        ctx.fillRect(tagX, divY, tagW, 13);
+        ctx.strokeRect(tagX, divY, tagW, 13);
+        ctx.fillStyle = divCol;
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(colW >= 32 ? (isBearDiv ? '⚠️BEAR DIV' : '⚠️BULL DIV') : '⚠️DIV', cx, divY + 9.5);
+        ctx.restore();
       }
 
       // Feature: Delta Climax & Exhaustion Absorption Callout Badge
@@ -3250,11 +3414,8 @@ class FootprintRenderer {
       ctx.restore();
     }
 
-    // 12. Render Right-Side 3-Column ClusterDelta Profile Panel (VOL + VA 70% | DELTA | HARGA)
+    // 12. Render Right-Side ClusterDelta Profile Panel (VOL + VA 70% | DELTA | HARGA)
     const panelX = chartW;
-    const volColW = 84;
-    const deltaColW = 54;
-    const priceColW = 66;
 
     // Top-right corner status box (y: topControlH .. topHeaderH) - OLED Charcoal Slate
     ctx.fillStyle = '#0b1322';
@@ -3263,44 +3424,65 @@ class FootprintRenderer {
     ctx.lineWidth = 1;
     ctx.strokeRect(panelX, topControlH, rightPanelW, topTableH);
 
-    // Green checkmark circle + Live Session Totals
-    ctx.beginPath();
-    ctx.arc(panelX + 22, topControlH + 24, 9, 0, Math.PI * 2);
-    ctx.fillStyle = '#064e3b';
-    ctx.fill();
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 1.8;
-    ctx.stroke();
-    ctx.fillStyle = '#4ade80';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('✓', panelX + 22, topControlH + 28);
+    if (volColW > 0) {
+      // Full session totals
+      ctx.beginPath();
+      ctx.arc(panelX + 22, topControlH + 24, 9, 0, Math.PI * 2);
+      ctx.fillStyle = '#064e3b';
+      ctx.fill();
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.fillStyle = '#4ade80';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('✓', panelX + 22, topControlH + 28);
 
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`SESI CVD: ${(snapshot.cvd || 0) >= 0 ? '+' : ''}${(snapshot.cvd || 0).toFixed(0)}L`, panelX + 38, topControlH + 20);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = 'bold 9px "JetBrains Mono", monospace';
-    ctx.fillText(`BLOK: $${step.toFixed(2)}`, panelX + 38, topControlH + 34);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`SESI CVD: ${(snapshot.cvd || 0) >= 0 ? '+' : ''}${(snapshot.cvd || 0).toFixed(0)}L`, panelX + 38, topControlH + 20);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.fillText(`BLOK: $${step.toFixed(2)}`, panelX + 38, topControlH + 34);
 
-    // Sub-column headers at y: topControlH + 50 .. topHeaderH
-    const hdrSubY = topControlH + 50;
-    ctx.fillStyle = '#111827';
-    ctx.fillRect(panelX, hdrSubY, rightPanelW, 18);
-    ctx.strokeStyle = '#1e293b';
-    ctx.strokeRect(panelX, hdrSubY, volColW, 18);
-    ctx.strokeRect(panelX + volColW, hdrSubY, deltaColW, 18);
-    ctx.strokeRect(panelX + volColW + deltaColW, hdrSubY, priceColW, 18);
+      // Sub-column headers at y: topControlH + 50 .. topHeaderH
+      const hdrSubY = topControlH + 50;
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(panelX, hdrSubY, rightPanelW, 18);
+      ctx.strokeStyle = '#1e293b';
+      ctx.strokeRect(panelX, hdrSubY, volColW, 18);
+      ctx.strokeRect(panelX + volColW, hdrSubY, deltaColW, 18);
+      ctx.strokeRect(panelX + volColW + deltaColW, hdrSubY, priceColW, 18);
 
-    ctx.font = 'bold 9px "JetBrains Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#facc15';
-    ctx.fillText('VOL + VA70%', panelX + volColW / 2, hdrSubY + 12.5);
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillText('DELTA', panelX + volColW + deltaColW / 2, hdrSubY + 12.5);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('HARGA', panelX + volColW + deltaColW + priceColW / 2, hdrSubY + 12.5);
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#facc15';
+      ctx.fillText('VOL + VA70%', panelX + volColW / 2, hdrSubY + 12.5);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('DELTA', panelX + volColW + deltaColW / 2, hdrSubY + 12.5);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('HARGA', panelX + volColW + deltaColW + priceColW / 2, hdrSubY + 12.5);
+    } else {
+      // Compact header when profile is collapsed
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('HARGA', panelX + rightPanelW / 2, topControlH + 20);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.fillText(`$${step.toFixed(2)}`, panelX + rightPanelW / 2, topControlH + 34);
+
+      const hdrSubY = topControlH + 50;
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(panelX, hdrSubY, priceColW, 18);
+      ctx.strokeStyle = '#1e293b';
+      ctx.strokeRect(panelX, hdrSubY, priceColW, 18);
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('HARGA', panelX + priceColW / 2, hdrSubY + 12.5);
+    }
 
     // Compute Composite Session POC and 70% Value Area (VAH / VAL) across visible rows
     let maxCompVol = 1;
@@ -3356,46 +3538,48 @@ class FootprintRenderer {
       const isCompPOC = r === compPocRowIdx && rp.total > 0;
       const isLivePriceRow = Math.abs(lastPrice - p) < step * 0.55;
 
-      // Column 1: Dark Slate background + Orange/Gold horizontal histogram (Bright on VA 70%, Vivid on POC)
-      ctx.fillStyle = rp.inVA ? 'rgba(245, 158, 11, 0.12)' : 'rgba(15, 23, 42, 0.65)';
-      ctx.fillRect(panelX, rowY, volColW, rowH);
+      if (volColW > 0) {
+        // Column 1: Dark Slate background + Orange/Gold horizontal histogram
+        ctx.fillStyle = rp.inVA ? 'rgba(245, 158, 11, 0.12)' : 'rgba(15, 23, 42, 0.65)';
+        ctx.fillRect(panelX, rowY, volColW, rowH);
 
-      if (rp.total > 0) {
-        const barW = Math.min(volColW - 2, (rp.total / maxCompVol) * (volColW - 4));
-        ctx.fillStyle = isCompPOC ? '#ea580c' : (rp.inVA ? '#f59e0b' : '#334155');
-        ctx.fillRect(panelX + 1, rowY + 1, barW, Math.max(2, rowH - 2));
-      }
+        if (rp.total > 0) {
+          const barW = Math.min(volColW - 2, (rp.total / maxCompVol) * (volColW - 4));
+          ctx.fillStyle = isCompPOC ? '#ea580c' : (rp.inVA ? '#f59e0b' : '#334155');
+          ctx.fillRect(panelX + 1, rowY + 1, barW, Math.max(2, rowH - 2));
+        }
 
-      ctx.strokeStyle = '#1e293b';
-      ctx.lineWidth = 0.8;
-      ctx.strokeRect(panelX, rowY, volColW, rowH);
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(panelX, rowY, volColW, rowH);
 
-      if (rowH >= 7.8 && rp.total > 0) {
-        ctx.fillStyle = isCompPOC ? '#ffffff' : (rp.inVA ? '#fef08a' : '#94a3b8');
-        ctx.font = `${isCompPOC ? 'bold ' : ''}${Math.min(10, Math.max(7.2, Math.floor(rowH - 1.2)))}px "JetBrains Mono", monospace`;
-        ctx.textAlign = 'right';
-        ctx.fillText(Math.round(rp.total * 10).toString(), panelX + volColW - 4, rowY + rowH / 2 + 3);
-      }
+        if (rowH >= 7.8 && rp.total > 0) {
+          ctx.fillStyle = isCompPOC ? '#ffffff' : (rp.inVA ? '#fef08a' : '#94a3b8');
+          ctx.font = `${isCompPOC ? 'bold ' : ''}${Math.min(10, Math.max(7.2, Math.floor(rowH - 1.2)))}px "JetBrains Mono", monospace`;
+          ctx.textAlign = 'right';
+          ctx.fillText(Math.round(rp.total * 10).toString(), panelX + volColW - 4, rowY + rowH / 2 + 3);
+        }
 
-      // Column 2: Dark Blue-Slate Session Delta Column with Bidirectional Green/Red Bars
-      const dispDelta = Math.round(rp.delta * 10);
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-      ctx.fillRect(panelX + volColW, rowY, deltaColW, rowH);
+        // Column 2: Dark Blue-Slate Session Delta Column with Bidirectional Green/Red Bars
+        const dispDelta = Math.round(rp.delta * 10);
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(panelX + volColW, rowY, deltaColW, rowH);
 
-      if (Math.abs(rp.delta) > 0) {
-        const dBarW = Math.min(deltaColW - 4, (Math.abs(rp.delta) / maxCompDeltaAbs) * (deltaColW - 6));
-        ctx.fillStyle = dispDelta >= 0 ? '#10b981' : '#f43f5e';
-        ctx.fillRect(panelX + volColW + deltaColW - dBarW - 1, rowY + 1, dBarW, Math.max(2, rowH - 2));
-      }
+        if (Math.abs(rp.delta) > 0) {
+          const dBarW = Math.min(deltaColW - 4, (Math.abs(rp.delta) / maxCompDeltaAbs) * (deltaColW - 6));
+          ctx.fillStyle = dispDelta >= 0 ? '#10b981' : '#f43f5e';
+          ctx.fillRect(panelX + volColW + deltaColW - dBarW - 1, rowY + 1, dBarW, Math.max(2, rowH - 2));
+        }
 
-      ctx.strokeStyle = '#1e293b';
-      ctx.strokeRect(panelX + volColW, rowY, deltaColW, rowH);
+        ctx.strokeStyle = '#1e293b';
+        ctx.strokeRect(panelX + volColW, rowY, deltaColW, rowH);
 
-      if (rowH >= 7.8 && rp.total > 0) {
-        ctx.fillStyle = dispDelta < 0 ? '#fb7185' : '#4ade80';
-        ctx.font = `${Math.abs(dispDelta) > 50 ? 'bold ' : ''}${Math.min(10, Math.max(7.2, Math.floor(rowH - 1.2)))}px "JetBrains Mono", monospace`;
-        ctx.textAlign = 'right';
-        ctx.fillText((dispDelta > 0 ? '+' : '') + dispDelta.toString(), panelX + volColW + deltaColW - 4, rowY + rowH / 2 + 3);
+        if (rowH >= 7.8 && rp.total > 0) {
+          ctx.fillStyle = dispDelta < 0 ? '#fb7185' : '#4ade80';
+          ctx.font = `${Math.abs(dispDelta) > 50 ? 'bold ' : ''}${Math.min(10, Math.max(7.2, Math.floor(rowH - 1.2)))}px "JetBrains Mono", monospace`;
+          ctx.textAlign = 'right';
+          ctx.fillText((dispDelta > 0 ? '+' : '') + dispDelta.toString(), panelX + volColW + deltaColW - 4, rowY + rowH / 2 + 3);
+        }
       }
 
       // Column 3: Price Axis Column with Live Price Pill, SNR Highlight & POC Highlight
