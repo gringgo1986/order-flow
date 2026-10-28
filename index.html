@@ -328,9 +328,12 @@
     <!-- Right Sidebar: Full-Height Institutional DOM Ladder (Top-to-Bottom) -->
     <aside class="trading-sidebar">
       <div class="dom-panel" style="height: 100%; border-bottom: none; display: flex; flex-direction: column;">
-        <div class="panel-header">
+        <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
           <span>Depth of Market (DOM)</span>
-          <span style="color:var(--gold-accent); font-size:9.5px; font-weight:700;" title="Tangga Kecairan Institusi Penuh (16 Paras Ask di Atas, Harga Semasa di Tengah, 16 Paras Bid di Bawah)">📊 FULL LADDER (32 PARAS)</span>
+          <div style="display:flex; align-items:center; gap:5px;">
+            <button id="btnDomCenter" class="tool-btn" style="padding:1px 6px; font-size:9px; color:#facc15; border-color:#facc15;" title="Jajarkan semula tangga DOM ke harga semasa">🎯 Pusat</button>
+            <span style="color:var(--gold-accent); font-size:9.5px; font-weight:700;" title="Tangga Kecairan Institusi Penuh">📊 32 PARAS</span>
+          </div>
         </div>
         <div class="dom-table-header">
           <span style="color:#00e676;">DEMAND (BID)</span>
@@ -405,6 +408,13 @@
             <button class="tool-btn tape-filter-btn" data-minlot="1.0" style="padding:1px 5px; font-size:9px;">≥1.0L</button>
             <button class="tool-btn tape-filter-btn" data-minlot="3.0" style="padding:1px 5px; font-size:9px;">≥3.0L</button>
             <button class="tool-btn tape-filter-btn" data-minlot="5.0" style="padding:1px 5px; font-size:9px; color:#38bdf8; font-weight:800;">≥5.0L 🐋</button>
+
+            <span style="font-size:9.5px; color:#94a3b8; font-family:var(--font-mono); margin-left:6px;">Pihak:</span>
+            <button class="tool-btn tape-side-btn active" data-side="all" style="padding:1px 5px; font-size:9px;">Semua</button>
+            <button class="tool-btn tape-side-btn" data-side="buy" style="padding:1px 5px; font-size:9px; color:#00e676;">Buy</button>
+            <button class="tool-btn tape-side-btn" data-side="sell" style="padding:1px 5px; font-size:9px; color:#ff3366;">Sell</button>
+
+            <span id="tapeSpeedMeter" style="font-size:9px; color:#facc15; font-family:var(--font-mono); margin-left:6px; font-weight:700;" title="Kelajuan Transaksi Masa Nyata (Ticks Per Second)">⚡ 0 tps</span>
           </div>
         </div>
         <button class="tool-btn" id="btnToggleDock" style="font-size:10px; padding:2px 8px; border-color:#38bdf8; color:#38bdf8; font-weight:700;" title="Kecilkan atau Besarkan Panel Bawah untuk meluaskan Carta Utama">▼ Kecilkan Dock</button>
