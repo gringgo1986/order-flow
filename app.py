@@ -2,6 +2,7 @@
 FastAPI Server & WebSocket Hub for XAUUSD Bookmap & Order Flow
 """
 import os
+import time
 import json
 import asyncio
 from pathlib import Path
@@ -428,6 +429,11 @@ def candles_endpoint():
         "candles": [{"time": c["time"], "close": c["close"]} for c in candles],
         "current": {"time": curr["time"], "close": curr["close"]} if curr else None
     }
+
+@app.get("/health")
+@app.get("/ping")
+def health_check_endpoint():
+    return {"status": "ok", "service": "gringgo-orderflow", "time": time.time()}
 
 @app.get("/api/status")
 def status_endpoint():
