@@ -57,8 +57,7 @@ class App {
 
     // V14.0 Enhancements Init
     this._initSopDashboardControls();
-    this._initTradingViewControls();
-    this._initAudioEngine();
+        this._initAudioEngine();
     this._setupDomToggle();
     this._setupMobileTouchGestures();
     this._initSessionStats();
@@ -2226,8 +2225,7 @@ class App {
 
   _startRenderLoop() {
     const loop = () => {
-      if (this.latestSnapshot && this.needsRedraw) {
-        this.needsRedraw = false;
+      if (this.latestSnapshot) {
         if (this.currentView === 'bookmap' || this.currentView === 'split') {
           this.bookmap.render(this.latestSnapshot);
         }
