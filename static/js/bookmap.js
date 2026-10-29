@@ -69,7 +69,7 @@ class BookmapRenderer {
 
     // Bookmap World-Class Enhancements:
     this.bmZenMode = false;      // Zen Pro Mode: Pristine view without floating banners or small trade noise
-    this.bmBubbleFilter = 'whale'; // 'whale' (min 12L) | 'all' | 'off'
+    this.bmBubbleFilter = 'all';   // 'all' (default: all trades visible) | 'whale' (min 12L) | 'off'
     this.bmBubbleMinVol = 12.0;  // Threshold for bold lot size numbers on trade bubbles
     this._occupiedBadgeSlots = []; // Frame-by-frame anti-collision vertical slot registry
     this.bmContrastMode = 'MED'; // 'AUTO' | 'LOW' | 'MED' | 'HIGH'
@@ -553,9 +553,10 @@ class BookmapRenderer {
   }
 
   timeToX(timestamp, now) {
+    const tMs = (timestamp && timestamp < 1e11) ? timestamp * 1000 : (timestamp || now);
     const effectiveNow = now - (this.timeOffsetMs || 0);
     const windowStart = effectiveNow - this.timeWindowMs;
-    return this.CHART_LEFT + ((timestamp - windowStart) / this.timeWindowMs) * this.HIST_TIME_W;
+    return this.CHART_LEFT + ((tMs - windowStart) / this.timeWindowMs) * this.HIST_TIME_W;
   }
 
   xToTime(x, now) {
@@ -648,7 +649,17 @@ class BookmapRenderer {
   render(snapshot) {
     if (!this.width || !this.height) return;
     const ctx = this.ctx;
-    const now = Date.now();
+
+    // Adaptive Server Clock Skew Synchronization
+    if (snapshot && snapshot.server_time_ms && typeof snapshot.server_time_ms === 'number') {
+      const skew = snapshot.server_time_ms - Date.now();
+      if (this._serverTimeOffset == null) {
+        this._serverTimeOffset = skew;
+      } else {
+        this._serverTimeOffset = this._serverTimeOffset * 0.95 + skew * 0.05;
+      }
+    }
+    const now = Date.now() + (this._serverTimeOffset || 0);
     this._latestSnapshot = snapshot;
 
     // Maintain 4-second rolling buffer of order_book for Pulling & Stacking (+/- Lots)
@@ -776,7 +787,13 @@ class BookmapRenderer {
       // Prune trades older than the visible chart time horizon (keep 2.5x timeWindow for smooth scrolling)
       const visibleHorizonMs = Math.max(180000, (this.timeWindowMs || 60000) * 2.5);
       const pruneCutoff = now - visibleHorizonMs;
-      this._tradesHistoryBuffer = this._tradesHistoryBuffer.filter(t => (t.timestamp || 0) >= pruneCutoff);
+      this._tradesHistoryBuffer = this._tradesHistoryBuffer.filter(t => {
+        const tMs = (t.timestamp && t.timestamp < 1e11) ? t.timestamp * 1000 : (t.timestamp || 0);
+        return tMs >= pruneCutoff;
+      });
+      if (this._tradesHistoryBuffer.length === 0 && snapshot.trades && snapshot.trades.length > 0) {
+        this._tradesHistoryBuffer = [...snapshot.trades];
+      }
       if (this._tradesHistoryBuffer.length > 500) {
         this._tradesHistoryBuffer = this._tradesHistoryBuffer.slice(-500);
       }
@@ -1474,8 +1491,8 @@ class BookmapRenderer {
       if (cx < this.CHART_LEFT - 60 || cx > this.CHART_RIGHT + 60) continue;
       if (cy < this.CHART_TOP - 20  || cy > this.CHART_BOTTOM + 20) continue;
 
-      const baseR = Math.sqrt(t.volume) * 5.2 * this.bubbleZoom;
-      const r = Math.min(46, Math.max(7.5, baseR));
+      const baseR = Math.sqrt(Math.max(0.15, t.volume)) * 5.8 * (this.bubbleZoom || 1.0);
+      const r = Math.min(50, Math.max(8.5, baseR));
 
       const buyV  = t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
       const sellV = t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
@@ -1611,8 +1628,8 @@ class BookmapRenderer {
       ctx.fill();
       ctx.restore();
 
-      if (r >= 10.0 && (t.volume >= minVol || this.bmBubbleFilter === 'all')) {
-        const fontSize = r >= 22 ? 11 : (r >= 15 ? 9 : 8);
+      if (r >= 9.0 && (t.volume >= minVol || this.bmBubbleFilter === 'all')) {
+        const fontSize = r >= 22 ? 11 : (r >= 15 ? 9 : (r >= 11 ? 8 : 7));
         ctx.font         = `bold ${fontSize}px "JetBrains Mono", monospace`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
@@ -3247,18 +3264,18 @@ class BookmapRenderer {
       }
     );
 
-    // 2B. Smart Bubble Threshold Filter (Jerung >12L / Semua / Tutup)
-    const bubLabel = this.bmBubbleFilter === 'off' ? '🫧 Buih: Tutup' : (this.bmBubbleFilter === 'all' ? '🫧 Buih: Semua' : '🫧 Jerung >12L');
+    // 2B. Smart Bubble Threshold Filter (Semua / Jerung >12L / Tutup)
+    const bubLabel = this.bmBubbleFilter === 'off' ? '🫧 Buih: Tutup' : (this.bmBubbleFilter === 'all' ? '🫧 Buih: Semua' : '🐋 Jerung >12L');
     const bubActive = this.bmBubbleFilter !== 'off';
-    const bubCol = this.bmBubbleFilter === 'all' ? '#fbbf24' : '#38bdf8';
+    const bubCol = this.bmBubbleFilter === 'all' ? '#10b981' : (this.bmBubbleFilter === 'whale' ? '#38bdf8' : '#64748b');
     drawHudPill(
       bubLabel,
       bubActive,
       bubCol,
       () => {
-        if (this.bmBubbleFilter === 'whale') this.bmBubbleFilter = 'all';
-        else if (this.bmBubbleFilter === 'all') this.bmBubbleFilter = 'off';
-        else this.bmBubbleFilter = 'whale';
+        if (this.bmBubbleFilter === 'all') this.bmBubbleFilter = 'whale';
+        else if (this.bmBubbleFilter === 'whale') this.bmBubbleFilter = 'off';
+        else this.bmBubbleFilter = 'all';
         if (window.orderFlowApp && window.orderFlowApp.showToast) {
           const modeName = this.bmBubbleFilter === 'whale' ? 'Jerung Sahaja (>12L)' : (this.bmBubbleFilter === 'all' ? 'Semua Buih' : 'Buih Dimatikan');
           window.orderFlowApp.showToast(`🫧 Penapis Buih: ${modeName}`);
