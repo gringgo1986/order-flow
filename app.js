@@ -2223,19 +2223,199 @@ class App {
     }, 2800);
   }
 
+  _initSopDashboardControls() {
+    try {
+      const btnOpen = document.getElementById('btnOpenSopDash');
+      const btnClose = document.getElementById('btnCloseSopDash');
+      const modal = document.getElementById('sopDashModal');
+
+      if (btnOpen && modal) {
+        btnOpen.addEventListener('click', () => {
+          const isShown = modal.style.display === 'flex';
+          modal.style.display = isShown ? 'none' : 'flex';
+          if (!isShown && this.latestSnapshot) {
+            this._updateSopDashboard(this.latestSnapshot);
+          }
+        });
+      }
+
+      if (btnClose && modal) {
+        btnClose.addEventListener('click', () => {
+          modal.style.display = 'none';
+        });
+      }
+
+      const btnGoBm = document.getElementById('btnSopGoBookmap');
+      if (btnGoBm) {
+        btnGoBm.addEventListener('click', () => {
+          this.setView('bookmap');
+          this.showToast('Langkah 1: Mod Bookmap diaktifkan. Imbas dinding jerung.');
+        });
+      }
+
+      const btnGoFp = document.getElementById('btnSopGoFootprint');
+      if (btnGoFp) {
+        btnGoFp.addEventListener('click', () => {
+          this.setView('footprint');
+          this.showToast('Langkah 2: Mod Footprint diaktifkan. Periksa penyerapan & ketidakseimbangan.');
+        });
+      }
+
+      const btnGoSplit = document.getElementById('btnSopGoSplit');
+      if (btnGoSplit) {
+        btnGoSplit.addEventListener('click', () => {
+          this.setView('split');
+          if (modal) modal.style.display = 'none';
+          this.showToast('Langkah 3: Mod Paparan Berkembar (Split View) diaktifkan!');
+        });
+      }
+    } catch (e) {
+      console.warn('[SOP Controls Init Error]', e);
+    }
+  }
+
+  _updateSopDashboard(snapshot) {
+    if (!snapshot) return;
+    const modal = document.getElementById('sopDashModal');
+    if (!modal || modal.style.display !== 'flex') return;
+
+    const curPrice = snapshot.last_price || snapshot.bid || 0;
+    if (curPrice <= 0) return;
+
+    // 1. Evaluate Step 1 (Nearest Whale Resting Liquidity Wall >= 25L)
+    let nearestWallPrice = 0;
+    let maxWallVol = 0;
+    let minDistance = 999999;
+    let wallSide = 'bid';
+
+    const ob = snapshot.order_book || {};
+    if (ob.bids && typeof ob.bids === 'object') {
+      for (const [bpStr, bvol] of Object.entries(ob.bids)) {
+        const bp = parseFloat(bpStr);
+        const vol = parseFloat(bvol) || 0;
+        if (vol >= 25.0) {
+          const dist = Math.abs(curPrice - bp);
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestWallPrice = bp;
+            maxWallVol = vol;
+            wallSide = 'bid';
+          }
+        }
+      }
+    }
+    if (ob.asks && typeof ob.asks === 'object') {
+      for (const [apStr, avol] of Object.entries(ob.asks)) {
+        const ap = parseFloat(apStr);
+        const vol = parseFloat(avol) || 0;
+        if (vol >= 25.0) {
+          const dist = Math.abs(curPrice - ap);
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestWallPrice = ap;
+            maxWallVol = vol;
+            wallSide = 'ask';
+          }
+        }
+      }
+    }
+
+    const elWallVal = document.getElementById('sopNearestWallVal');
+    const elDistVal = document.getElementById('sopWallDistanceVal');
+    const elStep1Badge = document.getElementById('sopStep1Badge');
+
+    if (nearestWallPrice > 0 && minDistance < 9999) {
+      const pips = (minDistance * 10).toFixed(0);
+      const dirIco = wallSide === 'bid' ? '🟢 BID' : '🔴 ASK';
+      if (elWallVal) elWallVal.innerHTML = `${dirIco} $${nearestWallPrice.toFixed(2)} (${maxWallVol.toFixed(0)}L)`;
+      if (elDistVal) elDistVal.textContent = `${pips} pips (${minDistance.toFixed(2)}$)`;
+
+      if (minDistance <= 0.80) {
+        if (elStep1Badge) {
+          elStep1Badge.textContent = 'RAPAT DINDING ✅';
+          elStep1Badge.style.background = 'rgba(0,230,118,0.2)';
+          elStep1Badge.style.color = '#00e676';
+          elStep1Badge.style.borderColor = '#00e676';
+        }
+      } else {
+        if (elStep1Badge) {
+          elStep1Badge.textContent = 'MENGHAMPIRI';
+          elStep1Badge.style.background = 'rgba(56,189,248,0.2)';
+          elStep1Badge.style.color = '#38bdf8';
+          elStep1Badge.style.borderColor = '#38bdf8';
+        }
+      }
+    } else {
+      if (elWallVal) elWallVal.textContent = 'Dinding biasa (<25L)';
+      if (elDistVal) elDistVal.textContent = '--';
+    }
+
+    // 2. Evaluate Step 2 (Footprint Confirmation: Absorption, Stacked Imb, Trapped)
+    let hasAbsorption = false;
+    let hasStacked = false;
+    let hasTrapped = false;
+
+    if (Array.isArray(snapshot.icebergs) && snapshot.icebergs.length > 0) {
+      hasAbsorption = snapshot.icebergs.some(ic => Math.abs((ic.price || 0) - curPrice) <= 1.20);
+    }
+    if (Array.isArray(snapshot.trapped_traders) && snapshot.trapped_traders.length > 0) {
+      hasTrapped = snapshot.trapped_traders.some(tr => Math.abs((tr.price || 0) - curPrice) <= 1.20);
+    }
+    if (this.footprint && Array.isArray(this.footprint.allCandles) && this.footprint.allCandles.length > 0) {
+      const latestC = this.footprint.allCandles[this.footprint.allCandles.length - 1];
+      if (latestC && (latestC._absorptionHigh || latestC._absorptionLow)) hasAbsorption = true;
+    }
+
+    const elAbsVal = document.getElementById('sopStatusAbsorbVal');
+    const elStackedVal = document.getElementById('sopStatusStackedVal');
+    const elTrappedVal = document.getElementById('sopStatusTrappedVal');
+    const elStep2Badge = document.getElementById('sopStep2Badge');
+
+    if (elAbsVal) {
+      elAbsVal.innerHTML = hasAbsorption ? '<span style="color:#00e676;">AKTIF ✅</span>' : '<span style="color:#94a3b8;">Menunggu ⏳</span>';
+    }
+    if (elStackedVal) {
+      elStackedVal.innerHTML = hasStacked ? '<span style="color:#00e676;">AKTIF ✅</span>' : '<span style="color:#94a3b8;">Menunggu ⏳</span>';
+    }
+    if (elTrappedVal) {
+      elTrappedVal.innerHTML = hasTrapped ? '<span style="color:#00e676;">AKTIF ✅</span>' : '<span style="color:#94a3b8;">Menunggu ⏳</span>';
+    }
+
+    const triggersCount = (hasAbsorption ? 1 : 0) + (hasStacked ? 1 : 0) + (hasTrapped ? 1 : 0);
+    if (elStep2Badge) {
+      if (triggersCount > 0) {
+        elStep2Badge.textContent = 'SAH KONFLUENS ✅';
+        elStep2Badge.style.background = 'rgba(0,230,118,0.2)';
+        elStep2Badge.style.color = '#00e676';
+        elStep2Badge.style.borderColor = '#00e676';
+      } else {
+        elStep2Badge.textContent = 'MENUNGGU';
+        elStep2Badge.style.background = 'rgba(16,185,129,0.2)';
+        elStep2Badge.style.color = '#34d399';
+        elStep2Badge.style.borderColor = '#10b981';
+      }
+    }
+  }
+
   _startRenderLoop() {
     const loop = () => {
-      if (this.latestSnapshot) {
-        if (this.currentView === 'bookmap' || this.currentView === 'split') {
-          this.bookmap.render(this.latestSnapshot);
-        }
-        if (this.currentView === 'footprint' || this.currentView === 'clusterdelta' || this.currentView === 'split') {
-          this.footprint.render(this.latestSnapshot);
-        }
-        this._updateSopDashboard(this.latestSnapshot);
-        this.domManager.render(this.latestSnapshot);
-      }
       requestAnimationFrame(loop);
+      try {
+        if (this.latestSnapshot) {
+          if (this.bookmap && (this.currentView === 'bookmap' || this.currentView === 'split')) {
+            try { this.bookmap.render(this.latestSnapshot); } catch (e) { console.error('[Bookmap Render]', e); }
+          }
+          if (this.footprint && (this.currentView === 'footprint' || this.currentView === 'clusterdelta' || this.currentView === 'split')) {
+            try { this.footprint.render(this.latestSnapshot); } catch (e) { console.error('[Footprint Render]', e); }
+          }
+          try { this._updateSopDashboard(this.latestSnapshot); } catch (e) { console.error('[SOP Dashboard]', e); }
+          if (this.domManager) {
+            try { this.domManager.render(this.latestSnapshot); } catch (e) { console.error('[DOM Render]', e); }
+          }
+        }
+      } catch (err) {
+        console.error('[Render Loop Fatal]', err);
+      }
     };
     requestAnimationFrame(loop);
   }
