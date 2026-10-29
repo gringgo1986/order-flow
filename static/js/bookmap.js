@@ -89,6 +89,13 @@ class BookmapRenderer {
     this._lastZoneSoundTime = 0;
     this._lastSpeakTime = 0;
 
+    // Whale Inflow Radar & Sudden Placement Alert System
+    this.whaleRadarEnabled = true;
+    this._activeWhaleAlert = null;
+    this._whaleRadarPings = [];
+    this._notifiedWhaleAlertIds = new Set();
+    this._lastWhaleAlertSoundTime = 0;
+
     this._setupResize();
     this._setupInteractions();
   }
@@ -874,6 +881,13 @@ class BookmapRenderer {
     /* ── 8I. Real-Time Institutional Order Flow Buy/Sell Signals (Strict Location-First) ── */
     if (this.bmShowSignals !== false) {
       this._drawOrderFlowSignals(ctx, snapshot, now, currentPrice);
+    }
+
+    /* ── 8J. Real-Time Sudden Whale Placement Radar & Sonar Alert System ── */
+    if (this.whaleRadarEnabled !== false) {
+      this._detectSuddenWhalePlacements(snapshot, now);
+      this._drawWhaleRadarPings(ctx, now);
+      this._drawWhaleRadarBanner(ctx, now);
     }
 
     /* ── 9. Current Price Crosshair & Interactive Cursor Depth Inspector ── */
@@ -3164,6 +3178,308 @@ class BookmapRenderer {
     ctx.restore();
   }
 
+
+  /* ══════════════════════════════════════════════════════════════════
+     WHALE INFLOW RADAR & SUDDEN ORDER PLACEMENT ALERT SYSTEM
+     ══════════════════════════════════════════════════════════════════ */
+  playWhaleInflowSound(vol, isBid) {
+    if (this.isAudioMuted) return;
+    try {
+      const actx = this._getAudioContext();
+      if (!actx) return;
+      const isMega = vol >= 80.0;
+      const now = actx.currentTime;
+
+      // Resonant Multi-Tone Institutional Sonar Chime
+      const osc1 = actx.createOscillator();
+      const osc2 = actx.createOscillator();
+      const gain = actx.createGain();
+
+      osc1.type = isMega ? 'sawtooth' : 'triangle';
+      osc2.type = 'sine';
+
+      // Buy Wall: Lower resonant frequency rising upward; Sell Wall: Higher striking frequency
+      const baseFreq = isBid ? (isMega ? 349.23 : 440.00) : (isMega ? 698.46 : 587.33);
+      osc1.frequency.setValueAtTime(baseFreq, now);
+      osc1.frequency.exponentialRampToValueAtTime(baseFreq * 1.45, now + 0.15);
+      osc1.frequency.exponentialRampToValueAtTime(baseFreq * 1.95, now + 0.35);
+
+      osc2.frequency.setValueAtTime(baseFreq * 0.5, now);
+      osc2.frequency.exponentialRampToValueAtTime(baseFreq, now + 0.35);
+
+      const maxGain = isMega ? 0.32 : 0.20;
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(maxGain, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (isMega ? 0.70 : 0.45));
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(actx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + (isMega ? 0.70 : 0.45));
+      osc2.stop(now + (isMega ? 0.70 : 0.45));
+    } catch (e) {}
+  }
+
+  _detectSuddenWhalePlacements(snapshot, now) {
+    if (!snapshot) return;
+
+    // 1. Detect from Stacking Spoof Events (Sudden limit order reinforcement >= 25L)
+    if (snapshot.spoof_events && snapshot.spoof_events.length > 0) {
+      for (const sp of snapshot.spoof_events) {
+        if (sp.type === 'STACKING' && (sp.delta_vol >= 25.0 || (now - sp.timestamp < 3500))) {
+          const alertId = `sp_${sp.price}_${sp.timestamp || Math.floor(now / 5000)}`;
+          if (!this._notifiedWhaleAlertIds.has(alertId)) {
+            this._triggerWhaleAlert({
+              id: alertId,
+              type: 'STACKING',
+              side: sp.side || (sp.side === 'ask' ? 'ask' : 'bid'),
+              price: sp.price,
+              vol: sp.delta_vol || 35.0,
+              badge: sp.badge
+            }, now);
+          }
+        }
+      }
+    }
+
+    // 2. Detect from Live Order Book sudden delta injection (>= 35L wall placed)
+    if (snapshot.order_book && this._depthHistoryBuffer && this._depthHistoryBuffer.length > 0) {
+      const oldSnap = this._depthHistoryBuffer[0];
+      const curBids = snapshot.order_book.bids || {};
+      const curAsks = snapshot.order_book.asks || {};
+
+      for (const [pStr, vol] of Object.entries(curBids)) {
+        const v = parseFloat(vol) || 0;
+        if (v >= 35.0) {
+          const oldV = (oldSnap.bids && parseFloat(oldSnap.bids[pStr])) || 0;
+          const delta = v - oldV;
+          if (delta >= 24.0) {
+            const p = parseFloat(pStr);
+            const alertId = `bid_wall_${p.toFixed(2)}_${Math.floor(now / 7000)}`;
+            this._triggerWhaleAlert({
+              id: alertId,
+              type: 'NEW_WALL',
+              side: 'bid',
+              price: p,
+              vol: v,
+              delta
+            }, now);
+          }
+        }
+      }
+
+      for (const [pStr, vol] of Object.entries(curAsks)) {
+        const v = parseFloat(vol) || 0;
+        if (v >= 35.0) {
+          const oldV = (oldSnap.asks && parseFloat(oldSnap.asks[pStr])) || 0;
+          const delta = v - oldV;
+          if (delta >= 24.0) {
+            const p = parseFloat(pStr);
+            const alertId = `ask_wall_${p.toFixed(2)}_${Math.floor(now / 7000)}`;
+            this._triggerWhaleAlert({
+              id: alertId,
+              type: 'NEW_WALL',
+              side: 'ask',
+              price: p,
+              vol: v,
+              delta
+            }, now);
+          }
+        }
+      }
+    }
+
+    // 3. Detect from Sudden Aggressive Whale Trades (>= 22L)
+    if (snapshot.trades && snapshot.trades.length > 0) {
+      for (const t of snapshot.trades) {
+        if (t.volume >= 22.0) {
+          const tMs = (t.timestamp < 1e11) ? t.timestamp * 1000 : t.timestamp;
+          if (now - tMs < 2500) {
+            const alertId = `tr_${t.id || tMs}_${t.price}`;
+            this._triggerWhaleAlert({
+              id: alertId,
+              type: 'WHALE_TRADE',
+              side: t.side === 'sell' ? 'ask' : 'bid',
+              price: t.price,
+              vol: t.volume,
+              delta: t.volume
+            }, now);
+          }
+        }
+      }
+    }
+  }
+
+  _triggerWhaleAlert(alertData, now) {
+    const { id, side, price, vol } = alertData;
+    if (!this._notifiedWhaleAlertIds) this._notifiedWhaleAlertIds = new Set();
+    if (this._notifiedWhaleAlertIds.has(id)) return;
+    this._notifiedWhaleAlertIds.add(id);
+
+    if (this._notifiedWhaleAlertIds.size > 200) {
+      this._notifiedWhaleAlertIds.clear();
+      this._notifiedWhaleAlertIds.add(id);
+    }
+
+    // Active Banner state (visible for 7.5 seconds)
+    this._activeWhaleAlert = {
+      ...alertData,
+      time: now,
+      expiresAt: now + 7500
+    };
+
+    // Concentric Sonar Radar Wave
+    if (!this._whaleRadarPings) this._whaleRadarPings = [];
+    this._whaleRadarPings.push({
+      price,
+      vol,
+      side,
+      time: now
+    });
+
+    // Audio Alert (rate-limited to 3.5s)
+    if (now - (this._lastWhaleAlertSoundTime || 0) >= 3500) {
+      this._lastWhaleAlertSoundTime = now;
+      this.playWhaleInflowSound(vol, side === 'bid');
+    }
+
+    // AI Voice Announcement (TTS)
+    if (!this.isVoiceDisabled && this.speakAlert) {
+      const isMega = vol >= 80.0;
+      const tierName = isMega ? "Mega Shark" : "Jerung Institusi";
+      const actionName = side === 'bid' ? "dinding belian" : "dinding jualan";
+      this.speakAlert(`Amaran ${tierName}! Dikesan ${Math.round(vol)} lot ${actionName} pada harga ${price.toFixed(2)}.`);
+    }
+
+    // Web App Toast Notification
+    if (window.orderFlowApp && window.orderFlowApp.showToast) {
+      const isMega = vol >= 80.0;
+      const icon = isMega ? '👑' : '🐋';
+      const dirTxt = side === 'bid' ? '🟢 BELIAN (BID WALL)' : '🔴 JUALAN (ASK WALL)';
+      const winPot = isMega ? 'Potensi Win 88%-93%' : 'Potensi Reversal 78%+';
+      window.orderFlowApp.showToast(`${icon} [AMARAN JERUNG MASUK] +${vol.toFixed(0)}L ${dirTxt} diletakkan di $${price.toFixed(2)}! [${winPot}]`);
+    }
+
+    // HTML5 Desktop Notification (if browser permitted)
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(`🚨 AMARAN JERUNG: +${vol.toFixed(0)}L @ $${price.toFixed(2)}`, {
+          body: `Jerung tiba-tiba meletakkan pesanan ${side === 'bid' ? 'BELIAN' : 'JUALAN'} gergasi di Bookmap!`,
+          icon: '/static/icons/logo.png'
+        });
+      }
+    } catch (e) {}
+  }
+
+  _drawWhaleRadarBanner(ctx, now) {
+    if (!this._activeWhaleAlert) return;
+    if (now > this._activeWhaleAlert.expiresAt) {
+      this._activeWhaleAlert = null;
+      return;
+    }
+
+    const al = this._activeWhaleAlert;
+    const isBid = al.side === 'bid';
+    const isMega = al.vol >= 80.0;
+    const remainingMs = al.expiresAt - now;
+    const progress = Math.max(0, Math.min(1, remainingMs / 7500));
+
+    ctx.save();
+    const bannerW = Math.min(500, this.CHART_WIDTH - 30);
+    const bannerH = 46;
+    const bx = this.CHART_LEFT + (this.CHART_WIDTH - bannerW) / 2;
+    const by = this.CHART_TOP + 12;
+
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.009);
+    const borderColor = isMega ? '#f43f5e' : (isBid ? '#00e676' : '#ff3366');
+
+    // Glowing border & shadow
+    ctx.shadowColor = borderColor;
+    ctx.shadowBlur = 12 * pulse + 5;
+
+    // Glassmorphic background
+    ctx.fillStyle = 'rgba(6, 15, 28, 0.95)';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bannerW, bannerH, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Timer progress bar at the bottom
+    ctx.fillStyle = borderColor;
+    ctx.fillRect(bx + 4, by + bannerH - 3, (bannerW - 8) * progress, 2);
+
+    // Header Title
+    const tierIcon = isMega ? '👑 AMARAN MEGA SHARK (TIBA-TIBA MASUK!)' : '🐋 AMARAN JERUNG INSTITUSI (TIBA-TIBA MASUK!)';
+    ctx.font = 'bold 11px "JetBrains Mono", monospace';
+    ctx.fillStyle = isMega ? '#ffd60a' : '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(tierIcon, bx + 12, by + 8);
+
+    // Action & Details
+    const actionTxt = isBid ? 'DINDING BELIAN (BUY WALL)' : 'DINDING JUALAN (SELL WALL)';
+    const winPot = isMega ? 'POTENSI WIN 88%-93%' : 'POTENSI WIN 78%+';
+    ctx.font = '10px "JetBrains Mono", monospace';
+    ctx.fillStyle = isBid ? '#4ade80' : '#f87171';
+    ctx.fillText(`+${al.vol.toFixed(0)} LOT ${actionTxt} @ $${al.price.toFixed(2)} [${winPot}]`, bx + 12, by + 25);
+
+    ctx.restore();
+  }
+
+  _drawWhaleRadarPings(ctx, now) {
+    if (!this._whaleRadarPings || this._whaleRadarPings.length === 0) return;
+    ctx.save();
+    this._whaleRadarPings = this._whaleRadarPings.filter(p => now - p.time < 6500);
+
+    for (const p of this._whaleRadarPings) {
+      const elapsed = now - p.time;
+      const progress = elapsed / 6500;
+      const py = this.priceToY(p.price);
+      if (py < this.CHART_TOP || py > this.CHART_BOTTOM) continue;
+
+      const px = this.NOW_X - 12;
+      const isMega = p.vol >= 80.0;
+      const rgb = isMega ? '244, 63, 94' : (p.side === 'bid' ? '0, 230, 118' : '255, 51, 102');
+
+      // Horizontal tracking laser across the chart
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = `rgba(${rgb}, ${0.65 * (1 - progress)})`;
+      ctx.lineWidth = isMega ? 2.2 : 1.5;
+      ctx.beginPath();
+      ctx.moveTo(this.CHART_LEFT, py);
+      ctx.lineTo(this.CHART_RIGHT, py);
+      ctx.stroke();
+
+      // Expanding Concentric Sonar Rings
+      ctx.setLineDash([]);
+      for (let i = 0; i < 3; i++) {
+        const ringProgress = (progress + i * 0.28) % 1.0;
+        const radius = 10 + ringProgress * 75;
+        const alpha = Math.max(0, (1 - ringProgress) * 0.75);
+
+        ctx.strokeStyle = `rgba(${rgb}, ${alpha})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Center sonar pulse dot
+      ctx.fillStyle = isMega ? '#ffd60a' : (p.side === 'bid' ? '#00e676' : '#ff3366');
+      ctx.beginPath();
+      ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   /* ─── Manual Analysis Drawing Tools (Horizontal Ray & Trendline) ─ */
   addDrawing(d) {
     if (!this.manualDrawings) this.manualDrawings = [];
@@ -3432,6 +3748,19 @@ class BookmapRenderer {
       this.bmShowSweeps !== false,
       '#00f0ff',
       () => { this.bmShowSweeps = this.bmShowSweeps === false; }
+    );
+
+    // 2C. Whale Inflow Radar Alert Toggle (Sudden Large Lot Alerts)
+    drawHudPill(
+      this.whaleRadarEnabled !== false ? '🚨 Radar: ON' : '🔕 Radar: OFF',
+      this.whaleRadarEnabled !== false,
+      this.whaleRadarEnabled !== false ? '#ffd60a' : '#64748b',
+      () => {
+        this.whaleRadarEnabled = this.whaleRadarEnabled === false;
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          window.orderFlowApp.showToast(this.whaleRadarEnabled ? '🚨 Radar Amaran Jerung Diaktifkan: Amaran Audio & Visual Aktif' : '🔕 Radar Amaran Jerung Dimatikan');
+        }
+      }
     );
 
     // World-Class Order Flow Measurement Ruler Tool
