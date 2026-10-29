@@ -2223,15 +2223,17 @@ class App {
   showToast(msg) {
     const container = document.getElementById('toastContainer');
     if (!container) return;
+    // Prevent stacking: Keep max 1 toast at any time
+    container.innerHTML = '';
     const toast = document.createElement('div');
     toast.className = 'toast';
     toast.innerHTML = `<span>⚡</span> <span>${msg}</span>`;
     container.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.5s';
-      setTimeout(() => toast.remove(), 500);
-    }, 3000);
+      toast.style.transition = 'opacity 0.4s';
+      setTimeout(() => toast.remove(), 400);
+    }, 2800);
   }
 
   _startRenderLoop() {
