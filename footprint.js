@@ -98,6 +98,7 @@ class FootprintRenderer {
     this.showValueArea = true;
     this.showStackedImbalances = true;
     this.showSessionLevels = true;
+    this.showAutoTrendline = true;
     this.showSVP = true;
     this.showIcebergs = true;
     this.showWickAbsorption = true;   // NEW: Extreme Wick Absorption Detector (Trapped Traders)
@@ -356,6 +357,11 @@ class FootprintRenderer {
   toggleSessionLevels() {
     this.showSessionLevels = !this.showSessionLevels;
     return this.showSessionLevels;
+  }
+
+  toggleAutoTrendline() {
+    this.showAutoTrendline = !this.showAutoTrendline;
+    return this.showAutoTrendline;
   }
 
   setClusterStep(step) {
@@ -865,6 +871,9 @@ class FootprintRenderer {
     if (this.showFpsignals !== false) {
       this._drawFootprintSignals(ctx, snapshot, candles, rightAnchorX);
     }
+
+    // 2.45. Smart Auto Trendline (Support & Resistance)
+    this._drawAutoTrendlines(ctx, candles, (i) => rightAnchorX - ((candles.length - 1) - i) * (this.candleWidth + spacing) + this.candleWidth / 2, this.priceToY.bind(this), this.width - 80);
 
     // 2.5. Manual Analysis Drawing Tools Overlay (Ray & Trend)
     this._drawManualDrawings(ctx);
@@ -5213,6 +5222,9 @@ class FootprintRenderer {
 
     const dispC = hoveredCandle || candles[candles.length - 1];
 
+    // 9.8. Smart Auto Trendline (Support & Resistance)
+    this._drawAutoTrendlines(ctx, candles, getBarX, pToY, chartW);
+
     // 10. Bottom Volume + Order Flow Delta Sub-Pane + CVD Curve
     const volTop = mainChartBottom;
     ctx.fillStyle = '#060a12';
@@ -5631,6 +5643,144 @@ class FootprintRenderer {
     this.setJalurCount(30);
     this.csVisibleBars = 34;
   }
+
+  _drawAutoTrendlines(ctx, candles, getXFunc, getYFunc, maxDrawX) {
+    if (!this.showAutoTrendline || !candles || candles.length < 8) return;
+
+    const n = candles.length;
+    const radius = 2;
+    const highs = [];
+    const lows = [];
+
+    for (let i = radius; i < n - radius; i++) {
+      const c = candles[i];
+      let isH = true;
+      let isL = true;
+      for (let j = 1; j <= radius; j++) {
+        if (candles[i - j].high >= c.high || candles[i + j].high > c.high) isH = false;
+        if (candles[i - j].low <= c.low || candles[i + j].low < c.low) isL = false;
+      }
+      if (isH) highs.push({ idx: i, price: c.high });
+      if (isL) lows.push({ idx: i, price: c.low });
+    }
+
+    ctx.save();
+
+    // 1. RESISTANCE AUTO-TRENDLINE
+    if (highs.length >= 2) {
+      const p2 = highs[highs.length - 1];
+      let p1 = null;
+      for (let k = highs.length - 2; k >= 0; k--) {
+        if (highs[k].price >= p2.price) { p1 = highs[k]; break; }
+      }
+      if (!p1 && highs.length >= 2) p1 = highs[highs.length - 2];
+
+      if (p1 && p2 && p2.idx > p1.idx) {
+        const x1 = getXFunc(p1.idx);
+        const y1 = getYFunc(p1.price);
+        const x2 = getXFunc(p2.idx);
+        const y2 = getYFunc(p2.price);
+
+        const slopePrice = (p2.price - p1.price) / (p2.idx - p1.idx);
+        const lastCandle = candles[n - 1];
+        const projPriceNow = p1.price + slopePrice * (n - 1 - p1.idx);
+        const projPriceRight = p1.price + slopePrice * (n + 5 - p1.idx);
+
+        const xRight = maxDrawX;
+        const yRight = getYFunc(projPriceRight);
+
+        let touches = 0;
+        for (let i = p1.idx; i < n; i++) {
+          const lineP = p1.price + slopePrice * (i - p1.idx);
+          if (Math.abs(candles[i].high - lineP) <= 0.45) touches++;
+        }
+
+        const isBreakout = lastCandle && lastCandle.close > projPriceNow + 0.20;
+
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = isBreakout ? '#00e676' : 'rgba(244, 63, 94, 0.78)';
+        ctx.lineWidth = isBreakout ? 1.8 : 1.3;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(xRight, yRight);
+        ctx.stroke();
+
+        const badgeTxt = isBreakout ? `⚡ RES BREAKOUT $${lastCandle.close.toFixed(2)}` : `📐 TL RESIS (${touches}x) $${projPriceNow.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tw = ctx.measureText(badgeTxt).width + 8;
+        const badgeX = Math.max(10, Math.min(xRight - tw - 4, this.width - tw - 80));
+        const badgeY = Math.max(25, Math.min(this.height - 40, yRight));
+
+        ctx.fillStyle = isBreakout ? 'rgba(0, 230, 118, 0.22)' : 'rgba(244, 63, 94, 0.22)';
+        ctx.fillRect(badgeX, badgeY - 7, tw, 14);
+        ctx.strokeStyle = isBreakout ? '#00e676' : '#f43f5e';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(badgeX, badgeY - 7, tw, 14);
+        ctx.fillStyle = isBreakout ? '#00e676' : '#fca5a5';
+        ctx.textAlign = 'left';
+        ctx.fillText(badgeTxt, badgeX + 4, badgeY + 3.5);
+      }
+    }
+
+    // 2. SUPPORT AUTO-TRENDLINE
+    if (lows.length >= 2) {
+      const p2 = lows[lows.length - 1];
+      let p1 = null;
+      for (let k = lows.length - 2; k >= 0; k--) {
+        if (lows[k].price <= p2.price) { p1 = lows[k]; break; }
+      }
+      if (!p1 && lows.length >= 2) p1 = lows[lows.length - 2];
+
+      if (p1 && p2 && p2.idx > p1.idx) {
+        const x1 = getXFunc(p1.idx);
+        const y1 = getYFunc(p1.price);
+        const x2 = getXFunc(p2.idx);
+        const y2 = getYFunc(p2.price);
+
+        const slopePrice = (p2.price - p1.price) / (p2.idx - p1.idx);
+        const lastCandle = candles[n - 1];
+        const projPriceNow = p1.price + slopePrice * (n - 1 - p1.idx);
+        const projPriceRight = p1.price + slopePrice * (n + 5 - p1.idx);
+
+        const xRight = maxDrawX;
+        const yRight = getYFunc(projPriceRight);
+
+        let touches = 0;
+        for (let i = p1.idx; i < n; i++) {
+          const lineP = p1.price + slopePrice * (i - p1.idx);
+          if (Math.abs(candles[i].low - lineP) <= 0.45) touches++;
+        }
+
+        const isBreakdown = lastCandle && lastCandle.close < projPriceNow - 0.20;
+
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = isBreakdown ? '#ff3366' : 'rgba(0, 240, 255, 0.78)';
+        ctx.lineWidth = isBreakdown ? 1.8 : 1.3;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(xRight, yRight);
+        ctx.stroke();
+
+        const badgeTxt = isBreakdown ? `⚡ SUPP BREAKDOWN $${lastCandle.close.toFixed(2)}` : `📐 TL SUPP (${touches}x) $${projPriceNow.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tw = ctx.measureText(badgeTxt).width + 8;
+        const badgeX = Math.max(10, Math.min(xRight - tw - 4, this.width - tw - 80));
+        const badgeY = Math.max(25, Math.min(this.height - 40, yRight));
+
+        ctx.fillStyle = isBreakdown ? 'rgba(255, 51, 102, 0.22)' : 'rgba(0, 240, 255, 0.22)';
+        ctx.fillRect(badgeX, badgeY - 7, tw, 14);
+        ctx.strokeStyle = isBreakdown ? '#ff3366' : '#00f0ff';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(badgeX, badgeY - 7, tw, 14);
+        ctx.fillStyle = isBreakdown ? '#ff3366' : '#7dd3fc';
+        ctx.textAlign = 'left';
+        ctx.fillText(badgeTxt, badgeX + 4, badgeY + 3.5);
+      }
+    }
+
+    ctx.restore();
+  }
+
 }
 
 window.FootprintRenderer = FootprintRenderer;
