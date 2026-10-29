@@ -129,6 +129,10 @@
       </div>
 
       <!-- Quad-Confluence Signal Dashboard Button -->
+            <!-- SOP Order Flow 3-Step Dashboard Button -->
+      <button class="tool-btn" id="btnOpenSopDash" style="padding:2px 9px; font-size:9.5px; font-weight:800; background:linear-gradient(135deg, rgba(56,189,248,0.22), rgba(16,185,129,0.22)); border:1px solid #38bdf8; color:#38bdf8; display:inline-flex; align-items:center; gap:4px; cursor:pointer; box-shadow:0 0 10px rgba(56,189,248,0.25);" title="Buka Dashboard SOP Dagangan 3-Langkah Rasmi">
+        <span>📋</span> SOP DASHBOARD
+      </button>
       <button class="tool-btn" id="btnOpenConfluenceDash" style="padding:2px 8px; font-size:9.5px; font-weight:800; background:rgba(255,214,10,0.12); border:1px solid #ffd60a; color:#ffd60a; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" title="Buka Dashboard Analisis Konfluens 4-Modul">
         <span>🎯</span> DASHBOARD
       </button>
@@ -667,6 +671,113 @@
         <!-- SECTION 4: EASY CHEAT SHEET (TINY) -->
         <div style="background:rgba(255,214,10,0.05); border:1px solid rgba(255,214,10,0.22); border-radius:4px; padding:5px 8px; font-size:8.5px; color:#cbd5e1; line-height:1.3;">
           💡 <b>SOP:</b> Masuk bila skor &ge;3/4 di zon Entry. Kunci Breakeven bila untung +$3.50.
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Dedicated SOP Order Flow 3-Step Interactive Dashboard Modal -->
+  <div class="help-modal" id="sopDashModal" style="display:none; position:fixed; top:46px; right:12px; width:410px; max-width:94vw; max-height:86vh; background:rgba(6,10,20,0.97); backdrop-filter:blur(16px); border:1px solid #38bdf8; border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,0.9), 0 0 20px rgba(56,189,248,0.25); z-index:99999; flex-direction:column; overflow:hidden; font-family:var(--font-sans);">
+    <div class="help-content" style="display:flex; flex-direction:column; max-height:86vh; padding:12px 14px; box-sizing:border-box;">
+      
+      <!-- Dashboard Header -->
+      <div class="help-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">📋</span>
+          <div>
+            <h3 style="margin:0; font-size:12.5px; color:#38bdf8; font-weight:800; letter-spacing:0.5px;">SOP ORDER FLOW ELIT (3 LANGKAH EMAS)</h3>
+            <span style="font-size:9px; color:#94a3b8;">Pelan Tindakan Piawai: Bookmap + Footprint + Split View</span>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:5px;">
+          <button class="tool-btn" id="btnCloseSopDash" style="padding:2px 8px; border-color:#f43f5e; color:#f43f5e; font-weight:800; font-size:11px; cursor:pointer;">✕</button>
+        </div>
+      </div>
+
+      <div class="help-body" style="flex:1 1 0; overflow-y:auto; padding-right:4px; display:flex; flex-direction:column; gap:10px;">
+
+        <!-- STEP 1 CARD: BOOKMAP -->
+        <div style="background:linear-gradient(135deg, rgba(14,165,233,0.12), rgba(15,23,42,0.85)); border:1px solid rgba(56,189,248,0.4); border-radius:8px; padding:10px; position:relative;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="background:#0284c7; color:#fff; font-weight:900; font-size:9.5px; padding:2px 7px; border-radius:4px; font-family:var(--font-mono);">LANGKAH 1</span>
+              <b style="color:#38bdf8; font-size:11px;">🗺️ Bookmap [1] — Cari Dinding Jerung</b>
+            </div>
+            <span id="sopStep1Badge" style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid #38bdf8; font-size:8.5px; font-weight:800; padding:1px 5px; border-radius:3px;">MENUNGGU</span>
+          </div>
+          <p style="margin:0 0 8px 0; font-size:10px; color:#cbd5e1; line-height:1.4;">
+            Lihat di mana jerung meletakkan <b>dinding pesanan besar (*resting liquidity walls*)</b> dan tunggu sehingga harga semasa mendekati dinding tersebut.
+          </p>
+          <!-- Real-Time Wall Radar Box -->
+          <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 8px; font-family:var(--font-mono); font-size:9.5px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="color:#94a3b8; font-size:8.5px;">Dinding Terdekat:</span><br>
+              <b id="sopNearestWallVal" style="color:#ffd60a; font-size:11px;">Mencari dinding...</b>
+            </div>
+            <div style="text-align:right;">
+              <span style="color:#94a3b8; font-size:8.5px;">Jarak dari Harga:</span><br>
+              <b id="sopWallDistanceVal" style="color:#38bdf8; font-size:11px;">-- pips</b>
+            </div>
+          </div>
+          <button class="tool-btn" id="btnSopGoBookmap" style="width:100%; margin-top:8px; background:rgba(56,189,248,0.18); border-color:#38bdf8; color:#38bdf8; font-weight:800; font-size:10px; padding:4px 8px; border-radius:4px; cursor:pointer;">
+            🔍 Buka Bookmap [1] Sekarang
+          </button>
+        </div>
+
+        <!-- STEP 2 CARD: FOOTPRINT -->
+        <div style="background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(15,23,42,0.85)); border:1px solid rgba(16,185,129,0.4); border-radius:8px; padding:10px; position:relative;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="background:#059669; color:#fff; font-weight:900; font-size:9.5px; padding:2px 7px; border-radius:4px; font-family:var(--font-mono);">LANGKAH 2</span>
+              <b style="color:#34d399; font-size:11px;">👣 Footprint [3] — Pengesahan Lelongan</b>
+            </div>
+            <span id="sopStep2Badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981; font-size:8.5px; font-weight:800; padding:1px 5px; border-radius:3px;">MENUNGGU</span>
+          </div>
+          <p style="margin:0 0 8px 0; font-size:10px; color:#cbd5e1; line-height:1.4;">
+            Sebaik sahaja harga menyentuh dinding jerung di Bookmap, lihat Footprint sama ada berlaku <b>Penyerapan (*Absorption*)</b>, <b>Ketidakseimbangan Bertingkat (*Stacked Imbalance*)</b>, atau <b>Perangkap (*Trapped Traders*)</b>.
+          </p>
+          <!-- Real-Time Trigger Checklist Grid -->
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; font-family:var(--font-mono); font-size:9px; text-align:center;">
+            <div id="sopStatusAbsorb" style="background:rgba(0,0,0,0.35); border:1px solid #334155; border-radius:4px; padding:5px 2px;">
+              <span style="color:#94a3b8; font-size:8px;">Penyerapan</span><br>
+              <b id="sopStatusAbsorbVal" style="color:#94a3b8;">Menunggu ⏳</b>
+            </div>
+            <div id="sopStatusStacked" style="background:rgba(0,0,0,0.35); border:1px solid #334155; border-radius:4px; padding:5px 2px;">
+              <span style="color:#94a3b8; font-size:8px;">Stacked Imb</span><br>
+              <b id="sopStatusStackedVal" style="color:#94a3b8;">Menunggu ⏳</b>
+            </div>
+            <div id="sopStatusTrapped" style="background:rgba(0,0,0,0.35); border:1px solid #334155; border-radius:4px; padding:5px 2px;">
+              <span style="color:#94a3b8; font-size:8px;">Perangkap</span><br>
+              <b id="sopStatusTrappedVal" style="color:#94a3b8;">Menunggu ⏳</b>
+            </div>
+          </div>
+          <button class="tool-btn" id="btnSopGoFootprint" style="width:100%; margin-top:8px; background:rgba(16,185,129,0.18); border-color:#10b981; color:#34d399; font-weight:800; font-size:10px; padding:4px 8px; border-radius:4px; cursor:pointer;">
+            🔍 Buka Footprint [3] Sekarang
+          </button>
+        </div>
+
+        <!-- STEP 3 CARD: SPLIT VIEW -->
+        <div style="background:linear-gradient(135deg, rgba(245,158,11,0.12), rgba(15,23,42,0.85)); border:1px solid rgba(245,158,11,0.4); border-radius:8px; padding:10px; position:relative;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="background:#d97706; color:#fff; font-weight:900; font-size:9.5px; padding:2px 7px; border-radius:4px; font-family:var(--font-mono);">LANGKAH 3</span>
+              <b style="color:#fbbf24; font-size:11px;">🔀 Split [4] — Pantau Berkembar Serentak</b>
+            </div>
+            <span style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid #f59e0b; font-size:8.5px; font-weight:800; padding:1px 5px; border-radius:3px;">PRO DUAL VIEW</span>
+          </div>
+          <p style="margin:0 0 8px 0; font-size:10px; color:#cbd5e1; line-height:1.4;">
+            Buka <b>mod paparan berkembar (*Split View*)</b> untuk memantau Bookmap (kiri) dan Footprint (kanan) serentak dalam satu skrin tanpa perlu bertukar tab!
+          </p>
+          <button class="tool-btn" id="btnSopGoSplit" style="width:100%; background:linear-gradient(135deg, #f59e0b, #d97706); border:1px solid #fbbf24; color:#000; font-weight:900; font-size:11px; padding:7px 10px; border-radius:5px; cursor:pointer; box-shadow:0 0 14px rgba(245,158,11,0.4);">
+            ⚡ AKTIFKAN SPLIT VIEW [4] SEKARANG ⚡
+          </button>
+        </div>
+
+        <!-- GOLDEN RULE FOOTER -->
+        <div style="background:rgba(255,214,10,0.06); border:1px solid rgba(255,214,10,0.25); border-radius:6px; padding:8px 10px; font-size:9.5px; color:#fde047; line-height:1.4; display:flex; gap:6px;">
+          <span>💡</span>
+          <span><b>Petua Emas:</b> Jangan sesekali entry di tengah pasaran (*no-man's land*). Tunggu konfluens Dinding Jerung di Bookmap + Penyerapan di Footprint tercetus serentak untuk potensi <i>Win-Rate</i> 85% - 93%!</span>
         </div>
 
       </div>
