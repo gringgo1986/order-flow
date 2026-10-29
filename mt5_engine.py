@@ -2789,8 +2789,8 @@ class OrderFlowEngine:
                 [{
                     "timestamp": self.heatmap_history[-1].get("timestamp", 0),
                     "mid_price": self.heatmap_history[-1].get("mid_price", self.last_price or 4008.0),
-                    "bids": {k: v for k, v in self.heatmap_history[-1].get("bids", {}).items() if abs(float(k) - (self.last_price or 4008.0)) <= 6.0},
-                    "asks": {k: v for k, v in self.heatmap_history[-1].get("asks", {}).items() if abs(float(k) - (self.last_price or 4008.0)) <= 6.0}
+                    "bids": {k: v for k, v in self.heatmap_history[-1].get("bids", {}).items() if abs(float(k) - (self.last_price or 4008.0)) <= 15.0},
+                    "asks": {k: v for k, v in self.heatmap_history[-1].get("asks", {}).items() if abs(float(k) - (self.last_price or 4008.0)) <= 15.0}
                 }] if self.heatmap_history else []
             ),
             "candles": (self.candles[-50:] + ([self.current_candle] if self.current_candle else [])) if initial else ([self.current_candle] if self.current_candle else []),
@@ -2804,7 +2804,7 @@ class OrderFlowEngine:
                 "bids": self.order_book_bids,
                 "asks": self.order_book_asks
             } if initial else {
-                "bids": {k: v for k, v in self.order_book_bids.items() if abs(float(k) - (self.last_price or 4008.0)) <= 4.0},
-                "asks": {k: v for k, v in self.order_book_asks.items() if abs(float(k) - (self.last_price or 4008.0)) <= 4.0}
+                "bids": {k: v for k, v in self.order_book_bids.items() if abs(float(k) - (self.last_price or 4008.0)) <= 15.0},
+                "asks": {k: v for k, v in self.order_book_asks.items() if abs(float(k) - (self.last_price or 4008.0)) <= 15.0}
             }
         }
