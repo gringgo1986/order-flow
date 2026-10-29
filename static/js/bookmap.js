@@ -3231,10 +3231,11 @@ class BookmapRenderer {
     // Strict Rate Limiting: Max 1 Whale Alert per 50 seconds to prevent any chart spam
     if (now - (this._lastWhaleAlertTime || 0) < 50000) return;
 
-    // 1. Detect ONLY genuine real-time Stacking events (Wall reinforced by >= 35L in the last 2.5s)
+    // 1. Detect ONLY genuine real-time Stacking events (Wall reinforced by >= 100L in the last 2.5s)
     if (snapshot.spoof_events && snapshot.spoof_events.length > 0) {
       for (const sp of snapshot.spoof_events) {
-        if (sp.type === 'STACKING' && sp.delta_vol >= 35.0 && (now - sp.timestamp < 3000)) {
+        const delta = Math.abs(sp.delta_vol || sp.vol || 0);
+        if (sp.type === 'STACKING' && delta >= 100.0 && (now - sp.timestamp < 3000)) {
           const alertId = `sp_${sp.price}_${sp.timestamp}`;
           if (!this._notifiedWhaleAlertIds.has(alertId)) {
             this._triggerWhaleAlert({
@@ -3242,7 +3243,7 @@ class BookmapRenderer {
               type: 'STACKING',
               side: sp.side || (sp.side === 'ask' ? 'ask' : 'bid'),
               price: sp.price,
-              vol: sp.delta_vol || 35.0
+              vol: delta
             }, now);
             return;
           }
@@ -3250,10 +3251,10 @@ class BookmapRenderer {
       }
     }
 
-    // 2. Detect single massive aggressive execution (>= 28L executed in the last 1.8s)
+    // 2. Detect single massive aggressive execution (>= 100L executed in the last 2.0s)
     if (snapshot.trades && snapshot.trades.length > 0) {
       for (const t of snapshot.trades) {
-        if (t.volume >= 28.0) {
+        if (t.volume >= 100.0) {
           const tMs = (t.timestamp < 1e11) ? t.timestamp * 1000 : t.timestamp;
           if (now - tMs < 2000) {
             const alertId = `tr_${t.id || tMs}_${t.price}`;
@@ -3306,13 +3307,10 @@ class BookmapRenderer {
       this.playWhaleInflowSound(vol, side === 'bid');
     }
 
-    // Single Toast Notification
+    // Single Toast Notification (Strictly for >= 100L Mega Shark alerts)
     if (window.orderFlowApp && window.orderFlowApp.showToast) {
-      const isMega = vol >= 80.0;
-      const icon = isMega ? '👑' : '🐋';
       const dirTxt = side === 'bid' ? '🟢 BELIAN' : '🔴 JUALAN';
-      const winPot = isMega ? '88%-93%' : '75%+';
-      window.orderFlowApp.showToast(`${icon} [JERUNG MASUK] +${vol.toFixed(0)}L ${dirTxt} @ $${price.toFixed(2)} [Potensi Win: ${winPot}]`);
+      window.orderFlowApp.showToast(`👑 [AMARAN MEGA JERUNG ≥100L] +${vol.toFixed(0)}L ${dirTxt} @ $${price.toFixed(2)} [Potensi Win: 90%+]`);
     }
   }
 
