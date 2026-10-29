@@ -69,7 +69,8 @@ class BookmapRenderer {
 
     // Bookmap World-Class Enhancements:
     this.bmZenMode = false;      // Zen Pro Mode: Pristine view without floating banners or small trade noise
-    this.bmBubbleFilter = 'all';   // 'all' (default: all trades visible) | 'whale' (min 12L) | 'off'
+    this.bmBubbleCategory = 'noise'; // 'noise' (Semua) | 'normal' (≥12L) | 'major' (≥35L) | 'mega' (≥80L) | 'off'
+    this.bmBubbleFilter = 'all';     // 'all' | 'whale' | 'off'
     this.bmBubbleMinVol = 12.0;  // Threshold for bold lot size numbers on trade bubbles
     this._occupiedBadgeSlots = []; // Frame-by-frame anti-collision vertical slot registry
     this.bmContrastMode = 'MED'; // 'AUTO' | 'LOW' | 'MED' | 'HIGH'
@@ -213,6 +214,19 @@ class BookmapRenderer {
 
   setBubbleZoom(zoom) {
     this.bubbleZoom = Math.max(0.3, Math.min(3.0, parseFloat(zoom) || 1.0));
+  }
+
+  setBubbleCategory(tierId) {
+    if (!['noise', 'normal', 'major', 'mega', 'off'].includes(tierId)) tierId = 'noise';
+    this.bmBubbleCategory = tierId;
+    this.bmBubbleFilter = tierId === 'noise' ? 'all' : (tierId === 'off' ? 'off' : 'whale');
+    this.bmBubbleMinVol = tierId === 'normal' ? 12.0 : (tierId === 'major' ? 35.0 : (tierId === 'mega' ? 80.0 : 0.0));
+    
+    // Synchronize UI dropdown if present
+    const sel = document.getElementById('selWhaleCategory');
+    if (sel && sel.value !== tierId) {
+      sel.value = tierId;
+    }
   }
 
   toggleVolumeZones() {
@@ -1640,10 +1654,35 @@ class BookmapRenderer {
         ctx.shadowBlur   = 0;
       }
 
-      if (t.is_large && r >= 16) {
-        // Subtle Golden Institutional Ring around Whale Sphere (Zero text clutter by default)
+      // Institutional Halo Rings for Whale Categories
+      if (t.volume >= 80.0) {
+        // Mega Shark (≥80L): Double Crimson-Gold Crown Halo (High Win Potential Tier)
         ctx.save();
-        ctx.strokeStyle = 'rgba(255, 214, 10, 0.85)';
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = '#ffd60a';
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else if (t.volume >= 35.0) {
+        // Major Institutional (≥35L): Radiant Amber Halo
+        ctx.save();
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 2.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else if (t.is_large && r >= 16) {
+        // Normal Whale (≥12L): Subtle Golden Ring
+        ctx.save();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.90)';
         ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.arc(cx, cy, r + 1.5, 0, Math.PI * 2);
@@ -3264,21 +3303,48 @@ class BookmapRenderer {
       }
     );
 
-    // 2B. Smart Bubble Threshold Filter (Semua / Jerung >12L / Tutup)
-    const bubLabel = this.bmBubbleFilter === 'off' ? '🫧 Buih: Tutup' : (this.bmBubbleFilter === 'all' ? '🫧 Buih: Semua' : '🐋 Jerung >12L');
-    const bubActive = this.bmBubbleFilter !== 'off';
-    const bubCol = this.bmBubbleFilter === 'all' ? '#10b981' : (this.bmBubbleFilter === 'whale' ? '#38bdf8' : '#64748b');
+    // 2B. Smart Whale Category HUD Pill (Noise / Normal / Major / Mega / Tutup)
+    const currentTier = this.bmBubbleCategory || (this.bmBubbleFilter === 'all' ? 'noise' : (this.bmBubbleFilter === 'whale' ? 'normal' : 'off'));
+    let bubLabel = '🫧 Semua (Noise)';
+    let bubCol = '#10b981';
+    let bubActive = true;
+
+    if (currentTier === 'mega') {
+      bubLabel = '👑 Mega Shark (≥80L)';
+      bubCol = '#f43f5e';
+    } else if (currentTier === 'major') {
+      bubLabel = '🏛️ Major Inst (≥35L)';
+      bubCol = '#fbbf24';
+    } else if (currentTier === 'normal') {
+      bubLabel = '🐋 Normal (≥12L)';
+      bubCol = '#38bdf8';
+    } else if (currentTier === 'off') {
+      bubLabel = '🚫 Buih: Tutup';
+      bubCol = '#64748b';
+      bubActive = false;
+    }
+
     drawHudPill(
       bubLabel,
       bubActive,
       bubCol,
       () => {
-        if (this.bmBubbleFilter === 'all') this.bmBubbleFilter = 'whale';
-        else if (this.bmBubbleFilter === 'whale') this.bmBubbleFilter = 'off';
-        else this.bmBubbleFilter = 'all';
+        // Cycle: noise -> normal -> major -> mega -> off -> noise
+        let nextTier = 'noise';
+        if (this.bmBubbleCategory === 'noise' || !this.bmBubbleCategory) nextTier = 'normal';
+        else if (this.bmBubbleCategory === 'normal') nextTier = 'major';
+        else if (this.bmBubbleCategory === 'major') nextTier = 'mega';
+        else if (this.bmBubbleCategory === 'mega') nextTier = 'off';
+        else nextTier = 'noise';
+
+        this.setBubbleCategory(nextTier);
+
         if (window.orderFlowApp && window.orderFlowApp.showToast) {
-          const modeName = this.bmBubbleFilter === 'whale' ? 'Jerung Sahaja (>12L)' : (this.bmBubbleFilter === 'all' ? 'Semua Buih' : 'Buih Dimatikan');
-          window.orderFlowApp.showToast(`🫧 Penapis Buih: ${modeName}`);
+          const toastMsg = nextTier === 'noise' ? '🫧 Kategori: Semua Transaksi Pasaran (Termasuk Noise <10L)'
+            : (nextTier === 'normal' ? '🐋 Kategori: Normal Whale (≥12.0 Lot) [Potensi Win: 65%+]'
+            : (nextTier === 'major' ? '🏛️ Kategori: Major Institutional (≥35.0 Lot) [Potensi Win: 78%+]'
+            : (nextTier === 'mega' ? '👑 Kategori: Mega Shark (≥80.0 Lot) [Potensi Win: 88%-93%]' : '🚫 Buih: Dimatikan (Heatmap Sahaja)')));
+          window.orderFlowApp.showToast(toastMsg);
         }
       }
     );
