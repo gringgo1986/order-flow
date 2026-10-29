@@ -422,6 +422,22 @@ class App {
       });
     }
 
+    // Whale Tier Category Selector (Noise, Normal Whale, Major Institutional, Mega Shark)
+    const selWhaleCategory = document.getElementById('selWhaleCategory');
+    if (selWhaleCategory) {
+      selWhaleCategory.addEventListener('change', (e) => {
+        const tier = e.target.value;
+        if (this.bookmap && this.bookmap.setBubbleCategory) {
+          this.bookmap.setBubbleCategory(tier);
+        }
+        const toastMsg = tier === 'noise' ? '🫧 Kategori: Semua Transaksi Pasaran (Termasuk Noise <10L)'
+          : (tier === 'normal' ? '🐋 Kategori: Normal Whale (≥12.0 Lot) [Potensi Win: 65%+]'
+          : (tier === 'major' ? '🏛️ Kategori: Major Institutional (≥35.0 Lot) [Potensi Win: 78%+]'
+          : (tier === 'mega' ? '👑 Kategori: Mega Shark (≥80.0 Lot) [Potensi Win: 88%-93%]' : '🚫 Buih: Dimatikan (Heatmap Sahaja)')));
+        this.showToast(toastMsg);
+      });
+    }
+
     // Voice AI Toggle Button
     const btnToggleVoice = document.getElementById('btnToggleVoice');
     if (btnToggleVoice) {
@@ -1268,32 +1284,38 @@ class App {
     const fpTools = document.getElementById('fpSpecificTools');
     const clusterWrap = document.getElementById('clusterJalurWrap');
     const bookmapWrap = document.getElementById('bookmapBubbleWrap');
+    const whaleWrap = document.getElementById('bookmapWhaleCategoryWrap');
     const csTechBar = document.getElementById('csTechniquesBar');
 
     if (view === 'bookmap') {
       if (fpTools) fpTools.style.display = 'none';
       if (clusterWrap) clusterWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'inline-flex';
+      if (whaleWrap) whaleWrap.style.display = 'inline-flex';
       if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'clusterdelta') {
       if (fpTools) fpTools.style.display = 'none';
       if (clusterWrap) clusterWrap.style.display = 'inline-flex';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
+      if (whaleWrap) whaleWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'footprint') {
       if (fpTools) fpTools.style.display = 'inline-flex';
       if (clusterWrap) clusterWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
+      if (whaleWrap) whaleWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'candlestick') {
       if (fpTools) fpTools.style.display = 'none';
       if (clusterWrap) clusterWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
+      if (whaleWrap) whaleWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'inline-flex';
     } else if (view === 'split') {
       if (fpTools) fpTools.style.display = 'inline-flex';
       if (clusterWrap) clusterWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'inline-flex';
+      if (whaleWrap) whaleWrap.style.display = 'inline-flex';
       if (csTechBar) csTechBar.style.display = 'none';
     }
   }
