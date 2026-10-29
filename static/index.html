@@ -74,8 +74,8 @@
       <button class="nav-btn" data-view="footprint" style="padding: 3px 8px; font-size: 10px; border-radius: 4px;">
         Footprint [3]
       </button>
-      <button class="nav-btn" data-view="candlestick" style="padding: 3px 8px; font-size: 10px; border-radius: 4px;">
-        Candle [4]
+      <button class="nav-btn" data-view="candlestick" style="padding: 3px 8px; font-size: 10px; border-radius: 4px;" title="Modul Carta Candlestick TradingView Pro (Kekunci [4])">
+        TradingView [4]
       </button>
       <button class="nav-btn" data-view="split" style="padding: 3px 8px; font-size: 10px; border-radius: 4px;">
         Split [5]
@@ -229,21 +229,14 @@
             </div>
           </div>
 
-          <!-- Context-Aware Candlestick Multi-Technique Dropdown Bar -->
-          <div id="csTechniquesBar" style="display:none; align-items:center; gap:4px; margin-left:3px; border-left:1px solid #1e293b; padding-left:4px;">
-            <span class="tool-tag" style="color:#ffd60a; font-weight:800; font-size:9.5px;">TEKNIK:</span>
-            <select id="selectCsTechnique" style="background:#0b1324; color:#ffd60a; border:1px solid #ffd60a; padding:2px 8px; font-size:10px; font-family:var(--font-mono); font-weight:700; border-radius:4px; cursor:pointer; outline:none;" title="Pilih teknik dagangan untuk modul lilin (Tidak menyemakkan carta)">
-              <option value="all" selected>🌟 SEMUA TEKNIK (7 Gabungan Strategi)</option>
-              <option value="smc">⭐ 1. SMC Liquidity Sweep (Turtle Soup)</option>
-              <option value="of_absorb">⚡ 2. Order Flow Absorption & Divergence</option>
-              <option value="vwap_band">🌐 3. VWAP ±2σ Extreme Band Bounce</option>
-              <option value="ema_trend">🚀 4. EMA Ribbon Trend Pullback</option>
-              <option value="vp_retest">🏛️ 5. Volume Profile dPOC / VA Retest</option>
-              <option value="snr">🎯 6. SNR (Support & Resistance / RBS / SBR)</option>
-              <option value="snd">📦 7. SND (Supply & Demand DBR / RBD / FTB)</option>
-              <option value="none">🚫 MATIKAN ISYARAT (Off)</option>
-            </select>
-            <button class="tool-btn" id="btnCsSopGuide" style="border-color:#34d399; color:#34d399; font-weight:700; padding:1px 8px; font-size:9.5px;" title="Buka Kamus & SOP Lengkap 5 Teknik Dagangan">📖 SOP</button>
+          <!-- Context-Aware TradingView Indicators Bar -->
+          <div id="tvIndicatorsBar" style="display:none; align-items:center; gap:4px; margin-left:3px; border-left:1px solid #1e293b; padding-left:4px;">
+            <span class="tool-tag" style="color:#38bdf8; font-weight:800; font-size:9.5px;">TRADINGVIEW:</span>
+            <button class="tool-btn active" id="btnTvEma20" style="color:#38bdf8; border-color:#38bdf8; font-weight:700; padding:1px 6px; font-size:9.5px;" title="Togol EMA 20 (Cyan)">📈 EMA20</button>
+            <button class="tool-btn active" id="btnTvEma50" style="color:#fb923c; border-color:#fb923c; font-weight:700; padding:1px 6px; font-size:9.5px;" title="Togol EMA 50 (Oren)">📊 EMA50</button>
+            <button class="tool-btn active" id="btnTvVwap" style="color:#facc15; border-color:#facc15; font-weight:700; padding:1px 6px; font-size:9.5px;" title="Togol VWAP Institusi (Kuning)">🌐 VWAP</button>
+            <button class="tool-btn active" id="btnTvVolume" style="color:#34d399; border-color:#34d399; font-weight:700; padding:1px 6px; font-size:9.5px;" title="Togol Volum Bar">📊 VOL</button>
+            <button class="tool-btn" id="btnTvFit" style="color:#e2e8f0; font-weight:700; padding:1px 6px; font-size:9.5px;" title="Laras Semula Saiz Skala (Fit View)">🔍 FIT</button>
           </div>
         </div>
 
@@ -287,6 +280,7 @@
         </div>
         <canvas id="bookmapCanvas"></canvas>
         <canvas id="footprintCanvas" style="display:none;"></canvas>
+        <div id="tvCandleChart" style="display:none; width:100%; height:100%; position:absolute; top:0; left:0; z-index:5;"></div>
         <div class="chart-tooltip" id="chartTooltip"></div>
 
         <!-- Floating Replay / Backtesting Player HUD (World-Class Interactive Player) -->
@@ -858,6 +852,13 @@
   </div>
 
   <!-- Scripts -->
+  <script src="/static/js/lightweight-charts.js?v=4.1.3"></script>
+  <script>
+    if (typeof LightweightCharts === 'undefined') {
+      document.write('<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"><\/script>');
+    }
+  </script>
+  <script src="/static/js/tv_chart.js?v=1.0"></script>
   <script src="/static/js/bookmap.js?v=13.1"></script>
   <script src="/static/js/footprint.js?v=13.1"></script>
   <script src="/static/js/dom.js?v=13.1"></script>
