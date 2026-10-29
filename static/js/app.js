@@ -639,6 +639,27 @@ class App {
     });
 
     // Toggle Zon Ramai Buyer & Seller
+    // Toggle Smart Auto Trendline (Across All Chart Modules)
+    const btnToggleAutoTL = document.getElementById('btnToggleAutoTrendline');
+    if (btnToggleAutoTL) {
+      btnToggleAutoTL.addEventListener('click', () => {
+        let isShown = true;
+        if (this.bookmap && this.bookmap.toggleAutoTrendline) {
+          isShown = this.bookmap.toggleAutoTrendline();
+        }
+        if (this.footprint && this.footprint.toggleAutoTrendline) {
+          isShown = this.footprint.toggleAutoTrendline();
+        }
+        btnToggleAutoTL.classList.toggle('active', isShown);
+        this.showToast(isShown ? '📐 Smart Auto Trendline (Support & Resistance) diaktifkan' : '📐 Auto Trendline disembunyikan');
+        this.needsRedraw = true;
+        if (this.latestSnapshot) {
+          if (this.bookmap && this.currentView === 'bookmap') this.bookmap.render();
+          if (this.footprint && this.currentView !== 'bookmap') this.footprint.render(this.latestSnapshot);
+        }
+      });
+    }
+
     const btnToggleZones = document.getElementById('btnToggleZones');
     if (btnToggleZones) {
       btnToggleZones.addEventListener('click', () => {
