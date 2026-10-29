@@ -35,6 +35,7 @@ class BookmapRenderer {
     this.showVWAP = true;
     this.showPositions = true;
     this.showSessionLevels = true;
+    this.showAutoTrendline = true;
     this.showSVP = true;
     this.showIcebergs = true;
     this.bmShowSignals = true; // Institutional Order Flow Buy/Sell Signals (Location-First)
@@ -232,6 +233,11 @@ class BookmapRenderer {
   toggleSessionLevels() {
     this.showSessionLevels = !this.showSessionLevels;
     return this.showSessionLevels;
+  }
+
+  toggleAutoTrendline() {
+    this.showAutoTrendline = !this.showAutoTrendline;
+    return this.showAutoTrendline;
   }
 
   toggleSVP() {
@@ -3477,6 +3483,141 @@ class BookmapRenderer {
         <span style="color:#64748b">Masa:</span><span style="color:#94a3b8">${new Date(t.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</span>
       </div>`;
   }
+
+  _drawAutoTrendlines(ctx, rawCandles) {
+    if (this.showAutoTrendline === false || !rawCandles || rawCandles.length < 8) return;
+    const candles = rawCandles.slice(-40);
+    const n = candles.length;
+    const radius = 2;
+    const highs = [];
+    const lows = [];
+
+    for (let i = radius; i < n - radius; i++) {
+      const c = candles[i];
+      let isH = true, isL = true;
+      for (let j = 1; j <= radius; j++) {
+        if (candles[i - j].high >= c.high || candles[i + j].high > c.high) isH = false;
+        if (candles[i - j].low <= c.low || candles[i + j].low < c.low) isL = false;
+      }
+      if (isH) highs.push({ t: c.time, price: c.high, idx: i });
+      if (isL) lows.push({ t: c.time, price: c.low, idx: i });
+    }
+
+    ctx.save();
+
+    // 1. Resistance Line
+    if (highs.length >= 2) {
+      const p2 = highs[highs.length - 1];
+      let p1 = null;
+      for (let k = highs.length - 2; k >= 0; k--) {
+        if (highs[k].price >= p2.price) { p1 = highs[k]; break; }
+      }
+      if (!p1 && highs.length >= 2) p1 = highs[highs.length - 2];
+
+      if (p1 && p2 && p2.idx > p1.idx) {
+        const x1 = this.timeToX(p1.t * 1000);
+        const y1 = this.priceToY(p1.price);
+        const slope = (p2.price - p1.price) / (p2.idx - p1.idx);
+        const lastC = candles[n - 1];
+        const projPriceNow = p1.price + slope * (n - 1 - p1.idx);
+        const projPriceRight = p1.price + slope * (n + 5 - p1.idx);
+
+        const xRight = this.CHART_RIGHT;
+        const yRight = this.priceToY(projPriceRight);
+
+        if (x1 >= this.CHART_LEFT - 100 && xRight <= this.CHART_RIGHT + 50) {
+          let touches = 0;
+          for (let i = p1.idx; i < n; i++) {
+            const lp = p1.price + slope * (i - p1.idx);
+            if (Math.abs(candles[i].high - lp) <= 0.45) touches++;
+          }
+
+          const isBreakout = lastC && lastC.close > projPriceNow + 0.20;
+
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = isBreakout ? '#00e676' : 'rgba(244, 63, 94, 0.75)';
+          ctx.lineWidth = isBreakout ? 1.8 : 1.3;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(xRight, yRight);
+          ctx.stroke();
+
+          const badgeTxt = isBreakout ? `⚡ RES BREAKOUT $${lastC.close.toFixed(2)}` : `📐 TL RESIS (${touches}x) $${projPriceNow.toFixed(2)}`;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(badgeTxt).width + 8;
+          const bx = Math.max(this.CHART_LEFT + 10, xRight - tw - 6);
+          const by = Math.max(this.CHART_TOP + 15, Math.min(this.CHART_BOTTOM - 15, yRight));
+
+          ctx.fillStyle = isBreakout ? 'rgba(0, 230, 118, 0.22)' : 'rgba(244, 63, 94, 0.22)';
+          ctx.fillRect(bx, by - 7, tw, 14);
+          ctx.strokeStyle = isBreakout ? '#00e676' : '#f43f5e';
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(bx, by - 7, tw, 14);
+          ctx.fillStyle = isBreakout ? '#00e676' : '#fca5a5';
+          ctx.textAlign = 'left';
+          ctx.fillText(badgeTxt, bx + 4, by + 3.5);
+        }
+      }
+    }
+
+    // 2. Support Line
+    if (lows.length >= 2) {
+      const p2 = lows[lows.length - 1];
+      let p1 = null;
+      for (let k = lows.length - 2; k >= 0; k--) {
+        if (lows[k].price <= p2.price) { p1 = lows[k]; break; }
+      }
+      if (!p1 && lows.length >= 2) p1 = lows[lows.length - 2];
+
+      if (p1 && p2 && p2.idx > p1.idx) {
+        const x1 = this.timeToX(p1.t * 1000);
+        const y1 = this.priceToY(p1.price);
+        const slope = (p2.price - p1.price) / (p2.idx - p1.idx);
+        const lastC = candles[n - 1];
+        const projPriceNow = p1.price + slope * (n - 1 - p1.idx);
+        const projPriceRight = p1.price + slope * (n + 5 - p1.idx);
+
+        const xRight = this.CHART_RIGHT;
+        const yRight = this.priceToY(projPriceRight);
+
+        if (x1 >= this.CHART_LEFT - 100 && xRight <= this.CHART_RIGHT + 50) {
+          let touches = 0;
+          for (let i = p1.idx; i < n; i++) {
+            const lp = p1.price + slope * (i - p1.idx);
+            if (Math.abs(candles[i].low - lp) <= 0.45) touches++;
+          }
+
+          const isBreakdown = lastC && lastC.close < projPriceNow - 0.20;
+
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = isBreakdown ? '#ff3366' : 'rgba(0, 240, 255, 0.75)';
+          ctx.lineWidth = isBreakdown ? 1.8 : 1.3;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(xRight, yRight);
+          ctx.stroke();
+
+          const badgeTxt = isBreakdown ? `⚡ SUPP BREAKDOWN $${lastC.close.toFixed(2)}` : `📐 TL SUPP (${touches}x) $${projPriceNow.toFixed(2)}`;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(badgeTxt).width + 8;
+          const bx = Math.max(this.CHART_LEFT + 10, xRight - tw - 6);
+          const by = Math.max(this.CHART_TOP + 15, Math.min(this.CHART_BOTTOM - 15, yRight));
+
+          ctx.fillStyle = isBreakdown ? 'rgba(255, 51, 102, 0.22)' : 'rgba(0, 240, 255, 0.22)';
+          ctx.fillRect(bx, by - 7, tw, 14);
+          ctx.strokeStyle = isBreakdown ? '#ff3366' : '#00f0ff';
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(bx, by - 7, tw, 14);
+          ctx.fillStyle = isBreakdown ? '#ff3366' : '#7dd3fc';
+          ctx.textAlign = 'left';
+          ctx.fillText(badgeTxt, bx + 4, by + 3.5);
+        }
+      }
+    }
+
+    ctx.restore();
+  }
+
 }
 
 window.BookmapRenderer = BookmapRenderer;
