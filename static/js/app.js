@@ -1308,14 +1308,7 @@ class App {
       if (bookmapWrap) bookmapWrap.style.display = 'none';
       if (whaleWrap) whaleWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'none';
-    } else if (view === 'candlestick') {
-      if (fpTools) fpTools.style.display = 'none';
-      if (clusterWrap) clusterWrap.style.display = 'none';
-      if (bookmapWrap) bookmapWrap.style.display = 'none';
-      if (whaleWrap) whaleWrap.style.display = 'none';
-      if (csTechBar) csTechBar.style.display = 'none';
-      const tvBar = document.getElementById('tvIndicatorsBar');
-      if (tvBar) tvBar.style.display = 'inline-flex';
+
     } else if (view === 'split') {
       if (fpTools) fpTools.style.display = 'inline-flex';
       if (clusterWrap) clusterWrap.style.display = 'none';
@@ -1350,23 +1343,7 @@ class App {
           b.classList.toggle('active', b.dataset.step === '0.50');
         });
       }
-    } else if (view === 'candlestick') {
-      this.bookmapCanvas.style.display = 'none';
-      this.footprintCanvas.style.display = 'none';
-      const tvContainer = document.getElementById('tvCandleChart');
-      if (tvContainer) tvContainer.style.display = 'block';
-      if (window.tradingViewChartManager) {
-        window.tradingViewChartManager.init();
-        window.tradingViewChartManager.resize();
-        if (this.footprint && this.footprint.allCandles && this.footprint.allCandles.length > 0) {
-          window.tradingViewChartManager.setHistoricalData(this.footprint.allCandles);
-        } else {
-          this.loadHistoricalCandles(this.currentTimeframe || 'M1');
-        }
-      }
-      document.querySelectorAll('.fp-mode-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.mode === 'candlestick');
-      });
+
     } else if (view === 'footprint') {
       this.bookmapCanvas.style.display = 'none';
       this.footprintCanvas.style.display = 'block';
@@ -2255,9 +2232,6 @@ class App {
         }
         if (this.currentView === 'footprint' || this.currentView === 'clusterdelta' || this.currentView === 'split') {
           this.footprint.render(this.latestSnapshot);
-        }
-        if (this.currentView === 'candlestick' && window.tradingViewChartManager && this.latestSnapshot) {
-          window.tradingViewChartManager.updateLiveTick(this.latestSnapshot.current_candle, this.latestSnapshot.last_price);
         }
         this.domManager.render(this.latestSnapshot);
       }
