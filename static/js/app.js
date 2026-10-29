@@ -56,6 +56,7 @@ class App {
     this.initAuthAndAdmin();
 
     // V14.0 Enhancements Init
+    this._initSopDashboardControls();
     this._initTradingViewControls();
     this._initAudioEngine();
     this._setupDomToggle();
@@ -2233,6 +2234,7 @@ class App {
         if (this.currentView === 'footprint' || this.currentView === 'clusterdelta' || this.currentView === 'split') {
           this.footprint.render(this.latestSnapshot);
         }
+        this._updateSopDashboard(this.latestSnapshot);
         this.domManager.render(this.latestSnapshot);
       }
       requestAnimationFrame(loop);
