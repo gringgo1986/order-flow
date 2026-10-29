@@ -56,6 +56,7 @@ class App {
     this.initAuthAndAdmin();
 
     // V14.0 Enhancements Init
+    this._initTradingViewControls();
     this._initAudioEngine();
     this._setupDomToggle();
     this._setupMobileTouchGestures();
@@ -1287,6 +1288,8 @@ class App {
     const whaleWrap = document.getElementById('bookmapWhaleCategoryWrap');
     const csTechBar = document.getElementById('csTechniquesBar');
 
+    const tvBar = document.getElementById('tvIndicatorsBar');
+    if (tvBar && view !== 'candlestick') tvBar.style.display = 'none';
     if (view === 'bookmap') {
       if (fpTools) fpTools.style.display = 'none';
       if (clusterWrap) clusterWrap.style.display = 'none';
@@ -1310,7 +1313,9 @@ class App {
       if (clusterWrap) clusterWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
       if (whaleWrap) whaleWrap.style.display = 'none';
-      if (csTechBar) csTechBar.style.display = 'inline-flex';
+      if (csTechBar) csTechBar.style.display = 'none';
+      const tvBar = document.getElementById('tvIndicatorsBar');
+      if (tvBar) tvBar.style.display = 'inline-flex';
     } else if (view === 'split') {
       if (fpTools) fpTools.style.display = 'inline-flex';
       if (clusterWrap) clusterWrap.style.display = 'none';
@@ -1324,6 +1329,8 @@ class App {
     this.currentView = view;
     this.needsRedraw = true;
     this._updateContextToolbar(view);
+    const tvContainer = document.getElementById('tvCandleChart');
+    if (tvContainer && view !== 'candlestick') tvContainer.style.display = 'none';
     if (view === 'bookmap') {
       this.bookmapCanvas.style.display = 'block';
       this.bookmapCanvas.style.width = '100%';
@@ -1345,18 +1352,21 @@ class App {
       }
     } else if (view === 'candlestick') {
       this.bookmapCanvas.style.display = 'none';
-      this.footprintCanvas.style.display = 'block';
-      this.footprintCanvas.style.left = '0';
-      this.footprintCanvas.style.width = '100%';
-      if (this.footprint) {
-        this.footprint.setViewMode('candlestick');
-        this.footprint.priceOffset = 0.0;
-        this.footprint.csVerticalScale = 1.0;
-        this.footprint.barOffset = 0;
-        document.querySelectorAll('.fp-mode-btn').forEach(b => {
-          b.classList.toggle('active', b.dataset.mode === 'candlestick');
-        });
+      this.footprintCanvas.style.display = 'none';
+      const tvContainer = document.getElementById('tvCandleChart');
+      if (tvContainer) tvContainer.style.display = 'block';
+      if (window.tradingViewChartManager) {
+        window.tradingViewChartManager.init();
+        window.tradingViewChartManager.resize();
+        if (this.footprint && this.footprint.allCandles && this.footprint.allCandles.length > 0) {
+          window.tradingViewChartManager.setHistoricalData(this.footprint.allCandles);
+        } else {
+          this.loadHistoricalCandles(this.currentTimeframe || 'M1');
+        }
       }
+      document.querySelectorAll('.fp-mode-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === 'candlestick');
+      });
     } else if (view === 'footprint') {
       this.bookmapCanvas.style.display = 'none';
       this.footprintCanvas.style.display = 'block';
@@ -2243,8 +2253,11 @@ class App {
         if (this.currentView === 'bookmap' || this.currentView === 'split') {
           this.bookmap.render(this.latestSnapshot);
         }
-        if (this.currentView === 'footprint' || this.currentView === 'clusterdelta' || this.currentView === 'candlestick' || this.currentView === 'split') {
+        if (this.currentView === 'footprint' || this.currentView === 'clusterdelta' || this.currentView === 'split') {
           this.footprint.render(this.latestSnapshot);
+        }
+        if (this.currentView === 'candlestick' && window.tradingViewChartManager && this.latestSnapshot) {
+          window.tradingViewChartManager.updateLiveTick(this.latestSnapshot.current_candle, this.latestSnapshot.last_price);
         }
         this.domManager.render(this.latestSnapshot);
       }
@@ -2259,8 +2272,9 @@ class App {
       const res = await fetch(`/api/history?limit=1000&tf=${activeTf}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data && data.candles && this.footprint) {
-        this.footprint.setHistoricalCandles(data.candles);
+      if (data && data.candles) {
+        if (this.footprint) this.footprint.setHistoricalCandles(data.candles);
+        if (window.tradingViewChartManager) window.tradingViewChartManager.setHistoricalData(data.candles);
         this._updateReplayHUD();
       }
     } catch (e) {
