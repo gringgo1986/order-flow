@@ -676,8 +676,11 @@ class BookmapRenderer {
     const now = Date.now() + (this._serverTimeOffset || 0);
     this._latestSnapshot = snapshot;
 
-    // Maintain 4-second rolling buffer of order_book for Pulling & Stacking (+/- Lots)
+    // Maintain persistent merged order_book and 4-second rolling buffer
     if (snapshot.order_book) {
+      if (!this._persistentOrderBook) this._persistentOrderBook = { bids: {}, asks: {} };
+      if (snapshot.order_book.bids) Object.assign(this._persistentOrderBook.bids, snapshot.order_book.bids);
+      if (snapshot.order_book.asks) Object.assign(this._persistentOrderBook.asks, snapshot.order_book.asks);
       this._depthHistoryBuffer.push({
         t: now,
         bids: { ...(snapshot.order_book.bids || {}) },
@@ -880,7 +883,7 @@ class BookmapRenderer {
     this._drawPriceAxis(ctx);
 
     /* ── 11. Right High-Resolution COB (Current Order Book + Pulling/Stacking) ── */
-    this._drawCOB(ctx, snapshot.order_book, currentPrice, snapshot.bid, snapshot.ask);
+    this._drawCOB(ctx, this._persistentOrderBook || snapshot.order_book, currentPrice, snapshot.bid, snapshot.ask);
 
     /* ── 12. Interactive Manual Drawing Tools Overlay (Ray & Trend) ── */
     this._drawManualDrawings(ctx);
@@ -2987,7 +2990,7 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── High-Resolution Right COB + Pulling/Stacking Delta ──────── */
+  /* ─── High-Resolution Right COB with Dynamic Whale Category Filter ─── */
   _drawCOB(ctx, orderBook, currentPrice, bid, ask) {
     ctx.save();
     const sx = this.CHART_RIGHT;
@@ -3007,12 +3010,41 @@ class BookmapRenderer {
     ctx.stroke();
     ctx.shadowBlur  = 0;
 
-    ctx.fillStyle = '#101d30';
+    // 🎯 USER REQUIREMENT: COB filters automatically based on selected Whale Category!
+    const tier = this.bmBubbleCategory || 'noise';
+    let cobMinLot = 0.0;
+    let cobHeader = 'COB • SEMUA (NOISE)';
+    let cobHeaderCol = '#10b981';
+    let cobHeaderBg = 'rgba(16, 185, 129, 0.18)';
+
+    if (tier === 'mega') {
+      cobMinLot = 80.0;
+      cobHeader = '👑 COB • MEGA ≥80L';
+      cobHeaderCol = '#f43f5e';
+      cobHeaderBg = 'rgba(244, 63, 94, 0.22)';
+    } else if (tier === 'major') {
+      cobMinLot = 35.0;
+      cobHeader = '🏛️ COB • MAJOR ≥35L';
+      cobHeaderCol = '#fbbf24';
+      cobHeaderBg = 'rgba(251, 191, 36, 0.20)';
+    } else if (tier === 'normal') {
+      cobMinLot = 12.0;
+      cobHeader = '🐋 COB • WHALE ≥12L';
+      cobHeaderCol = '#38bdf8';
+      cobHeaderBg = 'rgba(56, 189, 248, 0.20)';
+    } else if (tier === 'off') {
+      cobMinLot = 0.0;
+      cobHeader = 'COB • HEATMAP';
+      cobHeaderCol = '#94a3b8';
+      cobHeaderBg = '#0f172a';
+    }
+
+    ctx.fillStyle = cobHeaderBg;
     ctx.fillRect(sx, 0, sw, this.TOP_PADDING);
-    ctx.fillStyle  = '#00d4ff';
-    ctx.font       = 'bold 9.5px "JetBrains Mono", monospace';
+    ctx.fillStyle  = cobHeaderCol;
+    ctx.font       = 'bold 8.5px "JetBrains Mono", monospace';
     ctx.textAlign  = 'center';
-    ctx.fillText('COB • DEPTH ±Δ', sx + sw / 2, 18);
+    ctx.fillText(cobHeader, sx + sw / 2, 18);
 
     const bids = (orderBook && orderBook.bids) || {};
     const asks = (orderBook && orderBook.asks) || {};
@@ -3023,11 +3055,12 @@ class BookmapRenderer {
     for (const v of Object.values(asks)) maxDepth = Math.max(maxDepth, v);
     maxDepth = Math.max(maxDepth, 45);
 
-    // 1. Render smooth $0.10 liquidity depth silhouette bars (No text overlap)
+    // 1. Render smooth $0.10 liquidity depth silhouette bars
     const barStep = 0.10;
     const startBarP = Math.floor(this.minPrice / barStep) * barStep;
     const barH = Math.max(2.5, Math.abs(this.priceToY(0) - this.priceToY(barStep)) - 0.8);
     const cyLive = currentPrice ? this.priceToY(currentPrice) : -999;
+    let visibleWallCount = 0;
 
     for (let p = startBarP; p <= this.maxPrice + barStep; p = Math.round((p + barStep) * 100) / 100) {
       const y = this.priceToY(p);
@@ -3039,42 +3072,79 @@ class BookmapRenderer {
       const vol   = Math.max(bVol, aVol);
       if (vol <= 0) continue;
 
+      // 🎯 STRICT WHALE TIER FILTER: Only display order book levels that meet or exceed category threshold!
+      if (vol < cobMinLot) {
+        continue;
+      }
+      visibleWallCount++;
+
       const isBid = bVol >= aVol;
-      const isWall = vol >= 54;
+      const isMega = vol >= 80.0;
+      const isMajor = vol >= 35.0;
+      const isWall = vol >= 54.0;
       const barW = Math.min(sw - 4, (vol / maxDepth) * (sw - 4));
 
-      ctx.fillStyle = isBid
-        ? (isWall ? 'rgba(0, 230, 118, 0.45)' : 'rgba(0, 230, 118, 0.18)')
-        : (isWall ? 'rgba(255, 51, 102, 0.45)' : 'rgba(255, 51, 102, 0.18)');
-      ctx.fillRect(sx + 2, y - barH / 2, barW, barH);
-
-      if (isWall) {
-        ctx.strokeStyle = isBid ? '#00e676' : '#ff3366';
-        ctx.lineWidth = 0.9;
+      // Visual styling according to tier:
+      if (isMega) {
+        // Mega Shark (≥80L): Intense Glowing Crimson / Gold Crown Border
+        ctx.fillStyle = isBid ? 'rgba(0, 230, 118, 0.65)' : 'rgba(244, 63, 94, 0.65)';
+        ctx.fillRect(sx + 2, y - barH / 2, barW, barH);
+        ctx.strokeStyle = '#ffd60a';
+        ctx.lineWidth = 1.6;
         ctx.strokeRect(sx + 2, y - barH / 2, barW, barH);
+      } else if (isMajor) {
+        // Major Institutional (≥35L): Radiant Amber Border
+        ctx.fillStyle = isBid ? 'rgba(0, 230, 118, 0.50)' : 'rgba(251, 191, 36, 0.50)';
+        ctx.fillRect(sx + 2, y - barH / 2, barW, barH);
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(sx + 2, y - barH / 2, barW, barH);
+      } else {
+        ctx.fillStyle = isBid
+          ? (isWall ? 'rgba(0, 230, 118, 0.45)' : 'rgba(0, 230, 118, 0.22)')
+          : (isWall ? 'rgba(255, 51, 102, 0.45)' : 'rgba(255, 51, 102, 0.22)');
+        ctx.fillRect(sx + 2, y - barH / 2, barW, barH);
+        if (isWall) {
+          ctx.strokeStyle = isBid ? '#00e676' : '#ff3366';
+          ctx.lineWidth = 0.9;
+          ctx.strokeRect(sx + 2, y - barH / 2, barW, barH);
+        }
       }
 
-      // Print Price & Lot Numbers cleanly every $0.50 step (or major wall >=68L) if at least 14px away from live price badge
+      // Print Price & Lot Numbers cleanly on all matching whale levels
       const cents = Math.round(p * 100) % 100;
       const isHalfDollar = (cents === 0 || cents === 50);
-      if ((isHalfDollar || vol >= 68) && Math.abs(y - cyLive) > 13) {
+      const shouldShowLabel = cobMinLot > 0 || isHalfDollar || vol >= 50;
+
+      if (shouldShowLabel && Math.abs(y - cyLive) > 11) {
         let deltaDepth = 0;
         if (oldestSnap) {
           const oldVol = isBid ? (oldestSnap.bids[pStr] || 0) : (oldestSnap.asks[pStr] || 0);
           if (oldVol > 0) deltaDepth = Math.round(vol - oldVol);
         }
 
-        ctx.font      = isWall ? 'bold 8.5px "JetBrains Mono", monospace' : '8px "JetBrains Mono", monospace';
+        ctx.font      = isMega ? 'bold 9px "JetBrains Mono", monospace' : (isMajor ? 'bold 8.5px "JetBrains Mono", monospace' : '8px "JetBrains Mono", monospace');
         ctx.textAlign = 'left';
-        ctx.fillStyle = isWall ? '#ffffff' : (p <= (currentPrice || 0) ? '#86efac' : '#fda4af');
-        ctx.fillText(pStr, sx + 4, y + 3);
+        ctx.fillStyle = isMega ? '#ffd60a' : (isMajor ? '#ffffff' : (p <= (currentPrice || 0) ? '#86efac' : '#fda4af'));
+        const prefix = isMega ? '👑' : (isMajor ? '🏛️' : '');
+        ctx.fillText(`${prefix}${pStr}`, sx + 3, y + 3);
 
         const deltaStr = Math.abs(deltaDepth) >= 3 ? `(${deltaDepth > 0 ? '+' : ''}${deltaDepth})` : '';
-        ctx.font      = 'bold 8px "JetBrains Mono", monospace';
+        ctx.font      = 'bold 8.5px "JetBrains Mono", monospace';
         ctx.textAlign = 'right';
-        ctx.fillStyle = isWall ? '#ffd60a' : (isBid ? '#00e676' : '#ff5a80');
-        ctx.fillText(`${Math.round(vol)}${deltaStr}`, sx + sw - 4, y + 3);
+        ctx.fillStyle = isMega ? '#ffd60a' : (isMajor ? '#fbbf24' : (isBid ? '#00e676' : '#ff5a80'));
+        ctx.fillText(`${Math.round(vol)}${deltaStr}`, sx + sw - 3, y + 3);
       }
+    }
+
+    // Informative Empty State if no walls of this tier are inside the current zoom range
+    if (visibleWallCount === 0 && cobMinLot > 0) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.40)';
+      ctx.font = 'italic 8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('TIADA DINDING', sx + sw / 2, this.height / 2 - 8);
+      ctx.fillText(`≥${cobMinLot}L DALAM SKRIN`, sx + sw / 2, this.height / 2 + 5);
+      ctx.fillText('(Skrol/Zoom Skrin)', sx + sw / 2, this.height / 2 + 18);
     }
 
     if (currentPrice) {
