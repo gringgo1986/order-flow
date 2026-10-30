@@ -1509,11 +1509,51 @@ class BookmapRenderer {
 
     this.hoverTrade = null;
     const drawnWhaleBadges = [];
-    const sortedTrades = [...trades].sort((a, b) => a.volume - b.volume);
+    // 1. Bookmap Institutional Node Aggregator: combines trades at the same time/price step
+    // Ensures bubbles form a clean, single continuous chain ('sebaris') along the stepped price line without overlapping clumps
+    const stepBucketMs = Math.max(1200, (this.timeWindowMs || 180000) / 100);
+    const timeSorted = [...trades].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    const aggregated = [];
+    let cur = null;
 
-    // Smart Filter: In Zen mode or 'whale' filter, filter retail trade noise
+    for (const t of timeSorted) {
+      const tMs = (t.timestamp && t.timestamp < 1e11) ? t.timestamp * 1000 : (t.timestamp || 0);
+      const buyV  = t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
+      const sellV = t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
+      const tBucket = Math.floor(tMs / stepBucketMs) * stepBucketMs;
+      const pStep = Math.round(t.price * 10) / 10.0;
+
+      if (cur && cur.tBucket === tBucket && Math.abs(cur.price - t.price) < 0.18) {
+        // Merge into single bead on the price line
+        cur.buy_vol += buyV;
+        cur.sell_vol += sellV;
+        cur.volume = cur.buy_vol + cur.sell_vol;
+        cur.is_large = cur.is_large || t.is_large || cur.volume >= 12.0;
+        cur.price = t.price;
+        cur.timestamp = Math.max(cur.timestamp, tMs);
+      } else {
+        if (cur) aggregated.push(cur);
+        cur = {
+          id: t.id || `${tMs}_${t.price}`,
+          timestamp: tMs,
+          tBucket: tBucket,
+          price: t.price,
+          volume: buyV + sellV,
+          buy_vol: buyV,
+          sell_vol: sellV,
+          side: buyV >= sellV ? 'buy' : 'sell',
+          is_large: t.is_large || (buyV + sellV) >= 12.0
+        };
+      }
+    }
+    if (cur) aggregated.push(cur);
+
+    // Filter sub-threshold retail noise if whale mode active
     const isWhaleOnly = this.bmZenMode || this.bmBubbleFilter === 'whale';
     const minVol = isWhaleOnly ? (this.bmBubbleMinVol || 12.0) : 0.0;
+    const sortedTrades = aggregated.filter(t => t.volume >= minVol);
+
+
 
     for (const t of sortedTrades) {
       const cx = this.timeToX(t.timestamp, now);
