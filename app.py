@@ -462,16 +462,17 @@ static_dir.mkdir(parents=True, exist_ok=True)
 (static_dir / "css").mkdir(parents=True, exist_ok=True)
 (static_dir / "icons").mkdir(parents=True, exist_ok=True)
 
-# 1. Auto-fix Windows backslash filenames on Linux systems (e.g. 'static\index.html' -> 'static/index.html')
+# 1. Auto-fix Windows backslash filenames on Linux systems
+BS = chr(92)
 try:
     for item in list(base_dir.iterdir()):
-        if item.is_file() and ("\" in item.name):
-            rel_parts = item.name.split("\")
+        if item.is_file() and (BS in item.name):
+            rel_parts = item.name.split(BS)
             target = base_dir.joinpath(*rel_parts)
             target.parent.mkdir(parents=True, exist_ok=True)
             if not target.exists() or target.stat().st_size != item.stat().st_size:
                 shutil.copy2(item, target)
-            if item.name == "static\index.html" or item.name.endswith("\index.html"):
+            if item.name == f"static{BS}index.html" or item.name.endswith(f"{BS}index.html"):
                 shutil.copy2(item, base_dir / "index.html")
                 shutil.copy2(item, static_dir / "index.html")
 except Exception as e:
@@ -537,7 +538,7 @@ def index(request: Request):
     candidates = [
         static_dir / "index.html",
         base_dir / "index.html",
-        base_dir / "static\index.html",
+        base_dir / f"static{chr(92)}index.html",
         base_dir / "xauusd-orderflow-bookmap" / "static" / "index.html",
         base_dir / "xauusd-orderflow-bookmap" / "index.html",
         Path("/app/static/index.html"),
