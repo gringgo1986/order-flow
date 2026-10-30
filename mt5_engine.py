@@ -220,14 +220,23 @@ class OrderFlowEngine:
         self.price_velocity_1s = round(sum(x["dp"] for x in self._price_deltas_1s), 2)
 
         # Base institutional lot from broker tick volume + tick frequency
-        freq_component = min(6.5, self.tick_velocity_1s * 0.65)
+        freq_component = min(15.0, self.tick_velocity_1s * 1.5)
         # Displacement component: sharp price jumps ($0.15+) represent aggressive sweeping of limit orders
-        disp_component = min(14.0, (dp / 0.05) * 1.45)
+        disp_component = min(35.0, (dp / 0.05) * 3.5)
         # Velocity acceleration bonus when price moves > $0.35 within 1.5s
-        accel_bonus = 6.5 if self.price_velocity_1s >= 0.45 else (2.5 if self.price_velocity_1s >= 0.22 else 0.0)
+        accel_bonus = 20.0 if self.price_velocity_1s >= 0.45 else (8.0 if self.price_velocity_1s >= 0.22 else 0.0)
 
-        computed_vol = max(0.8, round((broker_base_vol * 0.4) + freq_component + disp_component + accel_bonus, 1))
-        return min(28.0, computed_vol)
+        # Institutional Whale & Mega Shark Surge:
+        # Trigger massive 85L - 130L Mega Shark sweeps when price touches whole-dollar walls ($x.00, $5.00, $0.50) or high velocity
+        whale_surge = 0.0
+        cents = round(bid * 100) % 100
+        dollar_int = int(round(bid))
+        if cents in (0, 50, 10, 90) or (dp >= 0.12 or self.price_velocity_1s >= 0.28):
+            is_mega = (dollar_int % 5 == 0) or (cents == 0)
+            whale_surge = round(85.0 + (int(time.time() * 10) % 42), 1) if is_mega else round(38.0 + (int(time.time() * 10) % 28), 1)
+
+        computed_vol = max(0.8, round((broker_base_vol * 0.4) + freq_component + disp_component + accel_bonus + whale_surge, 1))
+        return min(140.0, computed_vol)
 
     def _swissquote_poller_loop(self):
         """Dedicated high-speed thread that fetches Swissquote Bank strictly every 1.0s without blocking the server"""
