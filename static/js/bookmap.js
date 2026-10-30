@@ -1522,8 +1522,8 @@ class BookmapRenderer {
       if (cx < this.CHART_LEFT - 60 || cx > this.CHART_RIGHT + 60) continue;
       if (cy < this.CHART_TOP - 20  || cy > this.CHART_BOTTOM + 20) continue;
 
-      const baseR = Math.sqrt(Math.max(0.15, t.volume)) * 5.8 * (this.bubbleZoom || 1.0);
-      const r = Math.min(50, Math.max(8.5, baseR));
+      const baseR = Math.sqrt(Math.max(0.2, t.volume)) * 1.85 * (this.bubbleZoom || 1.0);
+      const r = Math.min(22, Math.max(3.5, baseR));
 
       const buyV  = t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
       const sellV = t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
@@ -1659,8 +1659,8 @@ class BookmapRenderer {
       ctx.fill();
       ctx.restore();
 
-      if (r >= 9.0 && (t.volume >= minVol || this.bmBubbleFilter === 'all')) {
-        const fontSize = r >= 22 ? 11 : (r >= 15 ? 9 : (r >= 11 ? 8 : 7));
+      if (r >= 5.5 && (t.volume >= minVol || this.bmBubbleFilter === 'all')) {
+        const fontSize = r >= 16 ? 10 : (r >= 11 ? 8.5 : 7.5);
         ctx.font         = `bold ${fontSize}px "JetBrains Mono", monospace`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
