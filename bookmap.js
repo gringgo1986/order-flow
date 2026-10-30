@@ -18,7 +18,7 @@ class BookmapRenderer {
 
     // 60-second rolling window default (M1)
     this.timeframe = 'M1';
-    this.timeWindowMs = 60000;
+    this.timeWindowMs = 180000;
 
     // Viewport dimensions
     this.width  = 0;
@@ -308,12 +308,12 @@ class BookmapRenderer {
 
   setTimeframe(tf) {
     const tfMap = {
-      'M1':  60000,
-      'M5':  300000,
-      'M15': 900000,
-      'M30': 1800000,
-      'H1':  3600000,
-      'H4':  14400000
+      'M1':  180000,
+      'M5':  420000,
+      'M15': 1200000,
+      'M30': 2400000,
+      'H1':  4800000,
+      'H4':  18000000
     };
     tf = (tf || 'M1').toUpperCase();
     if (tfMap[tf]) {
@@ -794,8 +794,8 @@ class BookmapRenderer {
     /* ── 3B. Persistent Rolling Trades Buffer across WebSocket Updates ── */
     if (!this._tradesHistoryBuffer) this._tradesHistoryBuffer = [];
     if (snapshot.trades && snapshot.trades.length) {
-      if (snapshot.trades.length >= 40) {
-        // Full initial buffer delivered on connect/refresh (e.g. 60 trades)
+      if (snapshot.trades.length >= 80) {
+        // Full initial buffer delivered on connect/refresh (up to 160 trades)
         this._tradesHistoryBuffer = [...snapshot.trades];
       } else {
         // Real-time incremental stream updates: append newer trades avoiding duplicates
@@ -808,8 +808,8 @@ class BookmapRenderer {
           }
         }
       }
-      // Prune trades older than the visible chart time horizon (keep 2.5x timeWindow for smooth scrolling)
-      const visibleHorizonMs = Math.max(180000, (this.timeWindowMs || 60000) * 2.5);
+      // Retain at least 10 minutes of trades across all zooms and scrolls
+      const visibleHorizonMs = Math.max(600000, (this.timeWindowMs || 180000) * 3.5);
       const pruneCutoff = now - visibleHorizonMs;
       this._tradesHistoryBuffer = this._tradesHistoryBuffer.filter(t => {
         const tMs = (t.timestamp && t.timestamp < 1e11) ? t.timestamp * 1000 : (t.timestamp || 0);
@@ -818,8 +818,8 @@ class BookmapRenderer {
       if (this._tradesHistoryBuffer.length === 0 && snapshot.trades && snapshot.trades.length > 0) {
         this._tradesHistoryBuffer = [...snapshot.trades];
       }
-      if (this._tradesHistoryBuffer.length > 500) {
-        this._tradesHistoryBuffer = this._tradesHistoryBuffer.slice(-500);
+      if (this._tradesHistoryBuffer.length > 2000) {
+        this._tradesHistoryBuffer = this._tradesHistoryBuffer.slice(-2000);
       }
     }
     const effectiveTrades = (this._tradesHistoryBuffer && this._tradesHistoryBuffer.length > 0)
