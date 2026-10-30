@@ -454,13 +454,44 @@ def status_endpoint():
 import shutil
 
 # Mount static folder & auto-organize flat files if uploaded to root
+import shutil
 base_dir = Path(__file__).parent
 static_dir = base_dir / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 (static_dir / "js").mkdir(parents=True, exist_ok=True)
 (static_dir / "css").mkdir(parents=True, exist_ok=True)
+(static_dir / "icons").mkdir(parents=True, exist_ok=True)
 
-# Auto-copy flat root files into static structure
+# 1. Auto-fix Windows backslash filenames on Linux systems (e.g. 'static\index.html' -> 'static/index.html')
+try:
+    for item in list(base_dir.iterdir()):
+        if item.is_file() and ("\" in item.name):
+            rel_parts = item.name.split("\")
+            target = base_dir.joinpath(*rel_parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists() or target.stat().st_size != item.stat().st_size:
+                shutil.copy2(item, target)
+            if item.name == "static\index.html" or item.name.endswith("\index.html"):
+                shutil.copy2(item, base_dir / "index.html")
+                shutil.copy2(item, static_dir / "index.html")
+except Exception as e:
+    print(f"[Auto-Fix Windows Archive Warning] {e}")
+
+# 2. Also check if files are nested inside xauusd-orderflow-bookmap
+nested_dir = base_dir / "xauusd-orderflow-bookmap"
+if nested_dir.exists() and nested_dir.is_dir():
+    try:
+        for sub_item in nested_dir.rglob("*"):
+            if sub_item.is_file():
+                rel = sub_item.relative_to(nested_dir)
+                dest = base_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if not dest.exists():
+                    shutil.copy2(sub_item, dest)
+    except Exception as e:
+        print(f"[Auto-Copy Nested Warning] {e}")
+
+# 3. Auto-copy flat root files into static structure
 for fname in ["index.html", "login.html"]:
     src = base_dir / fname
     dst = static_dir / fname
@@ -506,12 +537,18 @@ def index(request: Request):
     candidates = [
         static_dir / "index.html",
         base_dir / "index.html",
+        base_dir / "static\index.html",
+        base_dir / "xauusd-orderflow-bookmap" / "static" / "index.html",
+        base_dir / "xauusd-orderflow-bookmap" / "index.html",
         Path("/app/static/index.html"),
         Path("/app/index.html"),
     ]
     for c in candidates:
         if c.exists():
             return FileResponse(str(c))
+    found = list(base_dir.rglob("index.html"))
+    if found:
+        return FileResponse(str(found[0]))
     return {"status": "error", "message": "index.html not found"}
 
 if __name__ == '__main__':
