@@ -69,7 +69,13 @@ class BookmapRenderer {
 
     // Bookmap World-Class Enhancements:
     this.bmZenMode = false;      // Zen Pro Mode: Pristine view without floating banners or small trade noise
-    this.bmBubbleCategory = 'noise'; // 'noise' (Semua) | 'normal' (≥12L) | 'major' (≥35L) | 'mega' (≥80L) | 'off'
+    let savedTier = 'noise';
+    try {
+      if (typeof localStorage !== 'undefined') savedTier = localStorage.getItem('gringgo_whale_category') || 'noise';
+      const selEl = typeof document !== 'undefined' ? document.getElementById('selWhaleCategory') : null;
+      if (selEl && selEl.value) savedTier = selEl.value;
+    } catch(e) {}
+    this.bmBubbleCategory = savedTier; // 'noise' (Semua) | 'normal' (≥12L) | 'major' (≥35L) | 'mega' (≥80L) | 'off'
     this.bmBubbleFilter = 'all';     // 'all' | 'whale' | 'off'
     this.bmBubbleMinVol = 12.0;  // Threshold for bold lot size numbers on trade bubbles
     this._occupiedBadgeSlots = []; // Frame-by-frame anti-collision vertical slot registry
@@ -226,13 +232,20 @@ class BookmapRenderer {
   setBubbleCategory(tierId) {
     if (!['noise', 'normal', 'major', 'mega', 'off'].includes(tierId)) tierId = 'noise';
     this.bmBubbleCategory = tierId;
-    this.bmBubbleFilter = tierId === 'noise' ? 'all' : (tierId === 'off' ? 'off' : 'whale');
+    this.bmBubbleFilter = (tierId === 'noise') ? 'all' : (tierId === 'off' ? 'off' : 'whale');
     this.bmBubbleMinVol = tierId === 'normal' ? 12.0 : (tierId === 'major' ? 35.0 : (tierId === 'mega' ? 80.0 : 0.0));
     
-    // Synchronize UI dropdown if present
-    const sel = document.getElementById('selWhaleCategory');
-    if (sel && sel.value !== tierId) {
-      sel.value = tierId;
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('gringgo_whale_category', tierId);
+      const sel = typeof document !== 'undefined' ? document.getElementById('selWhaleCategory') : null;
+      if (sel && sel.value !== tierId) {
+        sel.value = tierId;
+      }
+    } catch (e) {}
+
+    this.needsRedraw = true;
+    if (this._latestSnapshot) {
+      this.render(this._latestSnapshot);
     }
   }
 
@@ -1500,7 +1513,16 @@ class BookmapRenderer {
   /* ─── Split 3D Spherical Bubbles with Whale Sound & Smart Filter ─ */
   _drawSplitBubbles(ctx, trades, now) {
     if (!trades || !trades.length) return;
-    if (this.bmBubbleFilter === 'off') return; // User turned off bubbles for pure heatmap view
+    
+    // 1. Direct tier category check
+    const cat = this.bmBubbleCategory || 'noise';
+    if (cat === 'off') return; // User turned off bubbles
+
+    let minVol = 0.0;
+    if (cat === 'mega') minVol = 80.0;
+    else if (cat === 'major') minVol = 35.0;
+    else if (cat === 'normal') minVol = 12.0;
+    else minVol = 0.0; // noise: show all trades
 
     ctx.save();
     ctx.beginPath();
@@ -1509,53 +1531,61 @@ class BookmapRenderer {
 
     this.hoverTrade = null;
     const drawnWhaleBadges = [];
-    // 1. Bookmap Institutional Node Aggregator: combines trades at the same time/price step
-    // Ensures bubbles form a clean, single continuous chain ('sebaris') along the stepped price line without overlapping clumps
-    const stepBucketMs = Math.max(1200, (this.timeWindowMs || 180000) / 100);
+
+    // 2. Bookmap True Institutional Node Aggregator:
+    // Merges executions along the stepped price line into single discrete non-overlapping nodes ('sebaris')
+    // Trades at the same price step (within 0.15) merge together unless separated by at least 32px
     const timeSorted = [...trades].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     const aggregated = [];
     let cur = null;
+    const minPixelGap = 32;
 
     for (const t of timeSorted) {
       const tMs = (t.timestamp && t.timestamp < 1e11) ? t.timestamp * 1000 : (t.timestamp || 0);
       const buyV  = t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
       const sellV = t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
-      const tBucket = Math.floor(tMs / stepBucketMs) * stepBucketMs;
-      const pStep = Math.round(t.price * 10) / 10.0;
+      const curX = this.timeToX(tMs, now);
 
-      if (cur && cur.tBucket === tBucket && Math.abs(cur.price - t.price) < 0.18) {
-        // Merge into single bead on the price line
-        cur.buy_vol += buyV;
-        cur.sell_vol += sellV;
-        cur.volume = cur.buy_vol + cur.sell_vol;
-        cur.is_large = cur.is_large || t.is_large || cur.volume >= 12.0;
-        cur.price = t.price;
-        cur.timestamp = Math.max(cur.timestamp, tMs);
-      } else {
-        if (cur) aggregated.push(cur);
-        cur = {
-          id: t.id || `${tMs}_${t.price}`,
-          timestamp: tMs,
-          tBucket: tBucket,
-          price: t.price,
-          volume: buyV + sellV,
-          buy_vol: buyV,
-          sell_vol: sellV,
-          side: buyV >= sellV ? 'buy' : 'sell',
-          is_large: t.is_large || (buyV + sellV) >= 12.0
-        };
+      if (cur) {
+        const prevX = this.timeToX(cur.timestamp, now);
+        const pDiff = Math.abs(cur.price - t.price);
+        const xDiff = Math.abs(curX - prevX);
+
+        // If price is virtually at the same step (< 0.18) AND within minPixelGap:
+        // Merge into the same bead on the stepped price line!
+        if (pDiff < 0.18 && xDiff < minPixelGap) {
+          cur.buy_vol += buyV;
+          cur.sell_vol += sellV;
+          cur.volume = cur.buy_vol + cur.sell_vol;
+          cur.is_large = cur.is_large || t.is_large || cur.volume >= 12.0;
+          cur.price = t.price;
+          cur.timestamp = Math.max(cur.timestamp, tMs);
+          continue;
+        }
       }
+
+      // Start a new node
+      if (cur) aggregated.push(cur);
+      cur = {
+        id: t.id || `${tMs}_${t.price}`,
+        timestamp: tMs,
+        price: t.price,
+        volume: buyV + sellV,
+        buy_vol: buyV,
+        sell_vol: sellV,
+        side: buyV >= sellV ? 'buy' : 'sell',
+        is_large: t.is_large || (buyV + sellV) >= 12.0
+      };
     }
     if (cur) aggregated.push(cur);
 
-    // Filter sub-threshold retail noise if whale mode active
-    const isWhaleOnly = this.bmZenMode || this.bmBubbleFilter === 'whale';
-    const minVol = isWhaleOnly ? (this.bmBubbleMinVol || 12.0) : 0.0;
-    const sortedTrades = aggregated.filter(t => t.volume >= minVol);
+    // 3. Strict Lot Filtering: ONLY nodes with volume >= minVol are drawn!
+    // When filtering by Mega Shark (>=80L), trades < 80L are 100% DISCARDED (NO circles, NO micro dots, NO text)
+    const qualifyingTrades = (minVol > 0) 
+      ? aggregated.filter(t => t.volume >= minVol)
+      : aggregated;
 
-
-
-    for (const t of sortedTrades) {
+    for (const t of qualifyingTrades) {
       const cx = this.timeToX(t.timestamp, now);
       const cy = this.priceToY(t.price);
 
@@ -1576,25 +1606,12 @@ class BookmapRenderer {
         this.playWhaleSound();
       }
 
-      // Filter sub-threshold retail trades to eliminate chart clutter
-      if (t.volume < minVol) {
-        if (!this.bmZenMode) {
-          // In Full Analisis mode, show clean sleek micro dot without text
-          ctx.beginPath();
-          ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-          ctx.fillStyle = buyRatio >= 0.5 ? 'rgba(0, 230, 118, 0.40)' : 'rgba(255, 51, 102, 0.40)';
-          ctx.fill();
-        }
-        // In Zen mode, skip micro retail trades completely for ultimate serenity
-        continue;
-      }
-
       const dist = Math.hypot(this.mouseX - cx, this.mouseY - cy);
       if (dist <= r + 5) {
         this.hoverTrade = { ...t, cx, cy, r, buyV, sellV };
       }
 
-      // Outer Glow for Whale Trades
+      // Outer Glow for Whale Trades (>= 16px radius)
       if (r >= 16) {
         const glowR = r * 1.8;
         const glow = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, glowR);
@@ -1638,14 +1655,14 @@ class BookmapRenderer {
         // Upper Buy Hemisphere
         ctx.save();
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.rect(cx - r - 2, cy - r - 2, 2 * r + 4, splitY - (cy - r) + 2);
-        ctx.clip('evenodd');
+        ctx.rect(cx - r, cy - r, 2 * r, splitY - (cy - r));
+        ctx.clip();
         const gBuy = ctx.createRadialGradient(hx, hy, r * 0.05, cx, cy, r);
-        gBuy.addColorStop(0.00, '#dcfce7');
-        gBuy.addColorStop(0.25, '#22c55e');
-        gBuy.addColorStop(0.60, '#15803d');
-        gBuy.addColorStop(1.00, '#052e16');
+        gBuy.addColorStop(0.00, '#e8fdf0');
+        gBuy.addColorStop(0.18, '#4ade80');
+        gBuy.addColorStop(0.52, '#16a34a');
+        gBuy.addColorStop(0.82, '#14532d');
+        gBuy.addColorStop(1.00, '#042a15');
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fillStyle = gBuy;
@@ -1655,51 +1672,39 @@ class BookmapRenderer {
         // Lower Sell Hemisphere
         ctx.save();
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.rect(cx - r - 2, splitY, 2 * r + 4, (cy + r) - splitY + 2);
-        ctx.clip('evenodd');
+        ctx.rect(cx - r, splitY, 2 * r, (cy + r) - splitY);
+        ctx.clip();
         const gSell = ctx.createRadialGradient(hx, hy, r * 0.05, cx, cy, r);
         gSell.addColorStop(0.00, '#fee2e2');
-        gSell.addColorStop(0.25, '#ef4444');
-        gSell.addColorStop(0.60, '#b91c1c');
-        gSell.addColorStop(1.00, '#450a0a');
+        gSell.addColorStop(0.18, '#f87171');
+        gSell.addColorStop(0.52, '#dc2626');
+        gSell.addColorStop(0.82, '#7f1d1d');
+        gSell.addColorStop(1.00, '#3b0707');
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fillStyle = gSell;
         ctx.fill();
         ctx.restore();
 
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
-        ctx.lineWidth = 1;
+        // Crisp dividing seam line
         ctx.beginPath();
-        ctx.moveTo(cx - r * 0.9, splitY);
-        ctx.lineTo(cx + r * 0.9, splitY);
+        ctx.moveTo(cx - r, splitY);
+        ctx.lineTo(cx + r, splitY);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.lineWidth = 1;
         ctx.stroke();
       }
 
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.70)';
-      ctx.lineWidth = 1.0;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.stroke();
-
       // Specular highlight gloss
       ctx.save();
-      const glW = r * 0.44;
-      const glH = r * 0.22;
-      const glX = cx - r * 0.28;
-      const glY = cy - r * 0.32;
       ctx.beginPath();
-      ctx.ellipse(glX, glY, glW, glH, -0.42, 0, Math.PI * 2);
-      const gloss = ctx.createRadialGradient(glX, glY, 0, glX, glY, glW);
-      gloss.addColorStop(0.0, 'rgba(255, 255, 255, 0.85)');
-      gloss.addColorStop(0.7, 'rgba(255, 255, 255, 0.25)');
-      gloss.addColorStop(1.0, 'rgba(255, 255, 255, 0.00)');
-      ctx.fillStyle = gloss;
+      ctx.arc(hx, hy, Math.max(1.5, r * 0.28), 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
       ctx.fill();
       ctx.restore();
 
-      if (r >= 5.5 && (t.volume >= minVol || this.bmBubbleFilter === 'all')) {
+      // Bold lot volume label in center of bubble (for visible whales >= 12L or if filtered)
+      if (r >= 5.5 && (t.volume >= 12.0 || minVol > 0)) {
         const fontSize = r >= 16 ? 10 : (r >= 11 ? 8.5 : 7.5);
         ctx.font         = `bold ${fontSize}px "JetBrains Mono", monospace`;
         ctx.textAlign    = 'center';
@@ -1713,7 +1718,7 @@ class BookmapRenderer {
 
       // Institutional Halo Rings for Whale Categories
       if (t.volume >= 80.0) {
-        // Mega Shark (≥80L): Double Crimson-Gold Crown Halo (High Win Potential Tier)
+        // Mega Shark (≥80L): Double Crimson-Gold Crown Halo
         ctx.save();
         ctx.strokeStyle = '#f43f5e';
         ctx.lineWidth = 2.4;
@@ -1745,34 +1750,6 @@ class BookmapRenderer {
         ctx.arc(cx, cy, r + 1.5, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
-
-        if (!this.bmZenMode && this.bmShowWhaleLabels && t.volume >= 18.0) {
-          const isWhaleBuy = buyRatio >= 0.5;
-          const tagCol = isWhaleBuy ? '#00e676' : '#ff3366';
-          const tagTxt = `🐋 ${t.volume.toFixed(1)}L`;
-          ctx.font = 'bold 8px "JetBrains Mono", monospace';
-          const tw = ctx.measureText(tagTxt).width + 8;
-          let tx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - tw - 4, cx - tw / 2));
-          let ty = isWhaleBuy ? Math.max(this.CHART_TOP + 6, cy - r - 15) : Math.min(this.CHART_BOTTOM - 15, cy + r + 3);
-
-          // Anti-Collision Staggering against nearby whale badges
-          for (const prev of drawnWhaleBadges) {
-            if (Math.abs(prev.x - tx) < tw + 4 && Math.abs(prev.y - ty) < 14) {
-              ty = isWhaleBuy ? prev.y - 14 : prev.y + 14;
-            }
-          }
-          drawnWhaleBadges.push({ x: tx, y: ty, w: tw, h: 12 });
-
-          ctx.fillStyle = 'rgba(6, 11, 22, 0.92)';
-          ctx.fillRect(tx, ty, tw, 13);
-          ctx.strokeStyle = tagCol;
-          ctx.lineWidth = 1.0;
-          ctx.strokeRect(tx, ty, tw, 13);
-          ctx.fillStyle = tagCol;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(tagTxt, tx + tw / 2, ty + 6.5);
-        }
       }
     }
     ctx.restore();
