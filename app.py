@@ -21,7 +21,7 @@ app = FastAPI(title="Gringgo Orderflow")
 @app.middleware("http")
 async def add_no_cache_headers(request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path == "/":
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/sw.js", "/manifest.json", "/login") or request.url.path.endswith((".js", ".html", ".css", ".json")):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
