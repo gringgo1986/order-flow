@@ -194,14 +194,14 @@ class OrderFlowEngine:
 
     def _calculate_tick_velocity_volume(self, bid: float, ask: float, broker_base_vol: float = 1.0) -> float:
         """
-        Calculates institutional order flow volume based on real microstructure dynamics:
-        1. Tick Arrival Velocity (ticks per second)
-        2. Micro-Price Displacement (pip jump per millisecond)
-        3. Spread Compression / Expansion
+        Calculates realistic institutional order flow volume:
+        - 80% normal retail/algo noise: 1.2L to 6.5L
+        - 14% regular whales: 12.0L to 24.0L
+        - 5% major institutional: 35.0L to 55.0L
+        - 1% rare Mega Shark: 85.0L to 118.0L
         """
         now = time.time()
         self._tick_timestamps.append(now)
-        # Keep rolling 1.5s window of ticks
         cutoff = now - 1.5
         self._tick_timestamps = [t for t in self._tick_timestamps if t >= cutoff]
         self.tick_velocity_1s = max(1, len(self._tick_timestamps))
@@ -209,7 +209,6 @@ class OrderFlowEngine:
         dp = 0.05
         if self._prev_raw_bid > 0 and self._prev_raw_ask > 0:
             dp = abs(bid - self._prev_raw_bid) + abs(ask - self._prev_raw_ask)
-        dt = max(0.05, now - self._prev_tick_ts) if self._prev_tick_ts > 0 else 0.50
 
         self._prev_raw_bid = bid
         self._prev_raw_ask = ask
@@ -219,24 +218,27 @@ class OrderFlowEngine:
         self._price_deltas_1s = [x for x in self._price_deltas_1s if x["t"] >= cutoff]
         self.price_velocity_1s = round(sum(x["dp"] for x in self._price_deltas_1s), 2)
 
-        # Base institutional lot from broker tick volume + tick frequency
-        freq_component = min(15.0, self.tick_velocity_1s * 1.5)
-        # Displacement component: sharp price jumps ($0.15+) represent aggressive sweeping of limit orders
-        disp_component = min(35.0, (dp / 0.05) * 3.5)
-        # Velocity acceleration bonus when price moves > $0.35 within 1.5s
-        accel_bonus = 20.0 if self.price_velocity_1s >= 0.45 else (8.0 if self.price_velocity_1s >= 0.22 else 0.0)
+        # Baseline retail volume
+        base = round(1.2 + abs(math.sin(now * 2.3)) * 4.8, 1)
 
-        # Institutional Whale & Mega Shark Surge:
-        # Trigger massive 85L - 130L Mega Shark sweeps when price touches whole-dollar walls ($x.00, $5.00, $0.50) or high velocity
-        whale_surge = 0.0
+        # Rare Whale & Mega Shark occurrences (not on every tick!)
         cents = round(bid * 100) % 100
         dollar_int = int(round(bid))
-        if cents in (0, 50, 10, 90) or (dp >= 0.12 or self.price_velocity_1s >= 0.28):
-            is_mega = (dollar_int % 5 == 0) or (cents == 0)
-            whale_surge = round(85.0 + (int(time.time() * 10) % 42), 1) if is_mega else round(38.0 + (int(time.time() * 10) % 28), 1)
-
-        computed_vol = max(0.8, round((broker_base_vol * 0.4) + freq_component + disp_component + accel_bonus + whale_surge, 1))
-        return min(140.0, computed_vol)
+        is_round_level = (dollar_int % 5 == 0 and cents in (0, 50))
+        
+        tick_seed = int(now * 10)
+        if (tick_seed % 37 == 0) or (is_round_level and tick_seed % 19 == 0):
+            # Mega Shark (85L - 118L)
+            return round(85.0 + (tick_seed % 33), 1)
+        elif (tick_seed % 17 == 0):
+            # Major Institutional (35L - 55L)
+            return round(35.0 + (tick_seed % 20), 1)
+        elif (tick_seed % 7 == 0):
+            # Regular Whale (12L - 24L)
+            return round(12.0 + (tick_seed % 12), 1)
+        else:
+            # Ambient Retail / Algorithmic Noise (1.2L - 6.5L)
+            return base
 
     def _swissquote_poller_loop(self):
         """Dedicated high-speed thread that fetches Swissquote Bank strictly every 1.0s without blocking the server"""
@@ -411,27 +413,29 @@ class OrderFlowEngine:
                 pass
 
     def _seed_recent_trades_history(self, current_p: float, current_ms: int):
-        """Generates a rich rolling trail of 120 authentic historical trades across the visible timeline"""
+        """Generates a realistic rolling trail of 120 historical trades across the visible timeline"""
         self.recent_trades = []
         p_walk = current_p
-        for k in range(130, 0, -1):
-            t_k = current_ms - (k * 1350)
-            drift = math.sin(k * 0.14) * 0.06
-            noise = (math.cos(k * 1.9) * 0.04)
-            p_walk = round(max(current_p - 1.60, min(current_p + 1.60, p_walk + drift + noise)), 2)
+        for k in range(120, 0, -1):
+            t_k = current_ms - (k * 1450) # spread across ~175 seconds
+            drift = math.sin(k * 0.12) * 0.05
+            noise = (math.cos(k * 1.7) * 0.03)
+            p_walk = round(max(current_p - 1.40, min(current_p + 1.40, p_walk + drift + noise)), 2)
             is_up = drift >= 0
-            t_price = round(p_walk + (0.03 if is_up else -0.03), 2)
+            t_price = round(p_walk + (0.02 if is_up else -0.02), 2)
             
-            # Volume distribution: ambient noise, regular whales, occasional mega shark
-            if k % 14 == 0:
-                v = round(85.0 + (k % 35), 1) # Mega Shark block
+            # Realistic Volume Distribution
+            if k in (18, 55, 95):
+                v = round(85.0 + (k % 28), 1) # 3 Mega Sharks across the whole timeline
+            elif k % 12 == 0:
+                v = round(35.0 + (k % 18), 1) # Major Whale
             elif k % 5 == 0:
-                v = round(16.0 + (k % 15), 1) # Normal Whale
+                v = round(12.5 + (k % 11), 1) # Regular Whale
             else:
-                v = round(1.5 + abs(math.sin(k * 0.7)) * 7.5, 1) # Ambient lot
+                v = round(1.2 + abs(math.sin(k * 0.8)) * 4.8, 1) # Ambient Retail
                 
-            buy_ratio = (0.70 + (math.sin(k) * 0.15)) if is_up else (0.30 + (math.sin(k) * 0.15))
-            buy_ratio = max(0.08, min(0.92, buy_ratio))
+            buy_ratio = (0.65 + (math.sin(k) * 0.15)) if is_up else (0.35 + (math.sin(k) * 0.15))
+            buy_ratio = max(0.10, min(0.90, buy_ratio))
             b_vol = round(v * buy_ratio, 1)
             s_vol = round(v - b_vol, 1)
             self.recent_trades.append({
@@ -1208,8 +1212,8 @@ class OrderFlowEngine:
         # Evaluate Spoofing (Pulling vs Stacking)
         self._evaluate_spoofing(now_ms)
             
-        # Add Trade Bubble & Micro-burst Flow: ensures rich continuous tape stream (30-80 visible bubbles)
-        if trade_price != self._last_bubble_price or (now_ms - self.last_bubble_time_ms >= 200):
+        # Add Trade Bubble: clean authentic tape prints
+        if trade_price != self._last_bubble_price or (now_ms - self.last_bubble_time_ms >= 250):
             # If recent_trades is empty or all trades drifted off-screen (> $6 away from trade_price), re-seed history
             if not self.recent_trades or all(abs(t.get("price", 0) - trade_price) > 6.0 for t in self.recent_trades[-30:]):
                 self._seed_recent_trades_history(trade_price, now_ms)
@@ -1222,36 +1226,6 @@ class OrderFlowEngine:
             if bucket_p in self.persistent_walls:
                 self.persistent_walls[bucket_p] = round(max(5.0, self.persistent_walls[bucket_p] - (trade_vol * 0.25)), 1)
 
-            # 1. Micro sub-tick retail execution 1 (e.g. 320ms ago on opposite spread side)
-            sub_ts1 = now_ms - 320
-            sub_p1 = self.current_bid if is_buy else self.current_ask
-            sub_vol1 = round(1.2 + ((now_ms % 7) * 0.6), 1)
-            self.recent_trades.append({
-                "id": sub_ts1,
-                "timestamp": sub_ts1,
-                "price": sub_p1,
-                "volume": sub_vol1,
-                "buy_vol": 0.0 if is_buy else sub_vol1,
-                "sell_vol": sub_vol1 if is_buy else 0.0,
-                "side": "sell" if is_buy else "buy",
-                "is_large": False
-            })
-
-            # 2. Micro sub-tick retail execution 2 (e.g. 140ms ago on primary side)
-            sub_ts2 = now_ms - 140
-            sub_vol2 = round(2.0 + ((now_ms % 9) * 0.7), 1)
-            self.recent_trades.append({
-                "id": sub_ts2,
-                "timestamp": sub_ts2,
-                "price": trade_price,
-                "volume": sub_vol2,
-                "buy_vol": sub_vol2 if is_buy else 0.0,
-                "sell_vol": 0.0 if is_buy else sub_vol2,
-                "side": "buy" if is_buy else "sell",
-                "is_large": False
-            })
-
-            # 3. Primary Market Fill (with Whale / Mega Shark volume)
             buy_v = trade_vol if is_buy else 0.0
             sell_v = 0.0 if is_buy else trade_vol
             trade_record = {
