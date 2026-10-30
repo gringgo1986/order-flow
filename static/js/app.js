@@ -426,10 +426,23 @@ class App {
     // Whale Tier Category Selector (Noise, Normal Whale, Major Institutional, Mega Shark)
     const selWhaleCategory = document.getElementById('selWhaleCategory');
     if (selWhaleCategory) {
+      // 1. Restore saved preference or dropdown default
+      const savedTier = localStorage.getItem('gringgo_whale_category') || selWhaleCategory.value || 'noise';
+      selWhaleCategory.value = savedTier;
+      if (this.bookmap && this.bookmap.setBubbleCategory) {
+        this.bookmap.setBubbleCategory(savedTier);
+      }
+
+      // 2. Change handler with immediate sync and redraw
       selWhaleCategory.addEventListener('change', (e) => {
         const tier = e.target.value;
+        localStorage.setItem('gringgo_whale_category', tier);
         if (this.bookmap && this.bookmap.setBubbleCategory) {
           this.bookmap.setBubbleCategory(tier);
+          this.needsRedraw = true;
+          if (this.latestSnapshot) {
+            this.bookmap.render(this.latestSnapshot);
+          }
         }
         const toastMsg = tier === 'noise' ? '🫧 Kategori: Semua Transaksi Pasaran (Termasuk Noise <10L)'
           : (tier === 'normal' ? '🐋 Kategori: Normal Whale (≥12.0 Lot) [Potensi Win: 65%+]'
