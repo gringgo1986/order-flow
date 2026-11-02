@@ -1989,7 +1989,7 @@ class FootprintRenderer {
       { p: sess.london_high, name: 'LONDON HIGH SUPPLY' }
     ].filter(l => l.p && l.p > 0);
 
-    const tol = 0.75;
+    const tol = 1.10;
     ctx.save();
 
     for (let i = 0; i < candles.length - 1; i++) {
@@ -2024,6 +2024,20 @@ class FootprintRenderer {
           ctx.closePath();
           ctx.fill();
           ctx.shadowBlur = 0;
+
+          // Forward signal to global signals journal
+          if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
+            window.orderFlowApp.addSignal({
+              id: 'fp_' + c.time,
+              type: `🎯 [FOOTPRINT] ${activeDemand.name}`,
+              direction: 'BUY',
+              entryPrice: c.close,
+              slPrice: +(activeDemand.p - 1.50).toFixed(2),
+              tpPrice: +(c.close + 2.50).toFixed(2),
+              slPips: Math.abs(Math.round((c.close - (activeDemand.p - 1.50)) * 10)),
+              tpPips: 25
+            });
+          }
 
           // Futuristic Badge
           const badgeText = `🎯 [FP] BUY [${activeDemand.name}]`;
@@ -2064,6 +2078,20 @@ class FootprintRenderer {
           ctx.closePath();
           ctx.fill();
           ctx.shadowBlur = 0;
+
+          // Forward signal to global signals journal
+          if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
+            window.orderFlowApp.addSignal({
+              id: 'fp_' + c.time,
+              type: `🎯 [FOOTPRINT] ${activeSupply.name}`,
+              direction: 'SELL',
+              entryPrice: c.close,
+              slPrice: +(activeSupply.p + 1.50).toFixed(2),
+              tpPrice: +(c.close - 2.50).toFixed(2),
+              slPips: Math.abs(Math.round(((activeSupply.p + 1.50) - c.close) * 10)),
+              tpPips: 25
+            });
+          }
 
           // Futuristic Badge
           const badgeText = `🎯 [FP] SELL [${activeSupply.name}]`;
