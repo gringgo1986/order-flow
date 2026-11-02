@@ -852,7 +852,7 @@ class FootprintRenderer {
       if (x < -this.candleWidth - 40 || x > this.width) continue;
 
       try {
-        this._drawSingleFootprint(ctx, candles[i], x);
+        this._drawSingleFootprint(ctx, candles[i], x, (i === candles.length - 1), candles);
       } catch (cErr) {
         console.warn('[Footprint Candle Draw Error at bar ' + i + ']', cErr);
       }
@@ -1042,7 +1042,7 @@ class FootprintRenderer {
     ctx.restore();
   }
 
-  _drawSingleFootprint(ctx, rawCandle, x) {
+  _drawSingleFootprint(ctx, rawCandle, x, isLive = false, candles = []) {
     ctx.save();
     const step = this.clusterStep;
     const isBull = rawCandle.close >= rawCandle.open;
@@ -1296,16 +1296,16 @@ class FootprintRenderer {
       // RENDERING BY SELECTED VIEW MODE
       // -------------------------------------------------------------
       if (this.viewMode === 'bid_ask') {
-        // --- MODE 1: BID x ASK (Dual Columns) ---
+        // --- MODE 1: BID x ASK (Dual Columns with Golden Diagonal Imbalance Highlight) ---
         const bidIntensity = Math.min(1.0, cl.bid / 16.0);
         ctx.fillStyle = isSellImbalance 
-          ? '#990022' // Vivid Sell Imbalance Red
+          ? 'rgba(220, 38, 38, 0.48)' // High-energy Sell Imbalance Red
           : `rgba(180, 25, 55, ${0.28 + bidIntensity * 0.52})`;
         ctx.fillRect(x, boxY, halfW, boxHeight);
 
         const askIntensity = Math.min(1.0, cl.ask / 16.0);
         ctx.fillStyle = isBuyImbalance 
-          ? '#008833' // Vivid Buy Imbalance Green
+          ? 'rgba(22, 163, 74, 0.48)' // High-energy Buy Imbalance Green
           : `rgba(0, 160, 70, ${0.28 + askIntensity * 0.52})`;
         ctx.fillRect(x + halfW, boxY, halfW, boxHeight);
 
@@ -1317,25 +1317,31 @@ class FootprintRenderer {
         ctx.lineTo(x + halfW, boxY + boxHeight);
         ctx.stroke();
 
-        // High-Contrast Text Rendering (Smart Compact & Mobile Optimized)
-        if (boxHeight >= 15) {
-          const isCompact = this.candleWidth < 125;
-          const fontSize = isCompact ? 9.5 : 11;
-          ctx.font = `bold ${fontSize}px "JetBrains Mono", monospace`;
-          const textY = boxY + boxHeight / 2 + 4;
+        // High-Contrast Pro Text Rendering with Golden Imbalance & Auto-Compress
+        if (boxHeight >= 11) {
+          // Dynamic font scaling according to cell width and height
+          let dynFont = 10.5;
+          if (halfW < 60) dynFont = 9.5;
+          if (halfW < 45) dynFont = 8.5;
+          if (halfW < 35) dynFont = 7.5;
+          if (boxHeight < 15) dynFont = Math.min(dynFont, 8.0);
+          ctx.font = `bold ${dynFont}px "JetBrains Mono", monospace`;
+          const textY = boxY + boxHeight / 2 + (dynFont * 0.35);
 
-          // Bid Text (Left) - Mini Directional Sweep Indicator
+          const isCompact = halfW < 45;
+
+          // Bid Text (Left) - Golden Yellow for Imbalance, light pink for standard
           ctx.textAlign = 'center';
-          ctx.fillStyle = isSellImbalance ? '#ffffff' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
+          ctx.fillStyle = isSellImbalance ? '#ffd60a' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
           const bidRatioStr = (boxHeight >= 18 && cl.sellRatio && !isCompact) ? `↘${cl.sellRatio}x ` : (isSellImbalance ? '↘ ' : '');
-          const bidValStr = isCompact ? Math.round(cl.bid).toString() : cl.bid.toFixed(1);
+          const bidValStr = (isCompact || cl.bid >= 100) ? Math.round(cl.bid).toString() : cl.bid.toFixed(1);
           const bidStr = bidRatioStr + bidValStr;
           ctx.fillText(bidStr, x + halfW / 2, textY);
 
-          // Ask Text (Right) - Mini Directional Sweep Indicator
-          ctx.fillStyle = isBuyImbalance ? '#ffffff' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
+          // Ask Text (Right) - Golden Yellow for Imbalance, light green for standard
+          ctx.fillStyle = isBuyImbalance ? '#ffd60a' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
           const askRatioStr = (boxHeight >= 18 && cl.buyRatio && !isCompact) ? ` ↗${cl.buyRatio}x` : (isBuyImbalance ? ' ↗' : '');
-          const askValStr = isCompact ? Math.round(cl.ask).toString() : cl.ask.toFixed(1);
+          const askValStr = (isCompact || cl.ask >= 100) ? Math.round(cl.ask).toString() : cl.ask.toFixed(1);
           const askStr = askValStr + askRatioStr;
           ctx.fillText(askStr, x + halfW + halfW / 2, textY);
         }
@@ -1417,23 +1423,23 @@ class FootprintRenderer {
       // Imbalance Highlights & Directional Mini Sweep Arrows (Anti-Clutter Filter: boxHeight >= 22)
       if (this.viewMode === 'bid_ask') {
         if (isSellImbalance) {
-          ctx.strokeStyle = '#ff3366';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x, boxY, halfW, boxHeight);
-          if (boxHeight >= 22) {
-            ctx.fillStyle = '#ff3366';
-            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 2.0;
+          ctx.strokeRect(x + 0.5, boxY + 0.5, halfW - 1, boxHeight - 1);
+          if (boxHeight >= 20 && halfW >= 40) {
+            ctx.fillStyle = '#ffd60a';
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
             ctx.textAlign = 'left';
             ctx.fillText('↘', x + 3, boxY + 10);
           }
         }
         if (isBuyImbalance) {
-          ctx.strokeStyle = '#00e676';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x + halfW, boxY, halfW, boxHeight);
-          if (boxHeight >= 22) {
-            ctx.fillStyle = '#00e676';
-            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+          ctx.strokeStyle = '#22c55e';
+          ctx.lineWidth = 2.0;
+          ctx.strokeRect(x + halfW + 0.5, boxY + 0.5, halfW - 1, boxHeight - 1);
+          if (boxHeight >= 20 && halfW >= 40) {
+            ctx.fillStyle = '#ffd60a';
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
             ctx.textAlign = 'right';
             ctx.fillText('↗', x + this.candleWidth - 3, boxY + 10);
           }
@@ -1606,8 +1612,10 @@ class FootprintRenderer {
     ctx.lineWidth = 1.8;
     ctx.strokeRect(x - 2, bodyTop, this.candleWidth + 4, bodyHeight);
 
-    // 8. Sierra Chart / ATAS Style 5-Row Statistics Summary Table (100% Null-Safe)
-    const footerH = 68;
+    // 8. Sierra Chart / ATAS Style Responsive Statistics Summary Table (100% Robust)
+    const isNarrow = this.candleWidth < 95;
+    const isUltraNarrow = this.candleWidth < 70;
+    const footerH = isUltraNarrow ? 40 : (isNarrow ? 52 : 64);
     const footerY = (this.height || 600) - footerH - 4;
     const cDelta = Number(rawCandle.delta || 0);
     const deltaColor = cDelta >= 0 ? '#00e676' : '#ff3366';
@@ -1630,7 +1638,6 @@ class FootprintRenderer {
     // Time & Countdown
     const d = new Date((rawCandle.time || Date.now() / 1000) * 1000);
     const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const isLive = (rawCandle.time === candles[candles.length - 1]?.time);
     const tfSecMap = { 'M1': 60, 'M5': 300, 'M15': 900, 'M30': 1800, 'H1': 3600, 'H4': 14400 };
     const intervalSec = tfSecMap[this.timeframe || 'M1'] || 60;
     const nowSec = Math.floor(Date.now() / 1000);
@@ -1645,34 +1652,48 @@ class FootprintRenderer {
     ctx.strokeRect(x, footerY, this.candleWidth, footerH);
 
     // Accent line on top of footer
-    ctx.fillStyle = isBull ? 'rgba(0, 230, 118, 0.7)' : 'rgba(255, 51, 102, 0.7)';
+    ctx.fillStyle = isBull ? 'rgba(0, 230, 118, 0.75)' : 'rgba(255, 51, 102, 0.75)';
     ctx.fillRect(x, footerY, this.candleWidth, 2);
 
-    // Row 1: Volume
     ctx.textAlign = 'center';
-    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-    ctx.fillStyle = '#cbd5e1';
-    ctx.fillText(`VOL: ${candleVol.toFixed(1)}L`, centerX, footerY + 13);
 
-    // Row 2: Delta (with color and % share)
-    ctx.font = 'bold 10px "JetBrains Mono", monospace';
-    ctx.fillStyle = deltaColor;
-    ctx.fillText(`Δ ${deltaSign}${cDelta.toFixed(1)}L (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 26);
+    if (isUltraNarrow) {
+      // 2 Rows: Volume & Delta
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(`${candleVol >= 100 ? Math.round(candleVol) : candleVol.toFixed(1)}L`, centerX, footerY + 14);
+      ctx.fillStyle = deltaColor;
+      ctx.fillText(`${deltaSign}${Math.abs(cDelta) >= 100 ? Math.round(cDelta) : cDelta.toFixed(1)}L`, centerX, footerY + 28);
+    } else if (isNarrow) {
+      // 3 Rows: Volume, Delta, and Time
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(`VOL: ${candleVol.toFixed(1)}L`, centerX, footerY + 14);
 
-    // Row 3: Min / Max Delta (Exhaustion indicator)
-    ctx.font = '9px "JetBrains Mono", monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(`KEMUNCAK: ${minD.toFixed(0)} | +${maxD.toFixed(0)}`, centerX, footerY + 39);
+      ctx.fillStyle = deltaColor;
+      ctx.fillText(`Δ ${deltaSign}${cDelta.toFixed(1)}L (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 28);
 
-    // Row 4: Buyer / Seller Participation Ratio
-    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-    ctx.fillStyle = buyPct >= 50 ? '#86efac' : '#fda4af';
-    ctx.fillText(`🟢 ${buyPct}% Tanya | 🔴 ${sellPct}% Bida`, centerX, footerY + 52);
+      ctx.font = '8px "JetBrains Mono", monospace';
+      ctx.fillStyle = isLive ? '#00f0ff' : '#64748b';
+      ctx.fillText(isLive ? `⏱ ${countdownStr}` : `🕒 ${timeStr}`, centerX, footerY + 42);
+    } else {
+      // Full 4 Rows: Volume, Delta, Min/Max Peak, Time/Countdown
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(`VOL: ${candleVol.toFixed(1)}L`, centerX, footerY + 14);
 
-    // Row 5: Candle Time & Live Countdown
-    ctx.font = 'bold 9px "JetBrains Mono", monospace';
-    ctx.fillStyle = isLive ? '#00f0ff' : '#64748b';
-    ctx.fillText(isLive ? `⏱ ${timeStr} (${countdownStr})` : `🕒 ${timeStr}`, centerX, footerY + 64);
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = deltaColor;
+      ctx.fillText(`Δ ${deltaSign}${cDelta.toFixed(1)}L (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 28);
+
+      ctx.font = '8.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(`KEMUNCAK: ${minD.toFixed(0)} | +${maxD.toFixed(0)}`, centerX, footerY + 42);
+
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.fillStyle = isLive ? '#00f0ff' : '#64748b';
+      ctx.fillText(isLive ? `⏱ ${timeStr} (${countdownStr})` : `🕒 ${timeStr}`, centerX, footerY + 56);
+    }
 
     ctx.restore();
   }
@@ -1903,20 +1924,22 @@ class FootprintRenderer {
       if (d.cum > maxC) maxC = d.cum;
     }
     const span = Math.max(2.0, maxC - minC);
-    const footerY = (this.height || 600) - 72;
+    const footerH = this.candleWidth < 95 ? 52 : 64;
+    const footerY = (this.height || 600) - footerH - 6;
     const sparkH = 14;
+    const sparkY = footerY - sparkH - 4;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(11, 19, 34, 0.75)';
-    ctx.fillRect(data[0].x - 20, footerY - sparkH - 2, (data[data.length - 1].x - data[0].x) + 40, sparkH + 4);
+    ctx.fillStyle = 'rgba(11, 19, 34, 0.85)';
+    ctx.fillRect(data[0].x - 20, sparkY, (data[data.length - 1].x - data[0].x) + 40, sparkH + 4);
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 0.8;
-    ctx.strokeRect(data[0].x - 20, footerY - sparkH - 2, (data[data.length - 1].x - data[0].x) + 40, sparkH + 4);
+    ctx.strokeRect(data[0].x - 20, sparkY, (data[data.length - 1].x - data[0].x) + 40, sparkH + 4);
 
     ctx.beginPath();
     for (let i = 0; i < data.length; i++) {
       const d = data[i];
-      const sy = footerY - ((d.cum - minC) / span) * sparkH;
+      const sy = (sparkY + sparkH + 2) - ((d.cum - minC) / span) * sparkH;
       if (i === 0) ctx.moveTo(d.x, sy);
       else ctx.lineTo(d.x, sy);
     }
@@ -1925,7 +1948,7 @@ class FootprintRenderer {
     ctx.stroke();
 
     const last = data[data.length - 1];
-    const lastY = footerY - ((last.cum - minC) / span) * sparkH;
+    const lastY = (sparkY + sparkH + 2) - ((last.cum - minC) / span) * sparkH;
     ctx.fillStyle = cum >= 0 ? '#38bdf8' : '#fb7185';
     ctx.beginPath();
     ctx.arc(last.x, lastY, 2.5, 0, Math.PI * 2);
@@ -1933,7 +1956,7 @@ class FootprintRenderer {
 
     ctx.font = 'bold 8px "JetBrains Mono", monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`CVD: ${(cum >= 0 ? '+' : '') + cum.toFixed(1)}L`, last.x + 6, footerY - sparkH / 2 + 2);
+    ctx.fillText(`CVD: ${(cum >= 0 ? '+' : '') + cum.toFixed(1)}L`, last.x + 6, sparkY + sparkH / 2 + 3);
     ctx.restore();
   }
 
