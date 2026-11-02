@@ -492,26 +492,38 @@ if nested_dir.exists() and nested_dir.is_dir():
     except Exception as e:
         print(f"[Auto-Copy Nested Warning] {e}")
 
-# 3. Auto-copy flat root files into static structure
+# 3. Auto-copy flat root files into static structure (strictly keep synchronized)
 for fname in ["index.html", "login.html"]:
     src = base_dir / fname
     dst = static_dir / fname
-    if src.exists() and not dst.exists():
-        try: shutil.copy2(src, dst)
+    if src.exists():
+        if not dst.exists() or src.stat().st_size != dst.stat().st_size:
+            try: shutil.copy2(src, dst)
+            except Exception: pass
+    elif dst.exists() and not src.exists():
+        try: shutil.copy2(dst, src)
         except Exception: pass
 
 for fname in ["style.css"]:
     src = base_dir / fname
     dst = static_dir / "css" / fname
-    if src.exists() and not dst.exists():
-        try: shutil.copy2(src, dst)
+    if src.exists():
+        if not dst.exists() or src.stat().st_size != dst.stat().st_size:
+            try: shutil.copy2(src, dst)
+            except Exception: pass
+    elif dst.exists() and not src.exists():
+        try: shutil.copy2(dst, src)
         except Exception: pass
 
-for fname in ["bookmap.js", "footprint.js", "dom.js", "app.js"]:
+for fname in ["bookmap.js", "footprint.js", "dom.js", "app.js", "lightweight-charts.js", "tv_chart.js"]:
     src = base_dir / fname
     dst = static_dir / "js" / fname
-    if src.exists() and not dst.exists():
-        try: shutil.copy2(src, dst)
+    if src.exists():
+        if not dst.exists() or src.stat().st_size != dst.stat().st_size:
+            try: shutil.copy2(src, dst)
+            except Exception: pass
+    elif dst.exists() and not src.exists():
+        try: shutil.copy2(dst, src)
         except Exception: pass
 
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
