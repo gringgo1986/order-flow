@@ -3111,13 +3111,17 @@ class FootprintRenderer {
           ctx.lineWidth = 0.8;
           ctx.strokeRect(x, boxY, colW, boxH);
 
-          if (boxH >= 8.5 && colW >= 26) {
-            ctx.font = `bold ${Math.max(6.8, cellFontPx - 1)}px "JetBrains Mono", monospace`;
+          if (boxH >= 8.5 && colW >= 24) {
+            const bStr = Math.round(cl.bid * 10).toString();
+            const aStr = Math.round(cl.ask * 10).toString();
+            const maxL = Math.max(bStr.length, aStr.length);
+            const bFont = maxL >= 3 ? Math.max(6.0, cellFontPx - 1.8) : Math.max(6.8, cellFontPx - 0.8);
+            ctx.font = `bold ${bFont}px "JetBrains Mono", monospace`;
             ctx.textAlign = 'center';
             ctx.fillStyle = '#ffe4e6';
-            ctx.fillText(Math.round(cl.bid * 10).toString(), x + halfW / 2, boxY + boxH / 2 + 2.8);
+            ctx.fillText(bStr, x + halfW / 2, boxY + boxH / 2 + 2.8);
             ctx.fillStyle = '#d1fae5';
-            ctx.fillText(Math.round(cl.ask * 10).toString(), x + halfW + halfW / 2, boxY + boxH / 2 + 2.8);
+            ctx.fillText(aStr, x + halfW + halfW / 2, boxY + boxH / 2 + 2.8);
           }
         } else if (this.cdCellMode === 'delta') {
           // Signed Delta Heatmap Brick
@@ -3135,10 +3139,16 @@ class FootprintRenderer {
           if (boxH >= 7.8) {
             const dispD = Math.round(cl.delta * 10);
             ctx.fillStyle = isCurrentPriceRow ? '#ffffff' : (dispD >= 0 ? '#064e3b' : '#7f1d1d');
-            ctx.font = `${isPOC || dNorm >= 0.5 ? 'bold ' : ''}${cellFontPx}px "JetBrains Mono", monospace`;
-            ctx.textAlign = colW >= 26 ? 'right' : 'center';
-            const dCellStr = colW >= 24 ? ((dispD > 0 ? '+' : '') + dispD.toString()) : dispD.toString();
-            ctx.fillText(dCellStr, colW >= 26 ? (x + colW - 3) : (x + colW / 2), boxY + boxH / 2 + 3);
+            const dCellStr = (colW >= 28 && dispD > 0 ? '+' : '') + dispD.toString();
+            let dynFontPx = cellFontPx;
+            if (dCellStr.length >= 4) {
+              dynFontPx = Math.max(6.2, cellFontPx - 1.8);
+            } else if (dCellStr.length >= 3) {
+              dynFontPx = Math.max(6.6, cellFontPx - 1.0);
+            }
+            ctx.font = `${isPOC || dNorm >= 0.5 ? 'bold ' : ''}${dynFontPx}px "JetBrains Mono", monospace`;
+            ctx.textAlign = 'center';
+            ctx.fillText(dCellStr, x + colW / 2, boxY + boxH / 2 + 3);
           }
         } else {
           // 'volume' (Classic ClusterDelta) or 'imbalance' (ClusterDelta Imbalance Pro)
@@ -3180,10 +3190,17 @@ class FootprintRenderer {
             const minThresh = this.cdMinVolFilter || 0;
             if (minThresh === 0 || cl.total >= minThresh) {
               const dispVol = Math.max(1, Math.round(cl.total * 10));
+              const strVol = dispVol.toString();
+              let dynFontPx = cellFontPx;
+              if (strVol.length >= 4) {
+                dynFontPx = Math.max(6.2, cellFontPx - 1.8);
+              } else if (strVol.length >= 3) {
+                dynFontPx = Math.max(6.6, cellFontPx - 1.0);
+              }
               ctx.fillStyle = txtCol;
-              ctx.font = `${isPOC || vNorm >= 0.55 ? 'bold ' : ''}${cellFontPx}px "JetBrains Mono", monospace`;
-              ctx.textAlign = colW >= 26 ? 'right' : 'center';
-              ctx.fillText(dispVol.toString(), colW >= 26 ? (x + colW - 3) : (x + colW / 2), boxY + boxH / 2 + 3);
+              ctx.font = `${isPOC || vNorm >= 0.55 ? 'bold ' : ''}${dynFontPx}px "JetBrains Mono", monospace`;
+              ctx.textAlign = 'center';
+              ctx.fillText(strVol, x + colW / 2, boxY + boxH / 2 + 3);
             }
           }
         }
