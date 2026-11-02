@@ -2246,8 +2246,8 @@ class OrderFlowEngine:
         ]
         supply_levels = [s for s in supply_levels if s.get("p") and s["p"] > 0]
 
-        # Strict Location Gate Tolerance: ±$0.60 on Gold
-        tol = 0.60
+        # Responsive Location Gate Tolerance: ±$1.10 on Gold (11 pips)
+        tol = 1.10
         active_demand = next((d for d in demand_levels if abs(d["p"] - p) <= tol), None)
         active_supply = next((s for s in supply_levels if abs(s["p"] - p) <= tol), None)
 
@@ -2280,21 +2280,28 @@ class OrderFlowEngine:
                 if wvol > ask_wall:
                     ask_wall = wvol
 
-        # ── 1. EVALUATE BUY (Strictly at Demand Zone + Bid Wall + Trigger) ──
-        if active_demand and (bid_wall >= 18.0 or active_demand["name"] in ("H8 DEMAND", "H4 DEMAND", "VAL 70% DEMAND")):
+        # ── 1. EVALUATE BUY (Demand Zone + Wall/Support + High Confluence Trigger) ──
+        has_demand_zone = active_demand and (
+            bid_wall >= 12.0 or 
+            any(k in active_demand["name"] for k in ("H8", "H4", "H1", "M30", "M15", "VAL", "DEMAND", "SUPPORT", "LOW"))
+        )
+        if has_demand_zone:
             trigger = None
-            if any(ic.get("bias") == "BUY" and abs(ic.get("price", 0) - p) <= 0.85 for ic in self.iceberg_orders):
+            if any(ic.get("bias") == "BUY" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
                 trigger = "ICEBERG BID ABSORPTION"
-            elif any(tr.get("type") == "TRAPPED_SELLERS" and abs(tr.get("price", 0) - p) <= 0.85 for tr in self.trapped_traders):
+            elif any(tr.get("type") == "TRAPPED_SELLERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
                 trigger = "TRAPPED SELLERS AT LOW"
             elif self.detected_divergence and self.detected_divergence.get("type") == "bullish":
                 trigger = "BULLISH CVD DIVERGENCE"
-            elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "BUY" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 45000):
+            elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "BUY" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
                 trigger = "LIQUIDITY RAID & SWEEP"
-            elif bid_wall >= 35.0:
+            elif bid_wall >= 24.0:
                 trigger = f"WHALE BID WALL ({bid_wall:.0f}L)"
+            elif abs(p - active_demand["p"]) <= 0.70:
+                trigger = f"DEMAND REBOUND ({active_demand['name']})"
 
-            if trigger and self._last_bm_signal_dir != "BUY":
+            can_buy = (now - self._last_bm_signal_time >= 60.0) or (self._last_bm_signal_dir != "BUY" and now - self._last_bm_signal_time >= 30.0)
+            if trigger and can_buy:
                 sl = round(active_demand["p"] - 1.50, 2)
                 risk = max(1.0, round(p - sl, 2))
                 tp1 = round(p + risk * 2.0, 2)
@@ -2330,21 +2337,28 @@ class OrderFlowEngine:
                 except Exception:
                     pass
 
-        # ── 2. EVALUATE SELL (Strictly at Supply Zone + Ask Wall + Trigger) ──
-        elif active_supply and (ask_wall >= 18.0 or active_supply["name"] in ("H8 SUPPLY", "H4 SUPPLY", "VAH 70% SUPPLY")):
+        # ── 2. EVALUATE SELL (Supply Zone + Wall/Resistance + High Confluence Trigger) ──
+        has_supply_zone = active_supply and (
+            ask_wall >= 12.0 or 
+            any(k in active_supply["name"] for k in ("H8", "H4", "H1", "M30", "M15", "VAH", "SUPPLY", "RESISTANCE", "HIGH"))
+        )
+        if has_supply_zone:
             trigger = None
-            if any(ic.get("bias") == "SELL" and abs(ic.get("price", 0) - p) <= 0.85 for ic in self.iceberg_orders):
+            if any(ic.get("bias") == "SELL" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
                 trigger = "ICEBERG ASK ABSORPTION"
-            elif any(tr.get("type") == "TRAPPED_BUYERS" and abs(tr.get("price", 0) - p) <= 0.85 for tr in self.trapped_traders):
+            elif any(tr.get("type") == "TRAPPED_BUYERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
                 trigger = "TRAPPED BUYERS AT HIGH"
             elif self.detected_divergence and self.detected_divergence.get("type") == "bearish":
                 trigger = "BEARISH CVD DIVERGENCE"
-            elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "SELL" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 45000):
+            elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "SELL" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
                 trigger = "LIQUIDITY RAID & SWEEP"
-            elif ask_wall >= 35.0:
+            elif ask_wall >= 24.0:
                 trigger = f"WHALE ASK WALL ({ask_wall:.0f}L)"
+            elif abs(p - active_supply["p"]) <= 0.70:
+                trigger = f"SUPPLY REJECTION ({active_supply['name']})"
 
-            if trigger and self._last_bm_signal_dir != "SELL":
+            can_sell = (now - self._last_bm_signal_time >= 60.0) or (self._last_bm_signal_dir != "SELL" and now - self._last_bm_signal_time >= 30.0)
+            if trigger and can_sell:
                 sl = round(active_supply["p"] + 1.50, 2)
                 risk = max(1.0, round(sl - p, 2))
                 tp1 = round(p - risk * 2.0, 2)
