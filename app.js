@@ -3412,24 +3412,29 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     } catch (e) {}
   }
 
-  addSignal({ type, direction, entryPrice, slPips = 35, tpPips = 70 }) {
+  addSignal({ id, type, direction, entryPrice, slPrice, tpPrice, slPips = 35, tpPips = 70 }) {
     if (!entryPrice || entryPrice <= 0) return;
     const now = Date.now();
+    const sigId = id || `SIG-${now.toString().slice(-4)}`;
+
+    // Anti-duplication guard
+    if (this.signalsList && this.signalsList.some(s => s.id === sigId)) return;
+
     const slDist = (slPips * 0.10); // 1 pip = $0.10
     const tpDist = (tpPips * 0.10);
 
-    const slPrice = direction === 'BUY' ? (entryPrice - slDist) : (entryPrice + slDist);
-    const tpPrice = direction === 'BUY' ? (entryPrice + tpDist) : (entryPrice - tpDist);
+    const calculatedSl = (slPrice && slPrice > 0) ? slPrice : (direction === 'BUY' ? (entryPrice - slDist) : (entryPrice + slDist));
+    const calculatedTp = (tpPrice && tpPrice > 0) ? tpPrice : (direction === 'BUY' ? (entryPrice + tpDist) : (entryPrice - tpDist));
 
     const newSig = {
-      id: `SIG-${now.toString().slice(-4)}`,
+      id: sigId,
       timestamp: now,
       timeStr: new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}),
       type: type || '🎯 Quad-Confluence Signal',
       direction: direction.toUpperCase(),
       entryPrice: parseFloat(entryPrice.toFixed(2)),
-      slPrice: parseFloat(slPrice.toFixed(2)),
-      tpPrice: parseFloat(tpPrice.toFixed(2)),
+      slPrice: parseFloat(calculatedSl.toFixed(2)),
+      tpPrice: parseFloat(calculatedTp.toFixed(2)),
       status: 'ACTIVE',
       resultPips: 0.0,
       floatingPips: 0.0,
@@ -3437,6 +3442,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       closePrice: null
     };
 
+    if (!this.signalsList) this.signalsList = [];
     this.signalsList.unshift(newSig);
     if (this.signalsList.length > 50) this.signalsList = this.signalsList.slice(0, 50);
     this._saveSignals();
@@ -3446,7 +3452,27 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
   }
 
   _evaluateSignals(s) {
-    if (!s || !this.signalsList || this.signalsList.length === 0) return;
+    if (!s) return;
+
+    // 1. Auto-Sync Confirmed Signals from Backend Engine
+    if (s.bookmap_signals && Array.isArray(s.bookmap_signals)) {
+      for (const bs of s.bookmap_signals) {
+        if (!this.signalsList.some(sig => sig.id === bs.id)) {
+          this.addSignal({
+            id: bs.id,
+            type: `🎯 [BOOKMAP] ${bs.zone}`,
+            direction: bs.direction,
+            entryPrice: bs.price,
+            slPrice: bs.sl,
+            tpPrice: bs.tp1,
+            slPips: Math.abs(Math.round((bs.price - bs.sl) * 10)),
+            tpPips: Math.abs(Math.round((bs.tp1 - bs.price) * 10))
+          });
+        }
+      }
+    }
+
+    if (!this.signalsList || this.signalsList.length === 0) return;
     const curPrice = s.last_price || s.ask || s.bid || 0;
     if (!curPrice) return;
 
@@ -3528,8 +3554,8 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     });
 
     const badgeStr = `${wins}W / ${losses}L`;
-    if (badgeHdr) badgeHdr.textContent = `(${badgeStr})`;
-    if (badgeDock) badgeDock.textContent = badgeStr;
+    if (badgeHdr) badgeHdr.textContent = `[${total}] (${badgeStr})`;
+    if (badgeDock) badgeDock.textContent = `${total} (${badgeStr})`;
 
     if (txtWinRate) {
       txtWinRate.textContent = `${winRate}%`;
