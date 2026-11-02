@@ -2558,6 +2558,18 @@ class BookmapRenderer {
           if (window.orderFlowApp && window.orderFlowApp.showToast) {
             window.orderFlowApp.showToast(`🎯 [BOOKMAP ISYARAT] ${bs.direction} [${bs.zone}] @ $${bs.price.toFixed(2)} | TP1: $${bs.tp1.toFixed(2)}`);
           }
+          if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
+            window.orderFlowApp.addSignal({
+              id: bs.id,
+              type: `🎯 [BOOKMAP] ${bs.zone}`,
+              direction: bs.direction,
+              entryPrice: bs.price,
+              slPrice: bs.sl,
+              tpPrice: bs.tp1,
+              slPips: Math.abs(Math.round((bs.price - bs.sl) * 10)),
+              tpPips: Math.abs(Math.round((bs.tp1 - bs.price) * 10))
+            });
+          }
         }
       }
     }
@@ -2590,8 +2602,8 @@ class BookmapRenderer {
       { p: sess.london_high, name: 'LONDON HIGH' }
     ].filter(l => l.p && l.p > 0);
 
-    // Strict Location Gatekeeper: Tolerance ±$0.60 on Gold
-    const tol = 0.60;
+    // Responsive Location Gatekeeper: Tolerance ±$1.10 on Gold (11 pips)
+    const tol = 1.10;
     const activeDemand = demandLevels.find(l => Math.abs(l.p - p) <= tol);
     const activeSupply = supplyLevels.find(l => Math.abs(l.p - p) <= tol);
 
@@ -2616,27 +2628,30 @@ class BookmapRenderer {
       }
     }
 
-    // 3. Strict Front-End Signal Generator (Cooldown 70s)
-    const cooldownMs = 70000;
-    const canFire = !this._bmLastSignalTime || (now - this._bmLastSignalTime >= cooldownMs);
+    // 3. Responsive Front-End Signal Generator with Dynamic Retest Support
+    const canBuy = (!this._bmLastSignalTime || (now - this._bmLastSignalTime >= 60000) || (this._bmLastSignalDir !== 'BUY' && now - this._bmLastSignalTime >= 30000));
+    const canSell = (!this._bmLastSignalTime || (now - this._bmLastSignalTime >= 60000) || (this._bmLastSignalDir !== 'SELL' && now - this._bmLastSignalTime >= 30000));
 
-    if (canFire) {
-      // ── EVALUATE BUY (Strict: Demand Zone + Bid Wall >= 18L + Trigger) ──
-      if (activeDemand && (maxBidWall >= 18.0 || ['H8 DEMAND', 'H4 DEMAND', 'VAL 70% DEMAND'].includes(activeDemand.name))) {
+    if (canBuy || canSell) {
+      // ── EVALUATE BUY (Demand Zone + Wall/Support + Trigger) ──
+      const hasDemandValid = activeDemand && (maxBidWall >= 12.0 || ['H8', 'H4', 'H1', 'M30', 'M15', 'VAL', 'DEMAND', 'SUPPORT', 'LOW'].some(k => activeDemand.name.includes(k)));
+      if (hasDemandValid && canBuy) {
         let triggerFound = null;
-        if (snapshot.icebergs && snapshot.icebergs.some(ic => ic.bias === 'BUY' && Math.abs(ic.price - p) <= 0.85)) {
+        if (snapshot.icebergs && snapshot.icebergs.some(ic => ic.bias === 'BUY' && Math.abs(ic.price - p) <= 1.20)) {
           triggerFound = 'ICEBERG BID ABSORPTION';
-        } else if (snapshot.trapped_traders && snapshot.trapped_traders.some(tr => tr.type === 'TRAPPED_SELLERS' && Math.abs(tr.price - p) <= 0.85)) {
+        } else if (snapshot.trapped_traders && snapshot.trapped_traders.some(tr => tr.type === 'TRAPPED_SELLERS' && Math.abs(tr.price - p) <= 1.20)) {
           triggerFound = 'TRAPPED SELLERS AT LOW';
         } else if (snapshot.divergence && snapshot.divergence.type === 'bullish') {
           triggerFound = 'BULLISH CVD DIVERGENCE';
-        } else if (sess.sweep_alert && sess.sweep_alert.bias === 'BUY' && (now - sess.sweep_alert.timestamp < 35000)) {
+        } else if (sess.sweep_alert && sess.sweep_alert.bias === 'BUY' && (now - sess.sweep_alert.timestamp < 45000)) {
           triggerFound = 'LIQUIDITY SWEEP & REVERSAL';
-        } else if (maxBidWall >= 38.0) {
+        } else if (maxBidWall >= 24.0) {
           triggerFound = `WHALE BID WALL (${maxBidWall.toFixed(0)}L)`;
+        } else if (Math.abs(p - activeDemand.p) <= 0.70) {
+          triggerFound = `DEMAND REBOUND (${activeDemand.name})`;
         }
 
-        if (triggerFound && this._bmLastSignalDir !== 'BUY') {
+        if (triggerFound) {
           const sl = +(activeDemand.p - 1.50).toFixed(2);
           const risk = Math.max(1.0, +(p - sl).toFixed(2));
           const tp1 = +(p + risk * 2.0).toFixed(2);
@@ -2668,25 +2683,40 @@ class BookmapRenderer {
           if (window.orderFlowApp && window.orderFlowApp.showToast) {
             window.orderFlowApp.showToast(`🎯 [BOOKMAP ISYARAT] BUY [${activeDemand.name}] @ $${p.toFixed(2)} | TP1: $${tp1.toFixed(2)}`);
           }
+          if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
+            window.orderFlowApp.addSignal({
+              id: newSig.id,
+              type: `🎯 [BOOKMAP] ${activeDemand.name}`,
+              direction: 'BUY',
+              entryPrice: p,
+              slPrice: sl,
+              tpPrice: tp1,
+              slPips: Math.abs(Math.round((p - sl) * 10)),
+              tpPips: Math.abs(Math.round((tp1 - p) * 10))
+            });
+          }
         }
       }
 
-      // ── EVALUATE SELL (Strict: Supply Zone + Ask Wall >= 18L + Trigger) ──
-      else if (activeSupply && (maxAskWall >= 18.0 || ['H8 SUPPLY', 'H4 SUPPLY', 'VAH 70% SUPPLY'].includes(activeSupply.name))) {
+      // ── EVALUATE SELL (Supply Zone + Wall/Resistance + Trigger) ──
+      const hasSupplyValid = activeSupply && (maxAskWall >= 12.0 || ['H8', 'H4', 'H1', 'M30', 'M15', 'VAH', 'SUPPLY', 'RESISTANCE', 'HIGH'].some(k => activeSupply.name.includes(k)));
+      if (hasSupplyValid && canSell) {
         let triggerFound = null;
-        if (snapshot.icebergs && snapshot.icebergs.some(ic => ic.bias === 'SELL' && Math.abs(ic.price - p) <= 0.85)) {
+        if (snapshot.icebergs && snapshot.icebergs.some(ic => ic.bias === 'SELL' && Math.abs(ic.price - p) <= 1.20)) {
           triggerFound = 'ICEBERG ASK ABSORPTION';
-        } else if (snapshot.trapped_traders && snapshot.trapped_traders.some(tr => tr.type === 'TRAPPED_BUYERS' && Math.abs(tr.price - p) <= 0.85)) {
+        } else if (snapshot.trapped_traders && snapshot.trapped_traders.some(tr => tr.type === 'TRAPPED_BUYERS' && Math.abs(tr.price - p) <= 1.20)) {
           triggerFound = 'TRAPPED BUYERS AT HIGH';
         } else if (snapshot.divergence && snapshot.divergence.type === 'bearish') {
           triggerFound = 'BEARISH CVD DIVERGENCE';
-        } else if (sess.sweep_alert && sess.sweep_alert.bias === 'SELL' && (now - sess.sweep_alert.timestamp < 35000)) {
+        } else if (sess.sweep_alert && sess.sweep_alert.bias === 'SELL' && (now - sess.sweep_alert.timestamp < 45000)) {
           triggerFound = 'LIQUIDITY SWEEP & REVERSAL';
-        } else if (maxAskWall >= 38.0) {
+        } else if (maxAskWall >= 24.0) {
           triggerFound = `WHALE ASK WALL (${maxAskWall.toFixed(0)}L)`;
+        } else if (Math.abs(p - activeSupply.p) <= 0.70) {
+          triggerFound = `SUPPLY REJECTION (${activeSupply.name})`;
         }
 
-        if (triggerFound && this._bmLastSignalDir !== 'SELL') {
+        if (triggerFound) {
           const sl = +(activeSupply.p + 1.50).toFixed(2);
           const risk = Math.max(1.0, +(sl - p).toFixed(2));
           const tp1 = +(p - risk * 2.0).toFixed(2);
@@ -2717,6 +2747,18 @@ class BookmapRenderer {
           }
           if (window.orderFlowApp && window.orderFlowApp.showToast) {
             window.orderFlowApp.showToast(`🎯 [BOOKMAP ISYARAT] SELL [${activeSupply.name}] @ $${p.toFixed(2)} | TP1: $${tp1.toFixed(2)}`);
+          }
+          if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
+            window.orderFlowApp.addSignal({
+              id: newSig.id,
+              type: `🎯 [BOOKMAP] ${activeSupply.name}`,
+              direction: 'SELL',
+              entryPrice: p,
+              slPrice: sl,
+              tpPrice: tp1,
+              slPips: Math.abs(Math.round((sl - p) * 10)),
+              tpPips: Math.abs(Math.round((p - tp1) * 10))
+            });
           }
         }
       }
