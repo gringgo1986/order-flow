@@ -608,7 +608,7 @@ class BookmapRenderer {
     } else if (this.bmContrastMode === 'HIGH') {
       minCut = 32.0; // High contrast: only institutional walls
     } else if (this.bmContrastMode === 'MED') {
-      minCut = 12.0; // Medium contrast: filters retail noise, crisp view
+      minCut = 6.0;  // Enhanced contrast: displays continuous historical liquidity while highlighting major walls
     } else if (this.bmContrastMode === 'LOW') {
       minCut = 3.0;  // Low contrast: all subtle resting depth
     } else if (this.bmContrastMode === 'AUTO') {
@@ -1298,7 +1298,7 @@ class BookmapRenderer {
         }
       }
 
-      this._bmSweepEvents = this._bmSweepEvents.filter(sw => now - sw.time < 60000).slice(-6);
+      this._bmSweepEvents = this._bmSweepEvents.filter(sw => now - sw.time < 45000).slice(-3);
       this._prevDepthSnapshot = {
         t: now,
         bids: { ...(snapshot.order_book.bids || {}) },
@@ -1826,8 +1826,9 @@ class BookmapRenderer {
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const txtW = ctx.measureText(label).width + 8;
           // Place inside projection zone on right of NOW_X so bubbles are completely unobstructed
-          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 4);
-          const badgeY = buyY - 7;
+          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 12);
+          const resolvedBuyY = this._resolveNonOverlappingY(buyY, 14, 22);
+          const badgeY = resolvedBuyY - 7;
 
           ctx.fillStyle = 'rgba(5, 22, 14, 0.90)';
           ctx.fillRect(badgeX, badgeY, txtW, 14);
@@ -1838,7 +1839,7 @@ class BookmapRenderer {
           ctx.fillStyle = '#00e676';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(label, badgeX + 4, buyY);
+          ctx.fillText(label, badgeX + 4, resolvedBuyY);
         }
       }
     }
@@ -1868,8 +1869,9 @@ class BookmapRenderer {
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const txtW = ctx.measureText(label).width + 8;
           // Place inside projection zone on right of NOW_X so bubbles are completely unobstructed
-          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 4);
-          const badgeY = sellY - 7;
+          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 12);
+          const resolvedSellY = this._resolveNonOverlappingY(sellY, 14, 22);
+          const badgeY = resolvedSellY - 7;
 
           ctx.fillStyle = 'rgba(30, 8, 15, 0.90)';
           ctx.fillRect(badgeX, badgeY, txtW, 14);
@@ -1880,7 +1882,7 @@ class BookmapRenderer {
           ctx.fillStyle = '#ff3366';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(label, badgeX + 4, sellY);
+          ctx.fillText(label, badgeX + 4, resolvedSellY);
         }
       }
     }
@@ -2870,7 +2872,9 @@ class BookmapRenderer {
         const bw = ctx.measureText(mainText).width + 12;
         const bh = 16;
         const bx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - bw - 4, sigX - bw / 2));
-        const by = isBuy ? (sigY + 18) : (sigY - bh - 18);
+        const rawBy = isBuy ? (sigY + 18) : (sigY - bh - 18);
+        const resolvedBy = this._resolveNonOverlappingY(rawBy, bh, 22);
+        const by = resolvedBy;
 
         ctx.fillStyle = bgCol;
         ctx.fillRect(bx, by, bw, bh);
