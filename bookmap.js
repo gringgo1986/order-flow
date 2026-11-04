@@ -2796,39 +2796,30 @@ class BookmapRenderer {
     for (const sig of this._bmSignalsHistory) {
       const isBuy = sig.dir === 'BUY';
 
-      // Update win/loss status in real-time with Auto-BE (Break-Even) protection
+      // Update win/loss status in real-time with Auto-BE (Break-Even) protection & 1000p Ladder (TP1-TP20)
       if (sig.status === 'ACTIVE' || sig.status.startsWith('TP')) {
         const entryP = sig.price;
-        if (isBuy) {
-          // Trigger Break-Even once TP1 is hit
-          if (p >= sig.tp1 && !sig.isBEActive) {
-            sig.isBEActive = true;
-            sig.sl = entryP;
-          }
-          if (sig.tp5 && p >= sig.tp5) sig.status = 'TP5_HIT';
-          else if (sig.tp4 && p >= sig.tp4) sig.status = 'TP4_HIT';
-          else if (sig.tp3 && p >= sig.tp3) sig.status = 'TP3_HIT';
-          else if (sig.tp2 && p >= sig.tp2) sig.status = 'TP2_HIT';
-          else if (sig.tp1 && p >= sig.tp1) {
-            if (!sig.status.startsWith('TP')) sig.status = 'TP1_HIT';
-          }
-          else if (sig.isBEActive && p <= entryP) sig.status = 'BE_HIT';
-          else if (!sig.isBEActive && p <= sig.sl) sig.status = 'SL_HIT';
-        } else {
-          // Trigger Break-Even once TP1 is hit
-          if (p <= sig.tp1 && !sig.isBEActive) {
-            sig.isBEActive = true;
-            sig.sl = entryP;
-          }
-          if (sig.tp5 && p <= sig.tp5) sig.status = 'TP5_HIT';
-          else if (sig.tp4 && p <= sig.tp4) sig.status = 'TP4_HIT';
-          else if (sig.tp3 && p <= sig.tp3) sig.status = 'TP3_HIT';
-          else if (sig.tp2 && p <= sig.tp2) sig.status = 'TP2_HIT';
-          else if (sig.tp1 && p <= sig.tp1) {
-            if (!sig.status.startsWith('TP')) sig.status = 'TP1_HIT';
-          }
-          else if (sig.isBEActive && p >= entryP) sig.status = 'BE_HIT';
-          else if (!sig.isBEActive && p >= sig.sl) sig.status = 'SL_HIT';
+        const gainPips = isBuy ? (p - entryP) * 10 : (entryP - p) * 10;
+
+        // 1. Trigger Break-Even once gain >= 50 pips (TP1)
+        if (gainPips >= 50.0 && !sig.isBEActive) {
+          sig.isBEActive = true;
+          sig.sl = entryP;
+        }
+
+        // 2. Multi-Stage TP ladder from TP1 (50p) up to TP20 (1000p)
+        const currentTier = Math.min(20, Math.max(0, Math.floor(gainPips / 50)));
+        const highestTier = sig.highestTPTier || 0;
+        if (currentTier > highestTier) {
+          sig.highestTPTier = currentTier;
+          sig.status = `TP${currentTier}_HIT`;
+        }
+
+        // 3. Exit reversals
+        if (sig.isBEActive && gainPips <= 0.0 && !sig.status.startsWith('TP')) {
+          sig.status = 'BE_HIT';
+        } else if (!sig.isBEActive && gainPips <= -50.0 && !sig.status.startsWith('TP')) {
+          sig.status = 'SL_HIT';
         }
       }
 
@@ -2958,13 +2949,15 @@ class BookmapRenderer {
 
         // Badge
         let statusBadge = '';
-        if (sig.status === 'TP5_HIT') statusBadge = ' 🎯 TP5 HIT (+250p)';
-        else if (sig.status === 'TP4_HIT') statusBadge = ' 🎯 TP4 HIT (+200p)';
-        else if (sig.status === 'TP3_HIT') statusBadge = ' 🎯 TP3 HIT (+150p)';
-        else if (sig.status === 'TP2_HIT') statusBadge = ' 🎯 TP2 HIT (+100p)';
-        else if (sig.status === 'TP1_HIT') statusBadge = ' ✅ TP1 HIT (+50p)';
-        else if (sig.status === 'BE_HIT') statusBadge = ' 🛡️ BE HIT (0p)';
-        else if (sig.status === 'SL_HIT') statusBadge = ' ❌ SL HIT (-50p)';
+        if (sig.status && sig.status.startsWith('TP')) {
+          const tierNum = sig.status.replace('TP', '').replace('_HIT', '');
+          const pipsNum = parseInt(tierNum, 10) * 50;
+          statusBadge = ` 🎯 TP${tierNum} HIT (+${pipsNum}p)`;
+        } else if (sig.status === 'BE_HIT') {
+          statusBadge = ' 🛡️ BE HIT (0p)';
+        } else if (sig.status === 'SL_HIT') {
+          statusBadge = ' ❌ SL HIT (-50p)';
+        }
 
         const mainText = `🎯 [BM] ${sig.dir} [${sig.zoneName}]${statusBadge}`;
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
