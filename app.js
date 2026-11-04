@@ -3480,10 +3480,6 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             slPrice: bs.sl,
             tpPrice: bs.tp1,
             tp1: bs.tp1,
-            tp2: bs.tp2,
-            tp3: bs.tp3,
-            tp4: bs.tp4,
-            tp5: bs.tp5,
             slPips: 50,
             tpPips: 50
           });
@@ -3500,150 +3496,49 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     this.signalsList.forEach(sig => {
       const isBuy = sig.direction === 'BUY';
       const entry = sig.entryPrice;
-      const tp1P = sig.tp1 || sig.tpPrice || +(isBuy ? entry + 5.00 : entry - 5.00).toFixed(2);
-      const tp2P = sig.tp2 || +(isBuy ? entry + 10.00 : entry - 10.00).toFixed(2);
-      const tp3P = sig.tp3 || +(isBuy ? entry + 15.00 : entry - 15.00).toFixed(2);
-      const tp4P = sig.tp4 || +(isBuy ? entry + 20.00 : entry - 20.00).toFixed(2);
-      const tp5P = sig.tp5 || +(isBuy ? entry + 25.00 : entry - 25.00).toFixed(2);
+      const gainPips = isBuy ? (curPrice - entry) * 10 : (entry - curPrice) * 10;
+      sig.floatingPips = parseFloat(gainPips.toFixed(1));
 
-      if (isBuy) {
-        // 1. AUTO BREAK-EVEN (BE): Trigger when price reaches TP1
-        if (curPrice >= tp1P && !sig.isBEActive) {
-          sig.isBEActive = true;
-          sig.slPrice = entry;
-          hasChange = true;
-          this.showToast(`🛡️ ISYARAT #${sig.id} (BUY): TP1 DICAPAI! SL dialihkan ke Break-Even ($${entry.toFixed(2)}).`);
-          if (this.audioEnabled) this.playInstitutionalChime('SWEEP');
-        }
+      // 1. AUTO BREAK-EVEN (BE): Trigger once price hits TP1 (+50 pips)
+      if (gainPips >= 50.0 && !sig.isBEActive) {
+        sig.isBEActive = true;
+        sig.slPrice = entry;
+        hasChange = true;
+        this.showToast(`🛡️ ISYARAT #${sig.id} (${sig.direction}): TP1 (50 pip) DICAPAI! SL dialihkan ke Break-Even ($${entry.toFixed(2)}).`);
+        if (this.audioEnabled) this.playInstitutionalChime('SWEEP');
+      }
 
-        // 2. Multi-Stage Take Profit Progression
-        if (curPrice >= tp5P && sig.status !== 'WIN (TP5)') {
-          sig.status = 'WIN (TP5)';
-          sig.closePrice = tp5P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 250.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (BUY) CAPAI TP5 (+250 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice >= tp4P && !['WIN (TP4)', 'WIN (TP5)'].includes(sig.status)) {
-          sig.status = 'WIN (TP4)';
-          sig.closePrice = tp4P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 200.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (BUY) CAPAI TP4 (+200 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice >= tp3P && !['WIN (TP3)', 'WIN (TP4)', 'WIN (TP5)'].includes(sig.status)) {
-          sig.status = 'WIN (TP3)';
-          sig.closePrice = tp3P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 150.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (BUY) CAPAI TP3 (+150 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice >= tp2P && !['WIN (TP2)', 'WIN (TP3)', 'WIN (TP4)', 'WIN (TP5)'].includes(sig.status)) {
-          sig.status = 'WIN (TP2)';
-          sig.closePrice = tp2P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 100.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (BUY) CAPAI TP2 (+100 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice >= tp1P && !sig.status.startsWith('WIN') && sig.status !== 'BE') {
-          sig.status = 'WIN (TP1)';
-          sig.closePrice = tp1P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 50.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (BUY) CAPAI TP1 (+50 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (sig.isBEActive && curPrice <= entry && sig.status !== 'BE') {
-          // Reversal back to Entry after TP1 -> Hits Break-Even (Zero Loss)
-          sig.status = 'BE';
-          sig.closePrice = entry;
-          sig.closedAt = Date.now();
-          sig.resultPips = 0.0;
-          hasChange = true;
-          this.showToast(`🛡️ ISYARAT #${sig.id} (BUY) KENA BE (BREAK-EVEN)! Modal Selamat (+0 pip).`);
-        } else if (!sig.isBEActive && curPrice <= sig.slPrice && !sig.status.startsWith('WIN') && sig.status !== 'LOSS') {
-          sig.status = 'LOSS';
-          sig.closePrice = sig.slPrice;
-          sig.closedAt = Date.now();
-          sig.resultPips = -50.0;
-          hasChange = true;
-          this.showToast(`⚠️ ISYARAT #${sig.id} (BUY) KALAH! Hit SL (-50 pip)`);
-          if (this.audioEnabled) this.playInstitutionalChime('SELL');
-        } else {
-          sig.floatingPips = parseFloat(((curPrice - sig.entryPrice) * 10).toFixed(1));
-        }
-      } else {
-        // SELL Direction Auto Break-Even & TP Progression
-        if (curPrice <= tp1P && !sig.isBEActive) {
-          sig.isBEActive = true;
-          sig.slPrice = entry;
-          hasChange = true;
-          this.showToast(`🛡️ ISYARAT #${sig.id} (SELL): TP1 DICAPAI! SL dialihkan ke Break-Even ($${entry.toFixed(2)}).`);
-          if (this.audioEnabled) this.playInstitutionalChime('SWEEP');
-        }
+      // 2. MULTI-STAGE TP LADDER: TP1 (50p) -> TP20 (1000p)
+      const currentTier = Math.min(20, Math.max(0, Math.floor(gainPips / 50)));
+      const highestTier = sig.highestTPTier || 0;
 
-        if (curPrice <= tp5P && sig.status !== 'WIN (TP5)') {
-          sig.status = 'WIN (TP5)';
-          sig.closePrice = tp5P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 250.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (SELL) CAPAI TP5 (+250 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice <= tp4P && !['WIN (TP4)', 'WIN (TP5)'].includes(sig.status)) {
-          sig.status = 'WIN (TP4)';
-          sig.closePrice = tp4P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 200.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (SELL) CAPAI TP4 (+200 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice <= tp3P && !['WIN (TP3)', 'WIN (TP4)', 'WIN (TP5)'].includes(sig.status)) {
-          sig.status = 'WIN (TP3)';
-          sig.closePrice = tp3P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 150.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (SELL) CAPAI TP3 (+150 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice <= tp2P && !['WIN (TP2)', 'WIN (TP3)', 'WIN (TP4)', 'WIN (TP5)'].includes(sig.status)) {
-          sig.status = 'WIN (TP2)';
-          sig.closePrice = tp2P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 100.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (SELL) CAPAI TP2 (+100 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice <= tp1P && !sig.status.startsWith('WIN') && sig.status !== 'BE') {
-          sig.status = 'WIN (TP1)';
-          sig.closePrice = tp1P;
-          sig.closedAt = Date.now();
-          sig.resultPips = 50.0;
-          hasChange = true;
-          this.showToast(`🎉 ISYARAT #${sig.id} (SELL) CAPAI TP1 (+50 pip)!`);
-          if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (sig.isBEActive && curPrice >= entry && sig.status !== 'BE') {
-          sig.status = 'BE';
-          sig.closePrice = entry;
-          sig.closedAt = Date.now();
-          sig.resultPips = 0.0;
-          hasChange = true;
-          this.showToast(`🛡️ ISYARAT #${sig.id} (SELL) KENA BE (BREAK-EVEN)! Modal Selamat (+0 pip).`);
-        } else if (!sig.isBEActive && curPrice >= sig.slPrice && !sig.status.startsWith('WIN') && sig.status !== 'LOSS') {
-          sig.status = 'LOSS';
-          sig.closePrice = sig.slPrice;
-          sig.closedAt = Date.now();
-          sig.resultPips = -50.0;
-          hasChange = true;
-          this.showToast(`⚠️ ISYARAT #${sig.id} (SELL) KALAH! Hit SL (-50 pip)`);
-          if (this.audioEnabled) this.playInstitutionalChime('SELL');
-        } else {
-          sig.floatingPips = parseFloat(((sig.entryPrice - curPrice) * 10).toFixed(1));
-        }
+      if (currentTier > highestTier) {
+        sig.highestTPTier = currentTier;
+        sig.status = currentTier >= 20 ? 'WIN (TP20 - 1000p JACKPOT)' : `WIN (TP${currentTier})`;
+        sig.resultPips = currentTier * 50.0;
+        sig.closePrice = +(isBuy ? entry + (currentTier * 5.0) : entry - (currentTier * 5.0)).toFixed(2);
+        sig.closedAt = Date.now();
+        hasChange = true;
+        this.showToast(`🎉 ISYARAT #${sig.id} (${sig.direction}) CAPAI TP${currentTier} (+${currentTier * 50} pip)!`);
+        if (this.audioEnabled) this.playInstitutionalChime('BUY');
+      }
+
+      // 3. EXIT REVERSALS: BE or SL
+      if (sig.isBEActive && gainPips <= 0.0 && !sig.status.startsWith('WIN') && sig.status !== 'BE') {
+        sig.status = 'BE';
+        sig.closePrice = entry;
+        sig.closedAt = Date.now();
+        sig.resultPips = 0.0;
+        hasChange = true;
+        this.showToast(`🛡️ ISYARAT #${sig.id} (${sig.direction}) KENA BE! Modal Selamat (+0 pip).`);
+      } else if (!sig.isBEActive && gainPips <= -50.0 && !sig.status.startsWith('WIN') && sig.status !== 'LOSS') {
+        sig.status = 'LOSS';
+        sig.closePrice = sig.slPrice;
+        sig.closedAt = Date.now();
+        sig.resultPips = -50.0;
+        hasChange = true;
+        this.showToast(`⚠️ ISYARAT #${sig.id} (${sig.direction}) KALAH! Hit SL (-50 pip)`);
+        if (this.audioEnabled) this.playInstitutionalChime('SELL');
       }
     });
 
@@ -3782,11 +3677,41 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
               : `<div style="font-weight:800; color:#ff3366;">$${sig.slPrice.toFixed(2)}</div><div style="font-size:8px; color:#f87171;">(-50 pip)</div>`
             }
           </td>
-          <td style="padding:4px 6px; font-size:9.5px; line-height:1.25;">
-            <div><b style="color:#00e676;">TP1:</b> $${(sig.tp1 || sig.tpPrice).toFixed(2)} <span style="color:#86efac; font-size:8px;">(50p)</span></div>
-            <div><b style="color:#38bdf8;">TP2:</b> $${(sig.tp2 || (isBuy ? sig.entryPrice + 10 : sig.entryPrice - 10)).toFixed(2)} <span style="color:#7dd3fc; font-size:8px;">(100p)</span></div>
-            <div><b style="color:#fbbf24;">TP3:</b> $${(sig.tp3 || (isBuy ? sig.entryPrice + 15 : sig.entryPrice - 15)).toFixed(2)} <span style="color:#fde047; font-size:8px;">(150p)</span></div>
-            <div style="font-size:8px; color:#94a3b8; margin-top:1px;">TP4: $${(sig.tp4 || (isBuy ? sig.entryPrice + 20 : sig.entryPrice - 20)).toFixed(2)} | TP5: $${(sig.tp5 || (isBuy ? sig.entryPrice + 25 : sig.entryPrice - 25)).toFixed(2)}</div>
+          <td style="padding:4px 6px; font-size:9px; line-height:1.3;">
+            ${(() => {
+              const e = sig.entryPrice;
+              const dir = sig.direction === 'BUY' ? 1 : -1;
+              const tpPrice = (tier) => (e + (dir * tier * 5.0)).toFixed(2);
+              const maxTierReached = sig.highestTPTier || 0;
+              
+              let tierGrid = '';
+              for (let t = 1; t <= 20; t++) {
+                const isHit = maxTierReached >= t;
+                const hitColor = isHit ? '#00e676' : '#94a3b8';
+                const hitIcon = isHit ? '✅' : '🎯';
+                const pipsVal = t * 50;
+                tierGrid += `<div style="color:${hitColor}; padding:1px 3px; background:${isHit ? 'rgba(0,230,118,0.1)' : 'transparent'}; border-radius:2px;">
+                  ${hitIcon} <b>TP${t}:</b> $${tpPrice(t)} <span style="font-size:7.5px;">(${pipsVal}p)</span>
+                </div>`;
+              }
+
+              return `
+                <div style="display:flex; gap:6px; flex-wrap:wrap; font-weight:700;">
+                  <div><b style="color:#00e676;">TP1:</b> $${tpPrice(1)} <span style="color:#86efac; font-size:8px;">(50p)</span></div>
+                  <div><b style="color:#38bdf8;">TP5:</b> $${tpPrice(5)} <span style="color:#7dd3fc; font-size:8px;">(250p)</span></div>
+                  <div><b style="color:#fbbf24;">TP10:</b> $${tpPrice(10)} <span style="color:#fde047; font-size:8px;">(500p)</span></div>
+                  <div><b style="color:#c084fc;">TP20:</b> $${tpPrice(20)} <span style="color:#e9d5ff; font-size:8px;">(1000p)</span></div>
+                </div>
+                <details style="margin-top:2px; cursor:pointer;">
+                  <summary style="font-size:8px; color:#38bdf8; outline:none; font-weight:800;">
+                    ${maxTierReached > 0 ? `<span style="color:#00e676;">[TP${maxTierReached} CAPAI ✅]</span> ` : ''}Lihat Semua 20 TP (50p - 1000p) ▾
+                  </summary>
+                  <div style="font-size:8px; display:grid; grid-template-columns:repeat(2, 1fr); gap:2px; margin-top:3px; background:rgba(0,0,0,0.4); padding:4px; border-radius:4px; border:1px solid rgba(255,255,255,0.06); max-height:120px; overflow-y:auto;">
+                    ${tierGrid}
+                  </div>
+                </details>
+              `;
+            })()}
           </td>
           <td style="padding:5px 6px;">${statusBadge}</td>
           <td style="padding:5px 6px;">${pipsBadge}</td>
