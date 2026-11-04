@@ -2796,22 +2796,39 @@ class BookmapRenderer {
     for (const sig of this._bmSignalsHistory) {
       const isBuy = sig.dir === 'BUY';
 
-      // Update win/loss status in real-time across TP1-TP5
+      // Update win/loss status in real-time with Auto-BE (Break-Even) protection
       if (sig.status === 'ACTIVE' || sig.status.startsWith('TP')) {
+        const entryP = sig.price;
         if (isBuy) {
+          // Trigger Break-Even once TP1 is hit
+          if (p >= sig.tp1 && !sig.isBEActive) {
+            sig.isBEActive = true;
+            sig.sl = entryP;
+          }
           if (sig.tp5 && p >= sig.tp5) sig.status = 'TP5_HIT';
           else if (sig.tp4 && p >= sig.tp4) sig.status = 'TP4_HIT';
           else if (sig.tp3 && p >= sig.tp3) sig.status = 'TP3_HIT';
           else if (sig.tp2 && p >= sig.tp2) sig.status = 'TP2_HIT';
-          else if (sig.tp1 && p >= sig.tp1) sig.status = 'TP1_HIT';
-          else if (sig.status === 'ACTIVE' && p <= sig.sl) sig.status = 'SL_HIT';
+          else if (sig.tp1 && p >= sig.tp1) {
+            if (!sig.status.startsWith('TP')) sig.status = 'TP1_HIT';
+          }
+          else if (sig.isBEActive && p <= entryP) sig.status = 'BE_HIT';
+          else if (!sig.isBEActive && p <= sig.sl) sig.status = 'SL_HIT';
         } else {
+          // Trigger Break-Even once TP1 is hit
+          if (p <= sig.tp1 && !sig.isBEActive) {
+            sig.isBEActive = true;
+            sig.sl = entryP;
+          }
           if (sig.tp5 && p <= sig.tp5) sig.status = 'TP5_HIT';
           else if (sig.tp4 && p <= sig.tp4) sig.status = 'TP4_HIT';
           else if (sig.tp3 && p <= sig.tp3) sig.status = 'TP3_HIT';
           else if (sig.tp2 && p <= sig.tp2) sig.status = 'TP2_HIT';
-          else if (sig.tp1 && p <= sig.tp1) sig.status = 'TP1_HIT';
-          else if (sig.status === 'ACTIVE' && p >= sig.sl) sig.status = 'SL_HIT';
+          else if (sig.tp1 && p <= sig.tp1) {
+            if (!sig.status.startsWith('TP')) sig.status = 'TP1_HIT';
+          }
+          else if (sig.isBEActive && p >= entryP) sig.status = 'BE_HIT';
+          else if (!sig.isBEActive && p >= sig.sl) sig.status = 'SL_HIT';
         }
       }
 
@@ -2887,25 +2904,28 @@ class BookmapRenderer {
             ctx.fillText(tp2Text, endLineX - tp2W, tp2Y);
           }
 
-          // SL Level Ray (Red/Pink)
+          // SL Level Ray (Red/Pink or Golden Break-Even Shield)
           if (slY >= this.CHART_TOP && slY <= this.CHART_BOTTOM) {
+            const isBE = !!sig.isBEActive;
+            const slStroke = isBE ? '#facc15' : '#f43f5e';
+            const slBg = isBE ? 'rgba(45, 35, 5, 0.88)' : 'rgba(40, 8, 16, 0.88)';
+            const slText = isBE ? `🛡️ BE $${sig.sl.toFixed(2)}` : `🛑 SL $${sig.sl.toFixed(2)}`;
             ctx.setLineDash([2, 4]);
-            ctx.strokeStyle = '#f43f5e';
-            ctx.lineWidth = 1.0;
+            ctx.strokeStyle = slStroke;
+            ctx.lineWidth = isBE ? 1.3 : 1.0;
             ctx.beginPath();
             ctx.moveTo(startLineX, slY);
             ctx.lineTo(endLineX, slY);
             ctx.stroke();
 
-            const slText = `🛑 SL $${sig.sl.toFixed(2)}`;
             ctx.font = 'bold 8px "JetBrains Mono", monospace';
             const slW = ctx.measureText(slText).width + 8;
-            ctx.fillStyle = 'rgba(40, 8, 16, 0.88)';
+            ctx.fillStyle = slBg;
             ctx.fillRect(endLineX - slW - 4, slY - 6.5, slW, 13);
-            ctx.strokeStyle = '#f43f5e';
+            ctx.strokeStyle = slStroke;
             ctx.lineWidth = 0.8;
             ctx.strokeRect(endLineX - slW - 4, slY - 6.5, slW, 13);
-            ctx.fillStyle = '#f43f5e';
+            ctx.fillStyle = slStroke;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             ctx.fillText(slText, endLineX - slW, slY);
@@ -2938,9 +2958,13 @@ class BookmapRenderer {
 
         // Badge
         let statusBadge = '';
-        if (sig.status === 'TP2_HIT') statusBadge = ' 🏆 TP2 HIT';
-        else if (sig.status === 'TP1_HIT') statusBadge = ' ✅ TP1 HIT';
-        else if (sig.status === 'SL_HIT') statusBadge = ' ❌ SL HIT';
+        if (sig.status === 'TP5_HIT') statusBadge = ' 🎯 TP5 HIT (+250p)';
+        else if (sig.status === 'TP4_HIT') statusBadge = ' 🎯 TP4 HIT (+200p)';
+        else if (sig.status === 'TP3_HIT') statusBadge = ' 🎯 TP3 HIT (+150p)';
+        else if (sig.status === 'TP2_HIT') statusBadge = ' 🎯 TP2 HIT (+100p)';
+        else if (sig.status === 'TP1_HIT') statusBadge = ' ✅ TP1 HIT (+50p)';
+        else if (sig.status === 'BE_HIT') statusBadge = ' 🛡️ BE HIT (0p)';
+        else if (sig.status === 'SL_HIT') statusBadge = ' ❌ SL HIT (-50p)';
 
         const mainText = `🎯 [BM] ${sig.dir} [${sig.zoneName}]${statusBadge}`;
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
