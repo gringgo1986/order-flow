@@ -2410,58 +2410,40 @@ class OrderFlowEngine:
         return self.bookmap_signals
 
     def _update_signals_status(self, p: float):
-        """Updates win/loss status of active signals across TP1 to TP5 and manages Auto-BE (Break-Even)"""
+        """Updates win/loss status of active signals across TP1 to TP20 (50 to 1000 pips) and manages Auto-BE"""
         for sig in self.bookmap_signals:
             st = sig.get("status", "ACTIVE")
             is_buy = sig.get("direction") == "BUY"
             entry = sig.get("price", 0)
             sl = sig.get("sl", 0)
-            tp1 = sig.get("tp1", 0)
+            tp1 = sig.get("tp1", round(entry + 5.0 if is_buy else entry - 5.0, 2))
 
-            if is_buy:
-                # 1. Auto Break-Even Trigger when TP1 is hit
-                if p >= tp1 and not sig.get("is_be_active"):
-                    sig["is_be_active"] = True
-                    sig["sl"] = entry
+            gain_pips = round((p - entry) * 10, 1) if is_buy else round((entry - p) * 10, 1)
 
-                # 2. Multi-Stage TP checks
-                if sig.get("tp5") and p >= sig["tp5"]:
-                    sig["status"] = "TP5_HIT"
-                elif sig.get("tp4") and p >= sig["tp4"]:
-                    sig["status"] = "TP4_HIT"
-                elif sig.get("tp3") and p >= sig["tp3"]:
-                    sig["status"] = "TP3_HIT"
-                elif sig.get("tp2") and p >= sig["tp2"]:
-                    sig["status"] = "TP2_HIT"
-                elif p >= tp1:
-                    if not st.startswith("TP"):
-                        sig["status"] = "TP1_HIT"
-                elif sig.get("is_be_active") and p <= entry:
+            # 1. Auto Break-Even Trigger when TP1 (50 pips) is hit
+            if gain_pips >= 50.0 and not sig.get("is_be_active"):
+                sig["is_be_active"] = True
+                sig["sl"] = entry
+
+            # 2. Multi-Stage TP ladder from TP1 (50p) up to TP20 (1000p)
+            current_tier = min(20, max(0, int(gain_pips // 50)))
+            highest_tier = sig.get("highest_tp_tier", 0)
+            if current_tier > highest_tier:
+                sig["highest_tp_tier"] = current_tier
+                highest_tier = current_tier
+
+            if highest_tier >= 1:
+                sig["status"] = f"TP{highest_tier}_HIT"
+                sig["result_pips"] = highest_tier * 50.0
+
+            # 3. Break-Even or SL exit checks
+            if sig.get("is_be_active") and gain_pips <= 0.0:
+                if not sig.get("status", "").startswith("TP"):
                     sig["status"] = "BE_HIT"
-                elif not sig.get("is_be_active") and p <= sl:
-                    sig["status"] = "SL_HIT"
-            else:
-                # SELL Direction Auto Break-Even Trigger when TP1 is hit
-                if p <= tp1 and not sig.get("is_be_active"):
-                    sig["is_be_active"] = True
-                    sig["sl"] = entry
-
-                # 2. Multi-Stage TP checks
-                if sig.get("tp5") and p <= sig["tp5"]:
-                    sig["status"] = "TP5_HIT"
-                elif sig.get("tp4") and p <= sig["tp4"]:
-                    sig["status"] = "TP4_HIT"
-                elif sig.get("tp3") and p <= sig["tp3"]:
-                    sig["status"] = "TP3_HIT"
-                elif sig.get("tp2") and p <= sig["tp2"]:
-                    sig["status"] = "TP2_HIT"
-                elif p <= tp1:
-                    if not st.startswith("TP"):
-                        sig["status"] = "TP1_HIT"
-                elif sig.get("is_be_active") and p >= entry:
-                    sig["status"] = "BE_HIT"
-                elif not sig.get("is_be_active") and p >= sl:
-                    sig["status"] = "SL_HIT"
+                    sig["result_pips"] = 0.0
+            elif not sig.get("is_be_active") and gain_pips <= -50.0:
+                sig["status"] = "SL_HIT"
+                sig["result_pips"] = -50.0
 
     def _evaluate_mtf_confluence(self) -> Dict[str, Any]:
         """
