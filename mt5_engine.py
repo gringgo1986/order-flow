@@ -2410,36 +2410,58 @@ class OrderFlowEngine:
         return self.bookmap_signals
 
     def _update_signals_status(self, p: float):
-        """Updates win/loss status of active signals across TP1 to TP5 in real-time"""
+        """Updates win/loss status of active signals across TP1 to TP5 and manages Auto-BE (Break-Even)"""
         for sig in self.bookmap_signals:
             st = sig.get("status", "ACTIVE")
-            if st == "ACTIVE" or st.startswith("TP"):
-                if sig.get("direction") == "BUY":
-                    if sig.get("tp5") and p >= sig["tp5"]:
-                        sig["status"] = "TP5_HIT"
-                    elif sig.get("tp4") and p >= sig["tp4"]:
-                        sig["status"] = "TP4_HIT"
-                    elif sig.get("tp3") and p >= sig["tp3"]:
-                        sig["status"] = "TP3_HIT"
-                    elif sig.get("tp2") and p >= sig["tp2"]:
-                        sig["status"] = "TP2_HIT"
-                    elif sig.get("tp1") and p >= sig["tp1"]:
+            is_buy = sig.get("direction") == "BUY"
+            entry = sig.get("price", 0)
+            sl = sig.get("sl", 0)
+            tp1 = sig.get("tp1", 0)
+
+            if is_buy:
+                # 1. Auto Break-Even Trigger when TP1 is hit
+                if p >= tp1 and not sig.get("is_be_active"):
+                    sig["is_be_active"] = True
+                    sig["sl"] = entry
+
+                # 2. Multi-Stage TP checks
+                if sig.get("tp5") and p >= sig["tp5"]:
+                    sig["status"] = "TP5_HIT"
+                elif sig.get("tp4") and p >= sig["tp4"]:
+                    sig["status"] = "TP4_HIT"
+                elif sig.get("tp3") and p >= sig["tp3"]:
+                    sig["status"] = "TP3_HIT"
+                elif sig.get("tp2") and p >= sig["tp2"]:
+                    sig["status"] = "TP2_HIT"
+                elif p >= tp1:
+                    if not st.startswith("TP"):
                         sig["status"] = "TP1_HIT"
-                    elif st == "ACTIVE" and p <= sig.get("sl", 0):
-                        sig["status"] = "SL_HIT"
-                else:
-                    if sig.get("tp5") and p <= sig["tp5"]:
-                        sig["status"] = "TP5_HIT"
-                    elif sig.get("tp4") and p <= sig["tp4"]:
-                        sig["status"] = "TP4_HIT"
-                    elif sig.get("tp3") and p <= sig["tp3"]:
-                        sig["status"] = "TP3_HIT"
-                    elif sig.get("tp2") and p <= sig["tp2"]:
-                        sig["status"] = "TP2_HIT"
-                    elif sig.get("tp1") and p <= sig["tp1"]:
+                elif sig.get("is_be_active") and p <= entry:
+                    sig["status"] = "BE_HIT"
+                elif not sig.get("is_be_active") and p <= sl:
+                    sig["status"] = "SL_HIT"
+            else:
+                # SELL Direction Auto Break-Even Trigger when TP1 is hit
+                if p <= tp1 and not sig.get("is_be_active"):
+                    sig["is_be_active"] = True
+                    sig["sl"] = entry
+
+                # 2. Multi-Stage TP checks
+                if sig.get("tp5") and p <= sig["tp5"]:
+                    sig["status"] = "TP5_HIT"
+                elif sig.get("tp4") and p <= sig["tp4"]:
+                    sig["status"] = "TP4_HIT"
+                elif sig.get("tp3") and p <= sig["tp3"]:
+                    sig["status"] = "TP3_HIT"
+                elif sig.get("tp2") and p <= sig["tp2"]:
+                    sig["status"] = "TP2_HIT"
+                elif p <= tp1:
+                    if not st.startswith("TP"):
                         sig["status"] = "TP1_HIT"
-                    elif st == "ACTIVE" and p >= sig.get("sl", 99999):
-                        sig["status"] = "SL_HIT"
+                elif sig.get("is_be_active") and p >= entry:
+                    sig["status"] = "BE_HIT"
+                elif not sig.get("is_be_active") and p >= sl:
+                    sig["status"] = "SL_HIT"
 
     def _evaluate_mtf_confluence(self) -> Dict[str, Any]:
         """
