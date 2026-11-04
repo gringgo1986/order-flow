@@ -2566,8 +2566,13 @@ class BookmapRenderer {
               entryPrice: bs.price,
               slPrice: bs.sl,
               tpPrice: bs.tp1,
-              slPips: Math.abs(Math.round((bs.price - bs.sl) * 10)),
-              tpPips: Math.abs(Math.round((bs.tp1 - bs.price) * 10))
+              tp1: bs.tp1,
+              tp2: bs.tp2,
+              tp3: bs.tp3,
+              tp4: bs.tp4,
+              tp5: bs.tp5,
+              slPips: 50,
+              tpPips: 50
             });
           }
         }
@@ -2652,10 +2657,13 @@ class BookmapRenderer {
         }
 
         if (triggerFound) {
-          const sl = +(activeDemand.p - 1.50).toFixed(2);
-          const risk = Math.max(1.0, +(p - sl).toFixed(2));
-          const tp1 = +(p + risk * 2.0).toFixed(2);
-          const tp2 = +(p + risk * 3.5).toFixed(2);
+          // Standard Institutional Multi-Target: SL 50p, TP1 50p, TP2 100p, TP3 150p, TP4 200p, TP5 250p
+          const sl = +(p - 5.00).toFixed(2);
+          const tp1 = +(p + 5.00).toFixed(2);
+          const tp2 = +(p + 10.00).toFixed(2);
+          const tp3 = +(p + 15.00).toFixed(2);
+          const tp4 = +(p + 20.00).toFixed(2);
+          const tp5 = +(p + 25.00).toFixed(2);
 
           const newSig = {
             id: 'bm_' + now,
@@ -2666,6 +2674,9 @@ class BookmapRenderer {
             sl: sl,
             tp1: tp1,
             tp2: tp2,
+            tp3: tp3,
+            tp4: tp4,
+            tp5: tp5,
             trigger: triggerFound,
             wallLots: maxBidWall,
             status: 'ACTIVE'
@@ -2691,8 +2702,13 @@ class BookmapRenderer {
               entryPrice: p,
               slPrice: sl,
               tpPrice: tp1,
-              slPips: Math.abs(Math.round((p - sl) * 10)),
-              tpPips: Math.abs(Math.round((tp1 - p) * 10))
+              tp1: tp1,
+              tp2: tp2,
+              tp3: tp3,
+              tp4: tp4,
+              tp5: tp5,
+              slPips: 50,
+              tpPips: 50
             });
           }
         }
@@ -2717,10 +2733,13 @@ class BookmapRenderer {
         }
 
         if (triggerFound) {
-          const sl = +(activeSupply.p + 1.50).toFixed(2);
-          const risk = Math.max(1.0, +(sl - p).toFixed(2));
-          const tp1 = +(p - risk * 2.0).toFixed(2);
-          const tp2 = +(p - risk * 3.5).toFixed(2);
+          // Standard Institutional Multi-Target: SL 50p, TP1 50p, TP2 100p, TP3 150p, TP4 200p, TP5 250p
+          const sl = +(p + 5.00).toFixed(2);
+          const tp1 = +(p - 5.00).toFixed(2);
+          const tp2 = +(p - 10.00).toFixed(2);
+          const tp3 = +(p - 15.00).toFixed(2);
+          const tp4 = +(p - 20.00).toFixed(2);
+          const tp5 = +(p - 25.00).toFixed(2);
 
           const newSig = {
             id: 'bm_' + now,
@@ -2731,6 +2750,9 @@ class BookmapRenderer {
             sl: sl,
             tp1: tp1,
             tp2: tp2,
+            tp3: tp3,
+            tp4: tp4,
+            tp5: tp5,
             trigger: triggerFound,
             wallLots: maxAskWall,
             status: 'ACTIVE'
@@ -2756,8 +2778,13 @@ class BookmapRenderer {
               entryPrice: p,
               slPrice: sl,
               tpPrice: tp1,
-              slPips: Math.abs(Math.round((sl - p) * 10)),
-              tpPips: Math.abs(Math.round((p - tp1) * 10))
+              tp1: tp1,
+              tp2: tp2,
+              tp3: tp3,
+              tp4: tp4,
+              tp5: tp5,
+              slPips: 50,
+              tpPips: 50
             });
           }
         }
@@ -2769,16 +2796,22 @@ class BookmapRenderer {
     for (const sig of this._bmSignalsHistory) {
       const isBuy = sig.dir === 'BUY';
 
-      // Update win/loss status in real-time
-      if (sig.status === 'ACTIVE') {
+      // Update win/loss status in real-time across TP1-TP5
+      if (sig.status === 'ACTIVE' || sig.status.startsWith('TP')) {
         if (isBuy) {
-          if (p >= sig.tp2) sig.status = 'TP2_HIT';
-          else if (p >= sig.tp1) sig.status = 'TP1_HIT';
-          else if (p <= sig.sl) sig.status = 'SL_HIT';
+          if (sig.tp5 && p >= sig.tp5) sig.status = 'TP5_HIT';
+          else if (sig.tp4 && p >= sig.tp4) sig.status = 'TP4_HIT';
+          else if (sig.tp3 && p >= sig.tp3) sig.status = 'TP3_HIT';
+          else if (sig.tp2 && p >= sig.tp2) sig.status = 'TP2_HIT';
+          else if (sig.tp1 && p >= sig.tp1) sig.status = 'TP1_HIT';
+          else if (sig.status === 'ACTIVE' && p <= sig.sl) sig.status = 'SL_HIT';
         } else {
-          if (p <= sig.tp2) sig.status = 'TP2_HIT';
-          else if (p <= sig.tp1) sig.status = 'TP1_HIT';
-          else if (p >= sig.sl) sig.status = 'SL_HIT';
+          if (sig.tp5 && p <= sig.tp5) sig.status = 'TP5_HIT';
+          else if (sig.tp4 && p <= sig.tp4) sig.status = 'TP4_HIT';
+          else if (sig.tp3 && p <= sig.tp3) sig.status = 'TP3_HIT';
+          else if (sig.tp2 && p <= sig.tp2) sig.status = 'TP2_HIT';
+          else if (sig.tp1 && p <= sig.tp1) sig.status = 'TP1_HIT';
+          else if (sig.status === 'ACTIVE' && p >= sig.sl) sig.status = 'SL_HIT';
         }
       }
 
