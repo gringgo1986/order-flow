@@ -1078,21 +1078,26 @@ class FootprintRenderer {
 
     const sortedKeys = Object.keys(grouped).sort((a, b) => parseFloat(a) - parseFloat(b));
 
-    // Calculate Diagonal Imbalances (Ask at bucket i+1 vs Bid at bucket i)
+    // Calculate Diagonal Imbalances & Zero-Print Extremes (MarketDelta Style)
     const imbRatio = this.imbThreshold || 3.0; // 3.0 (300% Standard) | 4.0 (400% Whale)
     for (let i = 0; i < sortedKeys.length - 1; i++) {
       const lowKey = sortedKeys[i];
       const upKey = sortedKeys[i + 1];
-      const bidLow = grouped[lowKey].bid;
-      const askUp = grouped[upKey].ask;
+      const bidLow = grouped[lowKey].bid || 0;
+      const askUp = grouped[upKey].ask || 0;
 
-      if (bidLow > 0 && (askUp / bidLow) >= imbRatio && askUp >= 2.0) {
+      // Buy Imbalance: Ask aggressively outnumbers Bid by >= 3x OR Zero Bid (0 x Ask)
+      const isBuyImb = (bidLow === 0 && askUp >= 1.0) || (bidLow > 0 && (askUp / bidLow) >= imbRatio && askUp >= 1.5);
+      // Sell Imbalance: Bid aggressively outnumbers Ask by >= 3x OR Zero Ask (Bid x 0)
+      const isSellImb = (askUp === 0 && bidLow >= 1.0) || (askUp > 0 && (bidLow / askUp) >= imbRatio && bidLow >= 1.5);
+
+      if (isBuyImb) {
         grouped[upKey].isBuyImbalance = true;
-        grouped[upKey].buyRatio = (askUp / bidLow).toFixed(1);
+        grouped[upKey].buyRatio = bidLow > 0 ? (askUp / bidLow).toFixed(1) : '∞';
       }
-      if (askUp > 0 && (bidLow / askUp) >= imbRatio && bidLow >= 2.0) {
+      if (isSellImb) {
         grouped[lowKey].isSellImbalance = true;
-        grouped[lowKey].sellRatio = (bidLow / askUp).toFixed(1);
+        grouped[lowKey].sellRatio = askUp > 0 ? (bidLow / askUp).toFixed(1) : '∞';
       }
     }
 
@@ -1207,18 +1212,18 @@ class FootprintRenderer {
       if (cl.isBuyImbalance) {
         curB.push(cl.price);
       } else {
-        if (curB.length >= 3) stackedBuyLevels.push([...curB]);
+        if (curB.length >= 2) stackedBuyLevels.push([...curB]);
         curB = [];
       }
       if (cl.isSellImbalance) {
         curS.push(cl.price);
       } else {
-        if (curS.length >= 3) stackedSellLevels.push([...curS]);
+        if (curS.length >= 2) stackedSellLevels.push([...curS]);
         curS = [];
       }
     }
-    if (curB.length >= 3) stackedBuyLevels.push([...curB]);
-    if (curS.length >= 3) stackedSellLevels.push([...curS]);
+    if (curB.length >= 2) stackedBuyLevels.push([...curB]);
+    if (curS.length >= 2) stackedSellLevels.push([...curS]);
 
     // 3. Render Value Area (70%) Shading & Dotted VAH/VAL Levels
     if (this.showValueArea && vahPrice !== null && valPrice !== null) {
@@ -1332,14 +1337,14 @@ class FootprintRenderer {
 
           // Bid Text (Left) - Golden Yellow for Imbalance, light pink for standard
           ctx.textAlign = 'center';
-          ctx.fillStyle = isSellImbalance ? '#ffd60a' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
+          ctx.fillStyle = isSellImbalance ? '#ff3366' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
           const bidRatioStr = (boxHeight >= 18 && cl.sellRatio && !isCompact) ? `↘${cl.sellRatio}x ` : (isSellImbalance ? '↘ ' : '');
           const bidValStr = (isCompact || cl.bid >= 100) ? Math.round(cl.bid).toString() : cl.bid.toFixed(1);
           const bidStr = bidRatioStr + bidValStr;
           ctx.fillText(bidStr, x + halfW / 2, textY);
 
           // Ask Text (Right) - Golden Yellow for Imbalance, light green for standard
-          ctx.fillStyle = isBuyImbalance ? '#ffd60a' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
+          ctx.fillStyle = isBuyImbalance ? '#00e676' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
           const askRatioStr = (boxHeight >= 18 && cl.buyRatio && !isCompact) ? ` ↗${cl.buyRatio}x` : (isBuyImbalance ? ' ↗' : '');
           const askValStr = (isCompact || cl.ask >= 100) ? Math.round(cl.ask).toString() : cl.ask.toFixed(1);
           const askStr = askValStr + askRatioStr;
@@ -1460,64 +1465,80 @@ class FootprintRenderer {
       }
     }
 
-    // 5. Render Stacked Imbalances Highlights (Institutional Walls + Unmitigated Extension Rays)
-    if (this.showStackedImbalances) {
-      // Stacked Buy Imbalances (Cyan/Green Right Bracket + Ray Extension)
+    // 5. Render MarketDelta Style Imbalance Bounding Boxes (Kotak Label Hijau & Merah)
+    if (this.showStackedImbalances !== false) {
+      // ── Stacked Buy Imbalances (Kotak Hijau di Pucuk / Blok Belian) ──
       for (const stack of stackedBuyLevels) {
         const topP = Math.max(...stack) + step;
         const btmP = Math.min(...stack);
         const yTop = this.priceToY(topP);
         const yBtm = this.priceToY(btmP);
         const stackH = Math.max(16, yBtm - yTop);
+        const boxX = x + 1;
+        const boxW = this.candleWidth - 2;
 
+        // 1. Translucent Green Interior Glow
+        ctx.fillStyle = 'rgba(0, 230, 118, 0.12)';
+        ctx.fillRect(boxX, yTop, boxW, stackH);
+
+        // 2. Crisp Solid Green Outline Box (MarketDelta Imbalance Rectangle)
         ctx.strokeStyle = '#00e676';
-        ctx.lineWidth = 2.5;
-        ctx.strokeRect(x + this.candleWidth - 3, yTop, 4, stackH);
+        ctx.lineWidth = 2.0;
+        ctx.strokeRect(boxX, yTop, boxW, stackH);
 
-        // Institutional Badge (Flush & Compact)
+        // 3. Remark Tag / Label on Top Corner
         ctx.fillStyle = '#00e676';
-        ctx.fillRect(x + this.candleWidth + 2, yTop + stackH / 2 - 8, 48, 16);
-        ctx.fillStyle = '#000000';
+        const lblW = 54;
+        ctx.fillRect(boxX + 2, yTop - 13, lblW, 13);
+        ctx.fillStyle = '#031a0e';
         ctx.font = 'bold 8px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`⚡BUY ${stack.length}x`, x + this.candleWidth + 26, yTop + stackH / 2 + 3.5);
+        ctx.fillText(`⚡BUY ${stack.length}x`, boxX + 2 + lblW / 2, yTop - 3.5);
 
         // Extend Support Zone Ray forward to the live candle
         ctx.save();
-        ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = 'rgba(0, 230, 118, 0.40)';
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(0, 230, 118, 0.45)';
         ctx.lineWidth = 1.0;
         ctx.beginPath();
-        ctx.moveTo(x + this.candleWidth + 50, (yTop + yBtm) / 2);
+        ctx.moveTo(x + this.candleWidth, (yTop + yBtm) / 2);
         ctx.lineTo(this.width - 80, (yTop + yBtm) / 2);
         ctx.stroke();
         ctx.restore();
       }
 
-      // Stacked Sell Imbalances (Crimson/Red Left Bracket + Ray Extension)
+      // ── Stacked Sell Imbalances (Kotak Merah di Akar / Blok Jualan) ──
       for (const stack of stackedSellLevels) {
         const topP = Math.max(...stack) + step;
         const btmP = Math.min(...stack);
         const yTop = this.priceToY(topP);
         const yBtm = this.priceToY(btmP);
         const stackH = Math.max(16, yBtm - yTop);
+        const boxX = x + 1;
+        const boxW = this.candleWidth - 2;
 
+        // 1. Translucent Red Interior Glow
+        ctx.fillStyle = 'rgba(255, 51, 102, 0.12)';
+        ctx.fillRect(boxX, yTop, boxW, stackH);
+
+        // 2. Crisp Solid Red Outline Box (MarketDelta Imbalance Rectangle)
         ctx.strokeStyle = '#ff3366';
-        ctx.lineWidth = 2.5;
-        ctx.strokeRect(x - 1, yTop, 4, stackH);
+        ctx.lineWidth = 2.0;
+        ctx.strokeRect(boxX, yTop, boxW, stackH);
 
-        // Institutional Badge (Flush & Compact)
+        // 3. Remark Tag / Label on Bottom Corner
         ctx.fillStyle = '#ff3366';
-        ctx.fillRect(x - 50, yTop + stackH / 2 - 8, 48, 16);
+        const lblW = 56;
+        ctx.fillRect(boxX + 2, yBtm, lblW, 13);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 8px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`⚡SELL ${stack.length}x`, x - 26, yTop + stackH / 2 + 3.5);
+        ctx.fillText(`⚡SELL ${stack.length}x`, boxX + 2 + lblW / 2, yBtm + 9.5);
 
         // Extend Resistance Zone Ray forward to the live candle
         ctx.save();
-        ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = 'rgba(255, 51, 102, 0.40)';
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(255, 51, 102, 0.45)';
         ctx.lineWidth = 1.0;
         ctx.beginPath();
         ctx.moveTo(x + this.candleWidth, (yTop + yBtm) / 2);
@@ -1989,10 +2010,13 @@ class FootprintRenderer {
       { p: sess.london_high, name: 'LONDON HIGH SUPPLY' }
     ].filter(l => l.p && l.p > 0);
 
-    const tol = 1.10;
+    const tol = 1.30;
+    if (!this._emittedFpSignals) this._emittedFpSignals = new Set();
     ctx.save();
 
-    for (let i = 0; i < candles.length - 1; i++) {
+    // Check recent completed candles and current live candle (last 8 bars)
+    const scanStart = Math.max(0, candles.length - 8);
+    for (let i = scanStart; i < candles.length; i++) {
       const c = candles[i];
       const candleIndexFromRight = (candles.length - 1) - i;
       const x = startX - (candleIndexFromRight * (this.candleWidth + this.candleSpacing));
@@ -2005,114 +2029,127 @@ class FootprintRenderer {
       // Check Supply Gate for SELL
       const activeSupply = supplyLevels.find(l => Math.abs(l.p - c.high) <= tol || (c.high >= l.p && c.close <= l.p));
 
-      // ── BUY SIGNAL (Strictly at Demand/Support ONLY) ──
-      if (activeDemand && (c._absorptionLow || (c.delta > 0 && c.close >= c.open))) {
-        if (!this._fpLastSignalBarTime || Math.abs(c.time - this._fpLastSignalBarTime) >= (snapshot.candle_interval || 60) * 4) {
-          this._fpLastSignalBarTime = c.time;
-          this._fpLastSignalDir = 'BUY';
-        }
+      // ── BUY SIGNAL (At Demand OR 3x Stacked Buy Imbalance OR Absorption Low) ──
+      const isBullSetup = (activeDemand && (c._absorptionLow || (c.delta > 0 && c.close >= c.open))) || 
+                          (c._absorptionLow && c.delta > 0) || 
+                          (activeDemand && c.delta > 10.0);
 
-        if (this._fpLastSignalBarTime === c.time && this._fpLastSignalDir === 'BUY') {
-          // Neon Glowing Pulse Arrow
-          ctx.fillStyle = '#00e676';
-          ctx.shadowColor = '#00e676';
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.moveTo(centerX, yLow + 28);
-          ctx.lineTo(centerX - 6, yLow + 38);
-          ctx.lineTo(centerX + 6, yLow + 38);
-          ctx.closePath();
-          ctx.fill();
-          ctx.shadowBlur = 0;
+      if (isBullSetup) {
+        // Neon Glowing Pulse Arrow
+        ctx.fillStyle = '#00e676';
+        ctx.shadowColor = '#00e676';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(centerX, yLow + 28);
+        ctx.lineTo(centerX - 6, yLow + 38);
+        ctx.lineTo(centerX + 6, yLow + 38);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
-          // Forward signal to global signals journal
+        const zoneName = activeDemand ? activeDemand.name : 'DEMAND ABSORPTION';
+        const badgeText = `🎯 [CLUSTER] BUY [${zoneName}]`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const bw = ctx.measureText(badgeText).width + 12;
+        const bx = Math.max(10, centerX - bw / 2);
+        const by = yLow + 42;
+
+        ctx.fillStyle = 'rgba(5, 38, 22, 0.94)';
+        ctx.fillRect(bx, by, bw, 16);
+        ctx.strokeStyle = '#00e676';
+        ctx.lineWidth = 1.1;
+        ctx.strokeRect(bx, by, bw, 16);
+        ctx.fillStyle = '#00e676';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, bx + bw / 2, by + 8);
+
+        // Register to Signals Journal with standard institutional 50p SL & Multi-TP
+        const sigKey = `cl_buy_${c.time}`;
+        if (!this._emittedFpSignals.has(sigKey) && (i >= candles.length - 2)) {
+          this._emittedFpSignals.add(sigKey);
           if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
+            const entry = c.close;
             window.orderFlowApp.addSignal({
-              id: 'fp_' + c.time,
-              type: `🎯 [FOOTPRINT] ${activeDemand.name}`,
+              id: 'cl_' + c.time,
+              type: `🎯 [CLUSTER] ${zoneName}`,
               direction: 'BUY',
-              entryPrice: c.close,
-              slPrice: +(activeDemand.p - 1.50).toFixed(2),
-              tpPrice: +(c.close + 2.50).toFixed(2),
-              slPips: Math.abs(Math.round((c.close - (activeDemand.p - 1.50)) * 10)),
-              tpPips: 25
+              entryPrice: entry,
+              slPrice: +(entry - 5.00).toFixed(2),
+              tpPrice: +(entry + 5.00).toFixed(2),
+              tp1: +(entry + 5.00).toFixed(2),
+              tp2: +(entry + 10.00).toFixed(2),
+              tp3: +(entry + 15.00).toFixed(2),
+              tp4: +(entry + 20.00).toFixed(2),
+              tp5: +(entry + 25.00).toFixed(2),
+              slPips: 50,
+              tpPips: 50
             });
           }
-
-          // Futuristic Badge
-          const badgeText = `🎯 [FP] BUY [${activeDemand.name}]`;
-          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-          const bw = ctx.measureText(badgeText).width + 12;
-          const bx = Math.max(10, centerX - bw / 2);
-          const by = yLow + 42;
-
-          ctx.fillStyle = 'rgba(5, 38, 22, 0.94)';
-          ctx.fillRect(bx, by, bw, 16);
-          ctx.strokeStyle = '#00e676';
-          ctx.lineWidth = 1.1;
-          ctx.strokeRect(bx, by, bw, 16);
-
-          ctx.fillStyle = '#00e676';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(badgeText, bx + bw / 2, by + 8);
         }
       }
 
-      // ── SELL SIGNAL (Strictly at Supply/Resistance ONLY) ──
-      else if (activeSupply && (c._absorptionHigh || (c.delta < 0 && c.close <= c.open))) {
-        if (!this._fpLastSignalBarTime || Math.abs(c.time - this._fpLastSignalBarTime) >= (snapshot.candle_interval || 60) * 4) {
-          this._fpLastSignalBarTime = c.time;
-          this._fpLastSignalDir = 'SELL';
-        }
+      // ── SELL SIGNAL (At Supply OR 3x Stacked Sell Imbalance OR Absorption High) ──
+      const isBearSetup = (activeSupply && (c._absorptionHigh || (c.delta < 0 && c.close <= c.open))) || 
+                          (c._absorptionHigh && c.delta < 0) || 
+                          (activeSupply && c.delta < -10.0);
 
-        if (this._fpLastSignalBarTime === c.time && this._fpLastSignalDir === 'SELL') {
-          // Neon Glowing Pulse Arrow
-          ctx.fillStyle = '#ff3366';
-          ctx.shadowColor = '#ff3366';
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.moveTo(centerX, yHigh - 28);
-          ctx.lineTo(centerX - 6, yHigh - 38);
-          ctx.lineTo(centerX + 6, yHigh - 38);
-          ctx.closePath();
-          ctx.fill();
-          ctx.shadowBlur = 0;
+      if (isBearSetup) {
+        // Neon Glowing Pulse Arrow
+        ctx.fillStyle = '#ff3366';
+        ctx.shadowColor = '#ff3366';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(centerX, yHigh - 28);
+        ctx.lineTo(centerX - 6, yHigh - 38);
+        ctx.lineTo(centerX + 6, yHigh - 38);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
-          // Forward signal to global signals journal
+        const zoneName = activeSupply ? activeSupply.name : 'SUPPLY ABSORPTION';
+        const badgeText = `🎯 [CLUSTER] SELL [${zoneName}]`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const bw = ctx.measureText(badgeText).width + 12;
+        const bx = Math.max(10, centerX - bw / 2);
+        const by = yHigh - 58;
+
+        ctx.fillStyle = 'rgba(45, 10, 20, 0.94)';
+        ctx.fillRect(bx, by, bw, 16);
+        ctx.strokeStyle = '#ff3366';
+        ctx.lineWidth = 1.1;
+        ctx.strokeRect(bx, by, bw, 16);
+        ctx.fillStyle = '#ff3366';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, bx + bw / 2, by + 8);
+
+        // Register to Signals Journal with standard institutional 50p SL & Multi-TP
+        const sigKey = `cl_sell_${c.time}`;
+        if (!this._emittedFpSignals.has(sigKey) && (i >= candles.length - 2)) {
+          this._emittedFpSignals.add(sigKey);
           if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
+            const entry = c.close;
             window.orderFlowApp.addSignal({
-              id: 'fp_' + c.time,
-              type: `🎯 [FOOTPRINT] ${activeSupply.name}`,
+              id: 'cl_' + c.time,
+              type: `🎯 [CLUSTER] ${zoneName}`,
               direction: 'SELL',
-              entryPrice: c.close,
-              slPrice: +(activeSupply.p + 1.50).toFixed(2),
-              tpPrice: +(c.close - 2.50).toFixed(2),
-              slPips: Math.abs(Math.round(((activeSupply.p + 1.50) - c.close) * 10)),
-              tpPips: 25
+              entryPrice: entry,
+              slPrice: +(entry + 5.00).toFixed(2),
+              tpPrice: +(entry - 5.00).toFixed(2),
+              tp1: +(entry - 5.00).toFixed(2),
+              tp2: +(entry - 10.00).toFixed(2),
+              tp3: +(entry - 15.00).toFixed(2),
+              tp4: +(entry - 20.00).toFixed(2),
+              tp5: +(entry - 25.00).toFixed(2),
+              slPips: 50,
+              tpPips: 50
             });
           }
-
-          // Futuristic Badge
-          const badgeText = `🎯 [FP] SELL [${activeSupply.name}]`;
-          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-          const bw = ctx.measureText(badgeText).width + 12;
-          const bx = Math.max(10, centerX - bw / 2);
-          const by = yHigh - 56;
-
-          ctx.fillStyle = 'rgba(45, 10, 20, 0.94)';
-          ctx.fillRect(bx, by, bw, 16);
-          ctx.strokeStyle = '#ff3366';
-          ctx.lineWidth = 1.1;
-          ctx.strokeRect(bx, by, bw, 16);
-
-          ctx.fillStyle = '#ff3366';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(badgeText, bx + bw / 2, by + 8);
         }
       }
     }
+
     ctx.restore();
   }
 
