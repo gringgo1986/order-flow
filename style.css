@@ -1346,3 +1346,11 @@ header.app-header {
     left: 0 !important;
   }
 }
+
+/* Interactive DOM Ladder Offscreen Pins */
+.dom-ladder-container {
+  cursor: grab;
+}
+.dom-offscreen-pin:hover {
+  filter: brightness(1.15);
+}
