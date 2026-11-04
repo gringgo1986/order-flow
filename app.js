@@ -3426,10 +3426,17 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     const calculatedSl = (slPrice && slPrice > 0) ? slPrice : (direction === 'BUY' ? (entryPrice - slDist) : (entryPrice + slDist));
     const calculatedTp = (tpPrice && tpPrice > 0) ? tpPrice : (direction === 'BUY' ? (entryPrice + tpDist) : (entryPrice - tpDist));
 
+    const dNow = new Date(now);
+    const pad = (n) => String(n).padStart(2, '0');
+    const curDateStr = `${pad(dNow.getDate())}/${pad(dNow.getMonth() + 1)}/${dNow.getFullYear()}`;
+    const curTimeStr = dNow.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
     const newSig = {
       id: sigId,
       timestamp: now,
-      timeStr: new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}),
+      dateStr: curDateStr,
+      timeStr: curTimeStr,
+      dateTimeStr: `${curDateStr} ${curTimeStr}`,
       type: type || '🎯 Quad-Confluence Signal',
       direction: direction.toUpperCase(),
       entryPrice: parseFloat(entryPrice.toFixed(2)),
@@ -3605,6 +3612,27 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
         pipsBadge = `<span style="color:${fpCol}; font-weight:700;">${fp >= 0 ? '+' : ''}${fp.toFixed(1)} pip</span>`;
       }
 
+      // Extract/Reconstruct Date & Time safely (even for existing stored signals)
+      let sigDate = sig.dateStr;
+      let sigTime = sig.timeStr;
+      let ts = sig.timestamp;
+      if (!ts && sig.id && typeof sig.id === 'string' && sig.id.startsWith('bm_')) {
+        const numPart = sig.id.replace('bm_', '').split('.')[0];
+        const parsed = parseInt(numPart, 10);
+        if (parsed > 1000000000000) ts = parsed;
+      }
+      if (ts) {
+        const dObj = new Date(ts);
+        const pad = (n) => String(n).padStart(2, '0');
+        sigDate = `${pad(dObj.getDate())}/${pad(dObj.getMonth() + 1)}/${dObj.getFullYear()}`;
+        sigTime = dObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } else if (!sigDate) {
+        const dObj = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        sigDate = `${pad(dObj.getDate())}/${pad(dObj.getMonth() + 1)}/${dObj.getFullYear()}`;
+        sigTime = sig.timeStr || dObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+
       const actions = sig.status === 'ACTIVE' 
         ? `<button class="tool-btn btn-sig-follow" data-id="${sig.id}" style="padding:1px 5px; font-size:9px; color:#00e676; border-color:#00e676; font-weight:800; cursor:pointer;" title="Buka posisi sekarang mengikut isyarat ini">⚡ Ikut</button>
            <button class="tool-btn btn-sig-copy" data-id="${sig.id}" style="padding:1px 4px; font-size:9px; color:#ffd60a; margin-left:2px; cursor:pointer;" title="Salin parameter isyarat">📋</button>`
@@ -3613,7 +3641,10 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       return `
         <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
           <td style="padding:5px 6px; color:#94a3b8; font-weight:700;">${sig.id}</td>
-          <td style="padding:5px 6px; color:#cbd5e1;">${sig.timeStr}</td>
+          <td style="padding:4px 6px; white-space:nowrap; line-height:1.3;">
+            <div style="color:#94a3b8; font-size:8.5px; font-weight:700; letter-spacing:0.2px;">📅 ${sigDate}</div>
+            <div style="color:#f1f5f9; font-size:9.5px; font-weight:800;">⏱️ ${sigTime}</div>
+          </td>
           <td style="padding:5px 6px; color:#f8fafc; font-weight:700;">${sig.type}</td>
           <td style="padding:5px 6px; color:${dirCol}; font-weight:900;">${dirText}</td>
           <td style="padding:5px 6px; color:#ffffff; font-weight:800;">$${sig.entryPrice.toFixed(2)}</td>
@@ -3662,7 +3693,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     let csv = "ID,Masa,Setup,Arah,Entry,SL,TP,Status,Result_Pips,Close_Price,Closed_At\n";
     this.signalsList.forEach(s => {
       const closedTime = s.closedAt ? new Date(s.closedAt).toLocaleTimeString() : '';
-      csv += `${s.id},"${s.timeStr}","${s.type}",${s.direction},${s.entryPrice},${s.slPrice},${s.tpPrice},${s.status},${s.resultPips || s.floatingPips || 0},${s.closePrice || ''},"${closedTime}"\n`;
+      csv += `${s.id},"${(s.dateStr || "") + " " + (s.timeStr || "")}","${s.type}",${s.direction},${s.entryPrice},${s.slPrice},${s.tpPrice},${s.status},${s.resultPips || s.floatingPips || 0},${s.closePrice || ''},"${closedTime}"\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
