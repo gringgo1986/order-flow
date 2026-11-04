@@ -3599,7 +3599,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     });
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:12px; color:#64748b;">Tiada rekod isyarat dalam kategori ini.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:12px; color:#64748b;">Tiada rekod isyarat dalam kategori ini.</td></tr>`;
       return;
     }
 
@@ -3676,42 +3676,6 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
               ? `<div style="font-weight:900; color:#facc15;">$${sig.entryPrice.toFixed(2)}</div><div style="font-size:8px; color:#facc15; font-weight:900;">(BE AKTIF 🛡️)</div>`
               : `<div style="font-weight:800; color:#ff3366;">$${sig.slPrice.toFixed(2)}</div><div style="font-size:8px; color:#f87171;">(-50 pip)</div>`
             }
-          </td>
-          <td style="padding:4px 6px; font-size:9px; line-height:1.3;">
-            ${(() => {
-              const e = sig.entryPrice;
-              const dir = sig.direction === 'BUY' ? 1 : -1;
-              const tpPrice = (tier) => (e + (dir * tier * 5.0)).toFixed(2);
-              const maxTierReached = sig.highestTPTier || 0;
-              
-              let tierGrid = '';
-              for (let t = 1; t <= 20; t++) {
-                const isHit = maxTierReached >= t;
-                const hitColor = isHit ? '#00e676' : '#94a3b8';
-                const hitIcon = isHit ? '✅' : '🎯';
-                const pipsVal = t * 50;
-                tierGrid += `<div style="color:${hitColor}; padding:1px 3px; background:${isHit ? 'rgba(0,230,118,0.1)' : 'transparent'}; border-radius:2px;">
-                  ${hitIcon} <b>TP${t}:</b> $${tpPrice(t)} <span style="font-size:7.5px;">(${pipsVal}p)</span>
-                </div>`;
-              }
-
-              return `
-                <div style="display:flex; gap:6px; flex-wrap:wrap; font-weight:700;">
-                  <div><b style="color:#00e676;">TP1:</b> $${tpPrice(1)} <span style="color:#86efac; font-size:8px;">(50p)</span></div>
-                  <div><b style="color:#38bdf8;">TP5:</b> $${tpPrice(5)} <span style="color:#7dd3fc; font-size:8px;">(250p)</span></div>
-                  <div><b style="color:#fbbf24;">TP10:</b> $${tpPrice(10)} <span style="color:#fde047; font-size:8px;">(500p)</span></div>
-                  <div><b style="color:#c084fc;">TP20:</b> $${tpPrice(20)} <span style="color:#e9d5ff; font-size:8px;">(1000p)</span></div>
-                </div>
-                <details style="margin-top:2px; cursor:pointer;">
-                  <summary style="font-size:8px; color:#38bdf8; outline:none; font-weight:800;">
-                    ${maxTierReached > 0 ? `<span style="color:#00e676;">[TP${maxTierReached} CAPAI ✅]</span> ` : ''}Lihat Semua 20 TP (50p - 1000p) ▾
-                  </summary>
-                  <div style="font-size:8px; display:grid; grid-template-columns:repeat(2, 1fr); gap:2px; margin-top:3px; background:rgba(0,0,0,0.4); padding:4px; border-radius:4px; border:1px solid rgba(255,255,255,0.06); max-height:120px; overflow-y:auto;">
-                    ${tierGrid}
-                  </div>
-                </details>
-              `;
-            })()}
           </td>
           <td style="padding:5px 6px;">${statusBadge}</td>
           <td style="padding:5px 6px;">${pipsBadge}</td>
