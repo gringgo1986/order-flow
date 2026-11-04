@@ -63,6 +63,7 @@ class App {
     this._initSessionStats();
     this._setupLotCalculator();
     this._initSignalsTracker();
+    this._setupDockResize();
 
     // Battery Saver Visibility Listener
     document.addEventListener('visibilitychange', () => {
@@ -3722,6 +3723,105 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
         }
       });
     });
+  }
+
+
+  _setupDockResize() {
+    const handle = document.getElementById('dockDragHandle');
+    const btnExpand = document.getElementById('btnExpandDock');
+    const ws = document.querySelector('.main-workspace');
+    const tableContainer = document.getElementById('signalsTableContainer');
+
+    // 1. Restore saved height if exists
+    const savedHeight = localStorage.getItem('gringgo_dock_height');
+    if (savedHeight && ws && !this.isDockCollapsed) {
+      const h = parseInt(savedHeight, 10);
+      if (h >= 140 && h <= window.innerHeight * 0.85) {
+        ws.style.gridTemplateRows = `1fr ${h}px`;
+        if (tableContainer) tableContainer.style.maxHeight = `${h - 120}px`;
+      }
+    }
+
+    // 2. Drag Handle Support (Mouse & Touch)
+    if (handle && ws) {
+      let isDragging = false;
+      let startY = 0;
+      let startHeight = 240;
+
+      const onPointerDown = (e) => {
+        if (this.isDockCollapsed) this.toggleBottomDock(false);
+        isDragging = true;
+        startY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+        const rect = document.getElementById('bottomDock') ? document.getElementById('bottomDock').getBoundingClientRect() : null;
+        startHeight = rect ? rect.height : 240;
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'ns-resize';
+      };
+
+      const onPointerMove = (e) => {
+        if (!isDragging) return;
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+        const delta = startY - clientY;
+        let newH = startHeight + delta;
+        const minH = 140;
+        const maxH = Math.round(window.innerHeight * 0.82);
+        if (newH < minH) newH = minH;
+        if (newH > maxH) newH = maxH;
+
+        ws.style.gridTemplateRows = `1fr ${newH}px`;
+        if (tableContainer) tableContainer.style.maxHeight = `${newH - 120}px`;
+        if (btnExpand) {
+          btnExpand.textContent = newH >= window.innerHeight * 0.45 ? '⤡ Saiz Biasa' : '⤢ Besarkan Dock';
+        }
+      };
+
+      const onPointerUp = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        const rect = document.getElementById('bottomDock') ? document.getElementById('bottomDock').getBoundingClientRect() : null;
+        if (rect) {
+          localStorage.setItem('gringgo_dock_height', Math.round(rect.height));
+        }
+        window.dispatchEvent(new Event('resize'));
+      };
+
+      handle.addEventListener('mousedown', onPointerDown);
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+
+      handle.addEventListener('touchstart', onPointerDown, { passive: true });
+      window.addEventListener('touchmove', onPointerMove, { passive: true });
+      window.addEventListener('touchend', onPointerUp);
+    }
+
+    // 3. Quick Expand / Restore Button
+    if (btnExpand && ws) {
+      btnExpand.addEventListener('click', () => {
+        if (this.isDockCollapsed) this.toggleBottomDock(false);
+        const rect = document.getElementById('bottomDock') ? document.getElementById('bottomDock').getBoundingClientRect() : null;
+        const currentH = rect ? rect.height : 240;
+        const isBig = currentH >= window.innerHeight * 0.42;
+
+        if (!isBig) {
+          // Expand to 52% of viewport height
+          const targetH = Math.round(window.innerHeight * 0.52);
+          ws.style.gridTemplateRows = `1fr ${targetH}px`;
+          if (tableContainer) tableContainer.style.maxHeight = `${targetH - 120}px`;
+          btnExpand.textContent = '⤡ Saiz Biasa';
+          localStorage.setItem('gringgo_dock_height', targetH);
+        } else {
+          // Restore to compact 230px
+          const targetH = 230;
+          ws.style.gridTemplateRows = `1fr ${targetH}px`;
+          if (tableContainer) tableContainer.style.maxHeight = `130px`;
+          btnExpand.textContent = '⤢ Besarkan Dock';
+          localStorage.setItem('gringgo_dock_height', targetH);
+        }
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
+      });
+    }
   }
 
   exportSignalsToCSV() {
