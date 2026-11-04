@@ -1354,3 +1354,13 @@ header.app-header {
 .dom-offscreen-pin:hover {
   filter: brightness(1.15);
 }
+
+#dockDragHandle:hover {
+  background: rgba(56, 189, 248, 0.55) !important;
+}
+#dockDragHandle:active {
+  background: rgba(250, 204, 21, 0.75) !important;
+}
+.main-workspace.dock-expanded {
+  grid-template-rows: 1fr 52vh !important;
+}
