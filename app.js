@@ -3499,13 +3499,24 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
 
     this.signalsList.forEach(sig => {
       const isBuy = sig.direction === 'BUY';
-      const tp1P = sig.tp1 || sig.tpPrice || +(isBuy ? sig.entryPrice + 5.00 : sig.entryPrice - 5.00).toFixed(2);
-      const tp2P = sig.tp2 || +(isBuy ? sig.entryPrice + 10.00 : sig.entryPrice - 10.00).toFixed(2);
-      const tp3P = sig.tp3 || +(isBuy ? sig.entryPrice + 15.00 : sig.entryPrice - 15.00).toFixed(2);
-      const tp4P = sig.tp4 || +(isBuy ? sig.entryPrice + 20.00 : sig.entryPrice - 20.00).toFixed(2);
-      const tp5P = sig.tp5 || +(isBuy ? sig.entryPrice + 25.00 : sig.entryPrice - 25.00).toFixed(2);
+      const entry = sig.entryPrice;
+      const tp1P = sig.tp1 || sig.tpPrice || +(isBuy ? entry + 5.00 : entry - 5.00).toFixed(2);
+      const tp2P = sig.tp2 || +(isBuy ? entry + 10.00 : entry - 10.00).toFixed(2);
+      const tp3P = sig.tp3 || +(isBuy ? entry + 15.00 : entry - 15.00).toFixed(2);
+      const tp4P = sig.tp4 || +(isBuy ? entry + 20.00 : entry - 20.00).toFixed(2);
+      const tp5P = sig.tp5 || +(isBuy ? entry + 25.00 : entry - 25.00).toFixed(2);
 
       if (isBuy) {
+        // 1. AUTO BREAK-EVEN (BE): Trigger when price reaches TP1
+        if (curPrice >= tp1P && !sig.isBEActive) {
+          sig.isBEActive = true;
+          sig.slPrice = entry;
+          hasChange = true;
+          this.showToast(`🛡️ ISYARAT #${sig.id} (BUY): TP1 DICAPAI! SL dialihkan ke Break-Even ($${entry.toFixed(2)}).`);
+          if (this.audioEnabled) this.playInstitutionalChime('SWEEP');
+        }
+
+        // 2. Multi-Stage Take Profit Progression
         if (curPrice >= tp5P && sig.status !== 'WIN (TP5)') {
           sig.status = 'WIN (TP5)';
           sig.closePrice = tp5P;
@@ -3538,7 +3549,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           hasChange = true;
           this.showToast(`🎉 ISYARAT #${sig.id} (BUY) CAPAI TP2 (+100 pip)!`);
           if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice >= tp1P && !sig.status.startsWith('WIN')) {
+        } else if (curPrice >= tp1P && !sig.status.startsWith('WIN') && sig.status !== 'BE') {
           sig.status = 'WIN (TP1)';
           sig.closePrice = tp1P;
           sig.closedAt = Date.now();
@@ -3546,7 +3557,15 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           hasChange = true;
           this.showToast(`🎉 ISYARAT #${sig.id} (BUY) CAPAI TP1 (+50 pip)!`);
           if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice <= sig.slPrice && !sig.status.startsWith('WIN') && sig.status !== 'LOSS') {
+        } else if (sig.isBEActive && curPrice <= entry && sig.status !== 'BE') {
+          // Reversal back to Entry after TP1 -> Hits Break-Even (Zero Loss)
+          sig.status = 'BE';
+          sig.closePrice = entry;
+          sig.closedAt = Date.now();
+          sig.resultPips = 0.0;
+          hasChange = true;
+          this.showToast(`🛡️ ISYARAT #${sig.id} (BUY) KENA BE (BREAK-EVEN)! Modal Selamat (+0 pip).`);
+        } else if (!sig.isBEActive && curPrice <= sig.slPrice && !sig.status.startsWith('WIN') && sig.status !== 'LOSS') {
           sig.status = 'LOSS';
           sig.closePrice = sig.slPrice;
           sig.closedAt = Date.now();
@@ -3558,7 +3577,15 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           sig.floatingPips = parseFloat(((curPrice - sig.entryPrice) * 10).toFixed(1));
         }
       } else {
-        // SELL Direction Evaluation
+        // SELL Direction Auto Break-Even & TP Progression
+        if (curPrice <= tp1P && !sig.isBEActive) {
+          sig.isBEActive = true;
+          sig.slPrice = entry;
+          hasChange = true;
+          this.showToast(`🛡️ ISYARAT #${sig.id} (SELL): TP1 DICAPAI! SL dialihkan ke Break-Even ($${entry.toFixed(2)}).`);
+          if (this.audioEnabled) this.playInstitutionalChime('SWEEP');
+        }
+
         if (curPrice <= tp5P && sig.status !== 'WIN (TP5)') {
           sig.status = 'WIN (TP5)';
           sig.closePrice = tp5P;
@@ -3591,7 +3618,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           hasChange = true;
           this.showToast(`🎉 ISYARAT #${sig.id} (SELL) CAPAI TP2 (+100 pip)!`);
           if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice <= tp1P && !sig.status.startsWith('WIN')) {
+        } else if (curPrice <= tp1P && !sig.status.startsWith('WIN') && sig.status !== 'BE') {
           sig.status = 'WIN (TP1)';
           sig.closePrice = tp1P;
           sig.closedAt = Date.now();
@@ -3599,7 +3626,14 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           hasChange = true;
           this.showToast(`🎉 ISYARAT #${sig.id} (SELL) CAPAI TP1 (+50 pip)!`);
           if (this.audioEnabled) this.playInstitutionalChime('BUY');
-        } else if (curPrice >= sig.slPrice && !sig.status.startsWith('WIN') && sig.status !== 'LOSS') {
+        } else if (sig.isBEActive && curPrice >= entry && sig.status !== 'BE') {
+          sig.status = 'BE';
+          sig.closePrice = entry;
+          sig.closedAt = Date.now();
+          sig.resultPips = 0.0;
+          hasChange = true;
+          this.showToast(`🛡️ ISYARAT #${sig.id} (SELL) KENA BE (BREAK-EVEN)! Modal Selamat (+0 pip).`);
+        } else if (!sig.isBEActive && curPrice >= sig.slPrice && !sig.status.startsWith('WIN') && sig.status !== 'LOSS') {
           sig.status = 'LOSS';
           sig.closePrice = sig.slPrice;
           sig.closedAt = Date.now();
@@ -3630,9 +3664,10 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     const txtNetPips = document.getElementById('sigStatNetPips');
 
     const total = this.signalsList.length;
-    const wins = this.signalsList.filter(s => s.status === 'WIN').length;
+    const wins = this.signalsList.filter(s => s.status && s.status.startsWith('WIN')).length;
+    const beCount = this.signalsList.filter(s => s.status === 'BE').length;
     const losses = this.signalsList.filter(s => s.status === 'LOSS').length;
-    const active = this.signalsList.filter(s => s.status === 'ACTIVE').length;
+    const active = this.signalsList.filter(s => s.status === 'ACTIVE' || (s.status && !s.status.startsWith('WIN') && s.status !== 'LOSS' && s.status !== 'BE')).length;
     const closed = wins + losses;
     const winRate = closed > 0 ? Math.round((wins / closed) * 100) : 0;
 
@@ -3681,16 +3716,21 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       let statusBadge = '';
       let pipsBadge = '';
 
-      if (sig.status === 'WIN') {
-        statusBadge = `<span style="background:rgba(0,230,118,0.18); color:#00e676; border:1px solid #00e676; padding:1px 5px; border-radius:3px; font-weight:900;">MENANG ✅</span>`;
+      if (sig.status && sig.status.startsWith('WIN')) {
+        const stage = sig.status.replace('WIN', '').trim() || '(TP1)';
+        statusBadge = `<span style="background:rgba(0,230,118,0.18); color:#00e676; border:1px solid #00e676; padding:1px 5px; border-radius:3px; font-weight:900;">MENANG ${stage} ✅</span>`;
         pipsBadge = `<b style="color:#00e676;">+${sig.resultPips} pip</b>`;
+      } else if (sig.status === 'BE') {
+        statusBadge = `<span style="background:rgba(250,204,21,0.18); color:#facc15; border:1px solid #facc15; padding:1px 5px; border-radius:3px; font-weight:900;">KENA BE 🛡️</span>`;
+        pipsBadge = `<b style="color:#facc15;">+0.0 pip (Selamat)</b>`;
       } else if (sig.status === 'LOSS') {
         statusBadge = `<span style="background:rgba(239,68,68,0.18); color:#f87171; border:1px solid #ef4444; padding:1px 5px; border-radius:3px; font-weight:900;">KALAH ❌</span>`;
         pipsBadge = `<b style="color:#ff3366;">${sig.resultPips} pip</b>`;
       } else {
         const fp = sig.floatingPips || 0;
         const fpCol = fp >= 0 ? '#00e676' : '#ff3366';
-        statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#38bdf8; border:1px solid #38bdf8; padding:1px 5px; border-radius:3px; font-weight:800;">SEDANG JALAN ⏳</span>`;
+        const beTag = sig.isBEActive ? ' <span style="color:#facc15; font-size:8px; font-weight:800;">[BE 🛡️]</span>' : '';
+        statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#38bdf8; border:1px solid #38bdf8; padding:1px 5px; border-radius:3px; font-weight:800;">SEDANG JALAN ⏳</span>${beTag}`;
         pipsBadge = `<span style="color:${fpCol}; font-weight:700;">${fp >= 0 ? '+' : ''}${fp.toFixed(1)} pip</span>`;
       }
 
@@ -3715,8 +3755,14 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
         sigTime = sig.timeStr || dObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       }
 
-      const actions = sig.status === 'ACTIVE' 
+      const isClosed = (sig.status === 'LOSS' || sig.status === 'BE' || (sig.status && sig.status.includes('TP5')));
+      const beBtn = (!isClosed && !sig.isBEActive) 
+        ? `<button class="tool-btn btn-sig-set-be" data-id="${sig.id}" style="padding:1px 5px; font-size:9px; color:#facc15; border-color:#facc15; font-weight:800; margin-left:2px; cursor:pointer;" title="Kunci modal ke Break-Even (BE) sekarang">🛡️ BE</button>` 
+        : '';
+
+      const actions = !isClosed 
         ? `<button class="tool-btn btn-sig-follow" data-id="${sig.id}" style="padding:1px 5px; font-size:9px; color:#00e676; border-color:#00e676; font-weight:800; cursor:pointer;" title="Buka posisi sekarang mengikut isyarat ini">⚡ Ikut</button>
+           ${beBtn}
            <button class="tool-btn btn-sig-copy" data-id="${sig.id}" style="padding:1px 4px; font-size:9px; color:#ffd60a; margin-left:2px; cursor:pointer;" title="Salin parameter isyarat">📋</button>`
         : `<button class="tool-btn btn-sig-copy" data-id="${sig.id}" style="padding:1px 5px; font-size:9px; color:#ffd60a; cursor:pointer;" title="Salin ringkasan keputusan isyarat">📋 Salin</button>`;
 
@@ -3730,9 +3776,11 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           <td style="padding:5px 6px; color:#f8fafc; font-weight:700;">${sig.type}</td>
           <td style="padding:5px 6px; color:${dirCol}; font-weight:900;">${dirText}</td>
           <td style="padding:5px 6px; color:#ffffff; font-weight:800;">$${sig.entryPrice.toFixed(2)}</td>
-          <td style="padding:4px 6px; color:#ff3366; line-height:1.25;">
-            <div style="font-weight:800;">$${sig.slPrice.toFixed(2)}</div>
-            <div style="font-size:8px; color:#f87171;">(-50 pip)</div>
+          <td style="padding:4px 6px; line-height:1.25;">
+            ${sig.isBEActive 
+              ? `<div style="font-weight:900; color:#facc15;">$${sig.entryPrice.toFixed(2)}</div><div style="font-size:8px; color:#facc15; font-weight:900;">(BE AKTIF 🛡️)</div>`
+              : `<div style="font-weight:800; color:#ff3366;">$${sig.slPrice.toFixed(2)}</div><div style="font-size:8px; color:#f87171;">(-50 pip)</div>`
+            }
           </td>
           <td style="padding:4px 6px; font-size:9.5px; line-height:1.25;">
             <div><b style="color:#00e676;">TP1:</b> $${(sig.tp1 || sig.tpPrice).toFixed(2)} <span style="color:#86efac; font-size:8px;">(50p)</span></div>
@@ -3757,6 +3805,19 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           if (this.inputTP) this.inputTP.value = tpPips;
           this.sendTrade(sig.direction);
           this.showToast(`⚡ Mengikuti isyarat #${sig.id} (${sig.direction})!`);
+        }
+      });
+    });
+
+    tbody.querySelectorAll('.btn-sig-set-be').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sig = this.signalsList.find(s => s.id === btn.dataset.id);
+        if (sig && !sig.isBEActive) {
+          sig.isBEActive = true;
+          sig.slPrice = sig.entryPrice;
+          this._saveSignals();
+          this._renderSignalsUI();
+          this.showToast(`🛡️ ISYARAT #${sig.id}: SL telah dialihkan ke Break-Even ($${sig.entryPrice.toFixed(2)})!`);
         }
       });
     });
