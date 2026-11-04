@@ -2302,10 +2302,13 @@ class OrderFlowEngine:
 
             can_buy = (now - self._last_bm_signal_time >= 60.0) or (self._last_bm_signal_dir != "BUY" and now - self._last_bm_signal_time >= 30.0)
             if trigger and can_buy:
-                sl = round(active_demand["p"] - 1.50, 2)
-                risk = max(1.0, round(p - sl, 2))
-                tp1 = round(p + risk * 2.0, 2)
-                tp2 = round(p + risk * 3.5, 2)
+                # 50 pips SL ($5.00) & Multi-Stage TP (50p, 100p, 150p, 200p, 250p)
+                sl = round(p - 5.00, 2)
+                tp1 = round(p + 5.00, 2)
+                tp2 = round(p + 10.00, 2)
+                tp3 = round(p + 15.00, 2)
+                tp4 = round(p + 20.00, 2)
+                tp5 = round(p + 25.00, 2)
 
                 sig = {
                     "id": f"bm_{now_ms}",
@@ -2316,6 +2319,9 @@ class OrderFlowEngine:
                     "sl": sl,
                     "tp1": tp1,
                     "tp2": tp2,
+                    "tp3": tp3,
+                    "tp4": tp4,
+                    "tp5": tp5,
                     "zone": active_demand["name"],
                     "wall_lots": round(bid_wall, 1),
                     "badge": f"🟢 BUY [{active_demand['name']}]",
@@ -2359,10 +2365,13 @@ class OrderFlowEngine:
 
             can_sell = (now - self._last_bm_signal_time >= 60.0) or (self._last_bm_signal_dir != "SELL" and now - self._last_bm_signal_time >= 30.0)
             if trigger and can_sell:
-                sl = round(active_supply["p"] + 1.50, 2)
-                risk = max(1.0, round(sl - p, 2))
-                tp1 = round(p - risk * 2.0, 2)
-                tp2 = round(p - risk * 3.5, 2)
+                # 50 pips SL ($5.00) & Multi-Stage TP (50p, 100p, 150p, 200p, 250p)
+                sl = round(p + 5.00, 2)
+                tp1 = round(p - 5.00, 2)
+                tp2 = round(p - 10.00, 2)
+                tp3 = round(p - 15.00, 2)
+                tp4 = round(p - 20.00, 2)
+                tp5 = round(p - 25.00, 2)
 
                 sig = {
                     "id": f"bm_{now_ms}",
@@ -2373,6 +2382,9 @@ class OrderFlowEngine:
                     "sl": sl,
                     "tp1": tp1,
                     "tp2": tp2,
+                    "tp3": tp3,
+                    "tp4": tp4,
+                    "tp5": tp5,
                     "zone": active_supply["name"],
                     "wall_lots": round(ask_wall, 1),
                     "badge": f"🔴 SELL [{active_supply['name']}]",
@@ -2398,22 +2410,35 @@ class OrderFlowEngine:
         return self.bookmap_signals
 
     def _update_signals_status(self, p: float):
-        """Updates win/loss status of active signals in real-time"""
+        """Updates win/loss status of active signals across TP1 to TP5 in real-time"""
         for sig in self.bookmap_signals:
-            if sig.get("status") == "ACTIVE":
+            st = sig.get("status", "ACTIVE")
+            if st == "ACTIVE" or st.startswith("TP"):
                 if sig.get("direction") == "BUY":
-                    if p >= sig.get("tp2", 99999):
+                    if sig.get("tp5") and p >= sig["tp5"]:
+                        sig["status"] = "TP5_HIT"
+                    elif sig.get("tp4") and p >= sig["tp4"]:
+                        sig["status"] = "TP4_HIT"
+                    elif sig.get("tp3") and p >= sig["tp3"]:
+                        sig["status"] = "TP3_HIT"
+                    elif sig.get("tp2") and p >= sig["tp2"]:
                         sig["status"] = "TP2_HIT"
-                    elif p >= sig.get("tp1", 99999):
+                    elif sig.get("tp1") and p >= sig["tp1"]:
                         sig["status"] = "TP1_HIT"
-                    elif p <= sig.get("sl", 0):
+                    elif st == "ACTIVE" and p <= sig.get("sl", 0):
                         sig["status"] = "SL_HIT"
                 else:
-                    if p <= sig.get("tp2", 0):
+                    if sig.get("tp5") and p <= sig["tp5"]:
+                        sig["status"] = "TP5_HIT"
+                    elif sig.get("tp4") and p <= sig["tp4"]:
+                        sig["status"] = "TP4_HIT"
+                    elif sig.get("tp3") and p <= sig["tp3"]:
+                        sig["status"] = "TP3_HIT"
+                    elif sig.get("tp2") and p <= sig["tp2"]:
                         sig["status"] = "TP2_HIT"
-                    elif p <= sig.get("tp1", 0):
+                    elif sig.get("tp1") and p <= sig["tp1"]:
                         sig["status"] = "TP1_HIT"
-                    elif p >= sig.get("sl", 99999):
+                    elif st == "ACTIVE" and p >= sig.get("sl", 99999):
                         sig["status"] = "SL_HIT"
 
     def _evaluate_mtf_confluence(self) -> Dict[str, Any]:
