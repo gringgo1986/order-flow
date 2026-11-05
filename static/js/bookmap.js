@@ -2280,16 +2280,14 @@ class BookmapRenderer {
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
         const tw = ctx.measureText(text).width + 8;
 
-        let bx = this.CHART_LEFT + 6;
-        let colShift = 0;
-        while (drawnBadges.some(b => Math.abs(b.y - y) < 15 && !(bx >= (b.x + b.w + 4) || (bx + tw + 4) <= b.x)) && colShift < 4) {
-          const hit = drawnBadges.find(b => Math.abs(b.y - y) < 15 && !(bx >= (b.x + b.w + 4) || (bx + tw + 4) <= b.x));
-          bx = hit ? (hit.x + hit.w + 6) : (bx + tw + 8);
-          colShift++;
+        const bx = this.CHART_LEFT + 6;
+        let by = y - 7;
+        let attempts = 0;
+        while (drawnBadges.some(b => Math.abs(b.y - by) < 14) && attempts < 5) {
+          by += 14;
+          attempts++;
         }
-        drawnBadges.push({ x: bx, y: y, w: tw });
-
-        const by = y - 7;
+        drawnBadges.push({ y: by });
         ctx.fillStyle = 'rgba(8, 13, 24, 0.92)';
         ctx.fillRect(bx, by, tw, 14);
         ctx.fillStyle = lv.bg;
