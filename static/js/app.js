@@ -1841,7 +1841,11 @@ class App {
       if (pill) {
         pill.className = `radar-status-pill ${radar.bias === 'BUY' ? 'bullish' : (radar.bias === 'SELL' ? 'bearish' : 'neutral')}`;
       }
-      if (headline) headline.textContent = radar.headline;
+      if (headline) {
+        const shortBias = radar.bias === 'BUY' ? '🟢 BULLS' : (radar.bias === 'SELL' ? '🔴 BEARS' : '⚪ NEUTRAL');
+        headline.textContent = `${shortBias} (${radar.strength || 50}%)`;
+        headline.title = radar.headline || '';
+      }
       if (advice) advice.textContent = radar.action_hint || radar.summary;
       if (meter) {
         meter.style.width = `${radar.strength}%`;
