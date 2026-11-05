@@ -3600,7 +3600,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     });
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:12px; color:#64748b;">Tiada rekod isyarat dalam kategori ini.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:12px; color:#64748b;">Tiada rekod isyarat dalam kategori ini.</td></tr>`;
       return;
     }
 
@@ -3698,7 +3698,6 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
 
       return `
         <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-          <td style="padding:5px 6px; color:#94a3b8; font-weight:700;">${sig.id}</td>
           <td style="padding:4px 6px; white-space:nowrap; line-height:1.3;">
             <div style="color:#94a3b8; font-size:8.5px; font-weight:700; letter-spacing:0.2px;">📅 ${sigDate}</div>
             <div style="color:#f1f5f9; font-size:9.5px; font-weight:800;">⏱️ ${sigTime}</div>
