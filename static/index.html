@@ -138,6 +138,14 @@
 
       <!-- Quad-Confluence Signal Dashboard Button -->
             <!-- SOP Order Flow 3-Step Dashboard Button -->
+      <!-- High-Impact News Signal Button -->
+      <button class="tool-btn news-signal-btn" id="btnOpenNewsSignalModal" style="padding:2px 9px; font-size:9.5px; font-weight:800; background:linear-gradient(135deg, rgba(239,68,68,0.25), rgba(245,158,11,0.25)); border:1px solid #f59e0b; color:#fbbf24; display:inline-flex; align-items:center; gap:5px; cursor:pointer; box-shadow:0 0 10px rgba(245,158,11,0.25);" title="Buka Enjin Isyarat & Analisis Berita High-Impact (BUY/SELL) XAUUSD">
+        <span>📰</span>
+        <span id="txtNewsHeaderLabel">NEWS: USD CPI</span>
+        <span id="badgeNewsHeaderCountdown" style="color:#94a3b8; font-size:8.5px;">--m</span>
+        <span id="badgeNewsHeaderBias" style="padding:1px 5px; border-radius:3px; background:#10b981; color:#fff; font-size:8px; font-weight:900;">🟢 BUY</span>
+      </button>
+
       <button class="tool-btn" id="btnOpenSopDash" style="padding:2px 9px; font-size:9.5px; font-weight:800; background:linear-gradient(135deg, rgba(56,189,248,0.22), rgba(16,185,129,0.22)); border:1px solid #38bdf8; color:#38bdf8; display:inline-flex; align-items:center; gap:4px; cursor:pointer; box-shadow:0 0 10px rgba(56,189,248,0.25);" title="Buka Dashboard SOP Dagangan 3-Langkah Rasmi">
         <span>📋</span> SOP DASHBOARD
       </button>
@@ -1199,5 +1207,118 @@
       </button>
     </div>
   </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       HIGH-IMPACT NEWS & GOLD (XAUUSD) BUY/SELL SIGNAL MODAL
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <div class="help-modal" id="newsSignalModal" style="display:none; position:fixed; top:46px; right:12px; width:430px; max-width:94vw; max-height:88vh; background:rgba(6,10,20,0.98); backdrop-filter:blur(18px); border:1px solid #f59e0b; border-radius:10px; box-shadow:0 14px 44px rgba(0,0,0,0.95), 0 0 24px rgba(245,158,11,0.3); z-index:99999; flex-direction:column; overflow:hidden; font-family:var(--font-sans);">
+    <div class="help-content" style="display:flex; flex-direction:column; max-height:88vh; padding:13px 15px; box-sizing:border-box;">
+      
+      <!-- Modal Header -->
+      <div class="help-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:9px; margin-bottom:11px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:19px;">📰</span>
+          <div>
+            <h3 style="margin:0; font-size:12.5px; color:#fbbf24; font-weight:800; letter-spacing:0.5px;">ENJIN ISYARAT BERITA HIGH-IMPACT (XAUUSD)</h3>
+            <span style="font-size:9px; color:#94a3b8;">Analisis Makroekonomi USD vs Emas + Taktik Order Flow</span>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span id="newsModalLivePulse" style="display:inline-flex; align-items:center; gap:3px; background:rgba(239,68,68,0.2); border:1px solid #ef4444; border-radius:3px; padding:1px 5px; font-size:8.5px; color:#fca5a5; font-weight:800;">🔴 LIVE RADAR</span>
+          <button id="btnCloseNewsModal" style="background:transparent; border:none; color:#64748b; font-size:16px; cursor:pointer; padding:2px 6px;">✕</button>
+        </div>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div style="overflow-y:auto; flex:1; padding-right:4px; display:flex; flex-direction:column; gap:10px;" class="custom-scrollbar">
+
+        <!-- 1. Active / Upcoming News Event Card -->
+        <div style="background:rgba(15,23,42,0.75); border:1px solid rgba(245,158,11,0.4); border-radius:8px; padding:10px 12px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+            <div>
+              <span style="font-size:8.5px; color:#f59e0b; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">BERITA UTAMA USD DIPANTAU</span>
+              <h4 id="newsModalTitle" style="margin:2px 0 0 0; font-size:13px; color:#f8fafc; font-weight:800;">USD Teras CPI (Indeks Harga Pengguna)</h4>
+            </div>
+            <div id="newsModalCountdownBadge" style="background:rgba(245,158,11,0.2); border:1px solid #f59e0b; color:#fbbf24; font-size:10px; font-weight:800; padding:2px 7px; border-radius:4px; font-family:var(--font-mono);">
+              ⏳ 24m lagi
+            </div>
+          </div>
+
+          <!-- Economic Metrics Grid (Previous vs Forecast vs Actual) -->
+          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin-top:8px; background:rgba(0,0,0,0.35); padding:7px 8px; border-radius:6px; border:1px solid #1e293b;">
+            <div style="text-align:center;">
+              <span style="display:block; font-size:8px; color:#64748b; font-weight:700;">DAHULU</span>
+              <b id="newsMetricPrev" style="font-size:11px; color:#94a3b8; font-family:var(--font-mono);">2.8%</b>
+            </div>
+            <div style="text-align:center; border-left:1px solid #1e293b; border-right:1px solid #1e293b;">
+              <span style="display:block; font-size:8px; color:#64748b; font-weight:700;">UNJURAN</span>
+              <b id="newsMetricForecast" style="font-size:11px; color:#38bdf8; font-family:var(--font-mono);">2.6%</b>
+            </div>
+            <div style="text-align:center;">
+              <span style="display:block; font-size:8px; color:#64748b; font-weight:700;">SEBENAR</span>
+              <b id="newsMetricActual" style="font-size:11px; color:#10b981; font-family:var(--font-mono);">2.3%</b>
+            </div>
+          </div>
+          <div id="newsMetricDevDesc" style="margin-top:6px; font-size:9px; color:#94a3b8; font-style:italic;">
+            *Angka sebenar lebih rendah daripada unjuran -> Dolar AS melemah.
+          </div>
+        </div>
+
+        <!-- 2. THE GOLD SIGNAL DECISION CARD (BUY vs SELL) -->
+        <div id="newsSignalCard" style="background:linear-gradient(135deg, rgba(16,185,129,0.14), rgba(6,78,59,0.22)); border:1.5px solid #10b981; border-radius:8px; padding:11px 12px; box-shadow:0 0 16px rgba(16,185,129,0.2);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:9px; font-weight:800; color:#34d399; letter-spacing:0.5px;">KEPUTUSAN ISYARAT XAUUSD (EMAS)</span>
+            <span id="newsSignalConfBadge" style="background:#10b981; color:#fff; font-size:8.5px; font-weight:900; padding:1px 6px; border-radius:3px;">93% KEYAKINAN</span>
+          </div>
+          
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <div id="newsSignalActionBig" style="font-size:18px; font-weight:900; color:#10b981; letter-spacing:0.5px; font-family:var(--font-mono); text-shadow:0 0 12px rgba(16,185,129,0.5);">
+              🟢 STRONG BUY XAUUSD
+            </div>
+            <div style="text-align:right;">
+              <span style="display:block; font-size:8.5px; color:#94a3b8;">SASARAN LONJAKAN</span>
+              <b id="newsSignalTarget" style="font-size:11.5px; color:#34d399; font-family:var(--font-mono);">+65 Pips ($4135.00)</b>
+            </div>
+          </div>
+
+          <!-- Fundamental Analysis Breakdown -->
+          <div style="background:rgba(0,0,0,0.3); border-radius:6px; padding:7px 9px; margin-bottom:8px; font-size:9.5px; line-height:1.4; color:#e2e8f0;">
+            <b style="color:#6ee7b7;">💡 Analisis Fundamental:</b>
+            <span id="newsSignalReason">Penurunan inflasi/data buruh USD melemahkan Indeks Dolar (DXY), mencetuskan aliran modal institusi secara agresif ke aset selamat Emas.</span>
+          </div>
+
+          <!-- Order Flow Execution Rules -->
+          <div style="border-top:1px dashed rgba(16,185,129,0.3); padding-top:7px;">
+            <span style="display:block; font-size:8.5px; font-weight:800; color:#34d399; margin-bottom:4px; text-transform:uppercase;">TAKTIK EKSEKUSI ORDER FLOW (BOOKMAP / FOOTPRINT):</span>
+            <ul id="newsSignalRulesList" style="margin:0; padding-left:14px; font-size:8.5px; color:#cbd5e1; line-height:1.45;">
+              <li>Jangan kejar lilin 10-15s pertama (zon sapuan Stop Loss jerung).</li>
+              <li>Perhatikan Footprint: Sahkan kehadiran Absorption hijau atau Imbalance belian > 300%.</li>
+              <li>Masuk menggunakan kekunci pantas [B] (Buy) serta-merta.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 3. Master Calendar of High-Impact USD Events -->
+        <div style="background:rgba(15,23,42,0.6); border:1px solid #1e293b; border-radius:8px; padding:9px 11px;">
+          <span style="display:block; font-size:9px; font-weight:800; color:#94a3b8; margin-bottom:6px; text-transform:uppercase;">JADUAL BERITA MERAH USD UTAMA</span>
+          <div id="newsScheduleList" style="display:flex; flex-direction:column; gap:4px; font-size:8.5px;">
+            <!-- Populated dynamically via JS -->
+          </div>
+        </div>
+
+        <!-- 4. Quick Action Execution Bar inside Modal -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:2px;">
+          <button class="tool-btn" id="btnNewsModalBuy" style="background:rgba(0,230,118,0.18); border:1px solid #00e676; color:#00e676; font-size:10px; font-weight:800; padding:6px 0; border-radius:5px;" title="Beli Pasaran Serta-Merta (Kekunci [B])">
+            ⚡ BUY XAUUSD [B]
+          </button>
+          <button class="tool-btn" id="btnNewsModalSell" style="background:rgba(255,51,102,0.18); border:1px solid #ff3366; color:#ff3366; font-size:10px; font-weight:800; padding:6px 0; border-radius:5px;" title="Jual Pasaran Serta-Merta (Kekunci [S])">
+            ⚡ SELL XAUUSD [S]
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
