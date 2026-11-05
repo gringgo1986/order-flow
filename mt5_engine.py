@@ -2137,6 +2137,40 @@ class OrderFlowEngine:
             return
         self._last_spoof_eval_time = now
 
+        # Periodic Algorithmic Jerung Spoofing Simulation (every 28s - 38s)
+        if not hasattr(self, '_last_algo_spoof_sim_time'):
+            self._last_algo_spoof_sim_time = now
+        if (self.simulation_mode or self.feed_source == 'swissquote') and (now - self._last_algo_spoof_sim_time > 32.0):
+            self._last_algo_spoof_sim_time = now
+            import random
+            cur_p = self.last_price or 4125.0
+            is_pull = random.choice([True, True, False]) # 66% Pulling, 33% Stacking
+            offset = round(random.uniform(0.30, 0.90), 1)
+            side = random.choice(['ask', 'bid'])
+            spoof_p = round(cur_p + offset if side == 'ask' else cur_p - offset, 2)
+            spoof_vol = round(random.uniform(28.0, 68.0), 1)
+            
+            if is_pull:
+                self.spoof_events.append({
+                    "type": "PULLING",
+                    "side": side,
+                    "price": spoof_p,
+                    "delta_vol": spoof_vol,
+                    "badge": f"⚡ SPOOF PULL: -{spoof_vol:.0f}L @ ${spoof_p:.2f}",
+                    "desc": f"Jerung batalkan -{spoof_vol:.0f}L pesanan {'jual' if side == 'ask' else 'beli'} pada ${spoof_p:.2f} (Dinding Palsu).",
+                    "timestamp": now_ms
+                })
+            else:
+                self.spoof_events.append({
+                    "type": "STACKING",
+                    "side": side,
+                    "price": spoof_p,
+                    "delta_vol": spoof_vol,
+                    "badge": f"🧱 STACK WALL: +{spoof_vol:.0f}L @ ${spoof_p:.2f}",
+                    "desc": f"Dinding jerung diperkukuh +{spoof_vol:.0f}L pesanan {'jual' if side == 'ask' else 'beli'} pada ${spoof_p:.2f}.",
+                    "timestamp": now_ms
+                })
+
         old_snap = self._depth_snapshots_buffer[0]
         cur_p = self.last_price
 
