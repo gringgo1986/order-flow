@@ -1061,18 +1061,30 @@ class FootprintRenderer {
       if (dpoc > 0) {
         const py = this.priceToY(dpoc);
         if (py >= 20 && py <= this.height - 70) {
-          ctx.setLineDash([3, 3]);
-          ctx.strokeStyle = 'rgba(255, 214, 10, 0.85)';
-          ctx.lineWidth = 1.2;
+          ctx.save();
+          ctx.globalAlpha = 0.38;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = '#ffd60a';
+          ctx.lineWidth = 1.0;
           ctx.beginPath();
-          ctx.moveTo(0, py);
+          ctx.moveTo(80, py);
           ctx.lineTo(this.width - 70, py);
           ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.fillStyle = '#ffd60a';
+          ctx.restore();
+
+          const dpocTxt = `⭐ dPOC Sesi $${dpoc.toFixed(2)}`;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const dw = ctx.measureText(dpocTxt).width + 10;
+          ctx.fillStyle = 'rgba(8, 14, 26, 0.95)';
+          ctx.fillRect(8, py - 8, dw, 15);
+          ctx.strokeStyle = '#ffd60a';
+          ctx.lineWidth = 0.9;
+          ctx.strokeRect(8, py - 8, dw, 15);
+
+          ctx.fillStyle = '#ffd60a';
           ctx.textAlign = 'left';
-          ctx.fillText(`⭐ dPOC Sesi $${dpoc.toFixed(2)}`, 6, py - 4);
+          ctx.textBaseline = 'middle';
+          ctx.fillText(dpocTxt, 13, py);
         }
       }
     }
@@ -2252,12 +2264,12 @@ class FootprintRenderer {
   _drawFootprintTopHUD(ctx, snapshot) {
     ctx.save();
     this.fpToolbarHitboxes = [];
-    const topH = 28;
+    const topH = 21;
 
-    // Header Background Strip
-    ctx.fillStyle = 'rgba(7, 12, 22, 0.95)';
+    // Header Background Strip (Slim & Sleek Micro-HUD)
+    ctx.fillStyle = 'rgba(7, 12, 22, 0.90)';
     ctx.fillRect(0, 0, this.width - 75, topH);
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, topH);
@@ -2265,12 +2277,12 @@ class FootprintRenderer {
     ctx.stroke();
 
     let pillX = 8;
-    const y = 4;
-    const h = 20;
+    const y = 2.5;
+    const h = 16;
 
     const drawPill = (label, isActive, activeCol, onClick) => {
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      const w = Math.ceil(ctx.measureText(label).width) + 12;
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      const w = Math.ceil(ctx.measureText(label).width) + 10;
       if (pillX + w > this.width - 80) return; // Prevent overflow
       ctx.fillStyle = isActive ? activeCol : 'rgba(15, 23, 42, 0.85)';
       ctx.fillRect(pillX, y, w, h);
