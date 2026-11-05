@@ -330,16 +330,17 @@ canvas#bookmapCanvas, canvas#footprintCanvas {
 .chart-tooltip {
   position: absolute;
   display: none;
-  background: rgba(16, 21, 34, 0.92);
-  border: 1px solid var(--border-light);
-  backdrop-filter: blur(8px);
-  padding: 8px 12px;
-  border-radius: 6px;
+  background: rgba(8, 14, 26, 0.94);
+  border: 1px solid rgba(0, 240, 255, 0.38);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 9px 14px;
+  border-radius: 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   pointer-events: none;
-  z-index: 50;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  z-index: 100;
+  box-shadow: 0 10px 32px rgba(0,0,0,0.75), inset 0 0 14px rgba(0, 240, 255, 0.06);
 }
 
 /* CVD Sub-Pane */
@@ -826,16 +827,18 @@ canvas#cvdCanvas {
 }
 
 .toast {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-light);
+  background: rgba(9, 15, 28, 0.95);
+  border: 1px solid rgba(255, 215, 0, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: #fff;
-  padding: 10px 14px;
-  border-radius: 6px;
+  padding: 10px 16px;
+  border-radius: 8px;
   font-size: 12px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.8), 0 0 14px rgba(255, 215, 0, 0.18);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   animation: slideIn 0.25s ease-out;
 }
 
