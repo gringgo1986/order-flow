@@ -1367,3 +1367,98 @@ header.app-header {
 .main-workspace.dock-expanded {
   grid-template-rows: 1fr 52vh !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ATAS SPEED OF TAPE & INSTITUTIONAL EXECUTION STYLES
+   ══════════════════════════════════════════════════════════════════════════════ */
+.speed-tape-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-family: var(--font-mono, monospace);
+  font-size: 9.5px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.speed-tape-pill .speed-icon {
+  font-size: 10px;
+  color: #38bdf8;
+}
+.speed-tape-pill .speed-title {
+  color: #94a3b8;
+  font-size: 8.5px;
+  letter-spacing: 0.5px;
+}
+.speed-tape-pill .speed-val {
+  color: #38bdf8;
+  font-weight: 800;
+  min-width: 26px;
+}
+.speed-tape-pill .speed-meter-track {
+  width: 28px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.speed-tape-pill .speed-meter-fill {
+  width: 15%;
+  height: 100%;
+  background: #38bdf8;
+  border-radius: 3px;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+.speed-tape-pill .speed-tag {
+  font-size: 8px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  font-weight: 800;
+}
+.speed-tape-pill.speed-active {
+  border-color: rgba(251, 191, 36, 0.6);
+}
+.speed-tape-pill.speed-active .speed-val { color: #fbbf24; }
+.speed-tape-pill.speed-active .speed-meter-fill { background: #fbbf24; }
+.speed-tape-pill.speed-active .speed-tag {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.2);
+}
+.speed-tape-pill.speed-surge {
+  border-color: rgba(249, 115, 22, 0.7);
+  box-shadow: 0 0 8px rgba(249, 115, 22, 0.4);
+}
+.speed-tape-pill.speed-surge .speed-val { color: #fb923c; }
+.speed-tape-pill.speed-surge .speed-meter-fill { background: #f97316; }
+.speed-tape-pill.speed-surge .speed-tag {
+  color: #fb923c;
+  background: rgba(249, 115, 22, 0.25);
+}
+.speed-tape-pill.speed-burst {
+  border-color: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.65);
+  animation: speedPulse 0.5s infinite alternate;
+}
+.speed-tape-pill.speed-burst .speed-val { color: #fca5a5; }
+.speed-tape-pill.speed-burst .speed-meter-fill { background: #ef4444; }
+.speed-tape-pill.speed-burst .speed-tag {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.35);
+}
+@keyframes speedPulse {
+  0% { transform: scale(1); box-shadow: 0 0 4px rgba(239, 68, 68, 0.4); }
+  100% { transform: scale(1.04); box-shadow: 0 0 14px rgba(239, 68, 68, 0.9); }
+}
+
+.btn-press-flash {
+  transform: scale(0.95) !important;
+  filter: brightness(1.7) !important;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.8) !important;
+  transition: all 0.08s ease !important;
+}
