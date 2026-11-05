@@ -3609,24 +3609,58 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       const dirCol = isBuy ? '#00e676' : '#ff3366';
       const dirText = isBuy ? '🟢 BUY' : '🔴 SELL';
 
+      // 1. Calculate / Retrieve Exact Win, Loss & BE Prices
+      let tierNum = 1;
+      if (sig.highestTPTier) {
+        tierNum = sig.highestTPTier;
+      } else if (sig.status) {
+        const m = sig.status.match(/TP(\d+)/i);
+        if (m) tierNum = parseInt(m[1], 10);
+      }
+      const ePrice = sig.entryPrice || 0;
+      const winPrice = sig.closePrice || +(isBuy ? ePrice + (tierNum * 5.0) : ePrice - (tierNum * 5.0)).toFixed(2);
+      const losePrice = sig.closePrice || sig.slPrice || +(isBuy ? ePrice - 5.0 : ePrice + 5.0).toFixed(2);
+      const nextTpTier = (sig.highestTPTier || 0) + 1;
+      const nextTpPrice = +(isBuy ? ePrice + (nextTpTier * 5.0) : ePrice - (nextTpTier * 5.0)).toFixed(2);
+
       let statusBadge = '';
       let pipsBadge = '';
 
       if (sig.status && sig.status.startsWith('WIN')) {
-        const stage = sig.status.replace('WIN', '').trim() || '(TP1)';
-        statusBadge = `<span style="background:rgba(0,230,118,0.18); color:#00e676; border:1px solid #00e676; padding:1px 5px; border-radius:3px; font-weight:900;">MENANG ${stage} ✅</span>`;
-        pipsBadge = `<b style="color:#00e676;">+${sig.resultPips} pip</b>`;
+        const stage = sig.status.replace('WIN', '').trim() || `(TP${tierNum})`;
+        statusBadge = `
+          <div style="line-height:1.25;">
+            <div><span style="background:rgba(0,230,118,0.18); color:#00e676; border:1px solid #00e676; padding:1px 5px; border-radius:3px; font-weight:900; font-size:9.5px; white-space:nowrap;">MENANG ${stage} ✅</span></div>
+            <div style="font-size:8.5px; color:#86efac; font-weight:800; margin-top:2px; white-space:nowrap;">🎯 Harga: <span style="color:#ffffff;">$${winPrice.toFixed(2)}</span></div>
+          </div>
+        `;
+        pipsBadge = `<b style="color:#00e676;">+${sig.resultPips || (tierNum * 50)} pip</b>`;
       } else if (sig.status === 'BE') {
-        statusBadge = `<span style="background:rgba(250,204,21,0.18); color:#facc15; border:1px solid #facc15; padding:1px 5px; border-radius:3px; font-weight:900;">KENA BE 🛡️</span>`;
+        statusBadge = `
+          <div style="line-height:1.25;">
+            <div><span style="background:rgba(250,204,21,0.18); color:#facc15; border:1px solid #facc15; padding:1px 5px; border-radius:3px; font-weight:900; font-size:9.5px; white-space:nowrap;">KENA BE 🛡️</span></div>
+            <div style="font-size:8.5px; color:#fef08a; font-weight:800; margin-top:2px; white-space:nowrap;">🛡️ Harga: <span style="color:#ffffff;">$${ePrice.toFixed(2)}</span></div>
+          </div>
+        `;
         pipsBadge = `<b style="color:#facc15;">+0.0 pip (Selamat)</b>`;
       } else if (sig.status === 'LOSS') {
-        statusBadge = `<span style="background:rgba(239,68,68,0.18); color:#f87171; border:1px solid #ef4444; padding:1px 5px; border-radius:3px; font-weight:900;">KALAH ❌</span>`;
-        pipsBadge = `<b style="color:#ff3366;">${sig.resultPips} pip</b>`;
+        statusBadge = `
+          <div style="line-height:1.25;">
+            <div><span style="background:rgba(239,68,68,0.18); color:#f87171; border:1px solid #ef4444; padding:1px 5px; border-radius:3px; font-weight:900; font-size:9.5px; white-space:nowrap;">KALAH (SL) ❌</span></div>
+            <div style="font-size:8.5px; color:#fca5a5; font-weight:800; margin-top:2px; white-space:nowrap;">🛑 Harga: <span style="color:#ffffff;">$${losePrice.toFixed(2)}</span></div>
+          </div>
+        `;
+        pipsBadge = `<b style="color:#ff3366;">${sig.resultPips || -50.0} pip</b>`;
       } else {
         const fp = sig.floatingPips || 0;
         const fpCol = fp >= 0 ? '#00e676' : '#ff3366';
         const beTag = sig.isBEActive ? ' <span style="color:#facc15; font-size:8px; font-weight:800;">[BE 🛡️]</span>' : '';
-        statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#38bdf8; border:1px solid #38bdf8; padding:1px 5px; border-radius:3px; font-weight:800;">SEDANG JALAN ⏳</span>${beTag}`;
+        statusBadge = `
+          <div style="line-height:1.25;">
+            <div><span style="background:rgba(56,189,248,0.18); color:#38bdf8; border:1px solid #38bdf8; padding:1px 5px; border-radius:3px; font-weight:800; font-size:9.5px; white-space:nowrap;">SEDANG JALAN ⏳</span>${beTag}</div>
+            <div style="font-size:8.5px; color:#94a3b8; font-weight:700; margin-top:2px; white-space:nowrap;">📍 Sasaran: <span style="color:#38bdf8;">TP${nextTpTier} ($${nextTpPrice.toFixed(2)})</span></div>
+          </div>
+        `;
         pipsBadge = `<span style="color:${fpCol}; font-weight:700;">${fp >= 0 ? '+' : ''}${fp.toFixed(1)} pip</span>`;
       }
 
