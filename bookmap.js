@@ -1215,12 +1215,13 @@ class BookmapRenderer {
           ctx.shadowBlur = 0;
           ctx.restore();
 
-          // High-Impact Pill Badge
+          // High-Impact Pill Badge with Anti-Collision Slotting
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const badgeTxt = sw.badge;
           const tw = ctx.measureText(badgeTxt).width + 14;
           const bx = this.CHART_LEFT + 16;
-          const by = wy - 8;
+          const resolvedSweepY = this._resolveNonOverlappingY(wy, 16, 22);
+          const by = resolvedSweepY - 8;
 
           ctx.fillStyle = bgCol;
           ctx.fillRect(bx, by, tw, 16);
@@ -1264,7 +1265,15 @@ class BookmapRenderer {
           const p = +pStr;
           const curV = curAsks[pStr] || 0;
           if (curV <= oldV * 0.22 && curP >= p - 0.15) {
-            if (!this._bmSweepEvents.some(sw => Math.abs(sw.price - p) < 0.25 && now - sw.time < 35000)) {
+            const existingSweep = this._bmSweepEvents.find(sw => Math.abs(sw.price - p) <= 0.80 && now - sw.time < 35000);
+            if (existingSweep) {
+              existingSweep.time = now;
+              if (oldV >= existingSweep.vol) {
+                existingSweep.price = p;
+                existingSweep.vol = oldV;
+                existingSweep.badge = `⚡ SWEEP & VOID $${p.toFixed(2)} (${oldV.toFixed(0)}L)`;
+              }
+            } else {
               this._bmSweepEvents.push({
                 id: 'sw_' + now + '_' + p,
                 price: p,
@@ -1284,7 +1293,15 @@ class BookmapRenderer {
           const p = +pStr;
           const curV = curBids[pStr] || 0;
           if (curV <= oldV * 0.22 && curP <= p + 0.15) {
-            if (!this._bmSweepEvents.some(sw => Math.abs(sw.price - p) < 0.25 && now - sw.time < 35000)) {
+            const existingSweep = this._bmSweepEvents.find(sw => Math.abs(sw.price - p) <= 0.80 && now - sw.time < 35000);
+            if (existingSweep) {
+              existingSweep.time = now;
+              if (oldV >= existingSweep.vol) {
+                existingSweep.price = p;
+                existingSweep.vol = oldV;
+                existingSweep.badge = `⚡ SWEEP & VOID $${p.toFixed(2)} (${oldV.toFixed(0)}L)`;
+              }
+            } else {
               this._bmSweepEvents.push({
                 id: 'sw_' + now + '_' + p,
                 price: p,
@@ -1298,7 +1315,7 @@ class BookmapRenderer {
         }
       }
 
-      this._bmSweepEvents = this._bmSweepEvents.filter(sw => now - sw.time < 45000).slice(-3);
+      this._bmSweepEvents = this._bmSweepEvents.filter(sw => now - sw.time < 45000).slice(-2);
       this._prevDepthSnapshot = {
         t: now,
         bids: { ...(snapshot.order_book.bids || {}) },
@@ -2832,8 +2849,11 @@ class BookmapRenderer {
       const col = isBuy ? '#00e676' : '#ff3366';
       const bgCol = isBuy ? 'rgba(5, 38, 22, 0.94)' : 'rgba(45, 10, 20, 0.94)';
 
-      // Draw forward projection trajectory rays if active or recent (< 180s)
-      if (sig.status === 'ACTIVE' || (now - sig.time < 180000)) {
+      // Only keep forward projection trajectory rays for ACTIVE signals or fresh (< 60s)
+      const isSignalActive = (sig.status === 'ACTIVE');
+      const isSignalFresh = (now - sig.time < 60000);
+
+      if (isSignalActive || isSignalFresh) {
         const startLineX = Math.max(this.CHART_LEFT, sigX);
         const endLineX = this.NOW_X;
 
@@ -2927,57 +2947,74 @@ class BookmapRenderer {
 
       // Draw Marker & Badge at (sigX, sigY)
       if (sigX >= this.CHART_LEFT - 30 && sigX <= this.NOW_X + 30 && sigY >= this.CHART_TOP - 12 && sigY <= this.CHART_BOTTOM + 12) {
-        // Glowing Neon Pulse Arrow
-        ctx.fillStyle = col;
-        ctx.shadowColor = col;
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        const arrowH = 10;
-        const arrowW = 7;
-        if (isBuy) {
-          ctx.moveTo(sigX, sigY + 5);
-          ctx.lineTo(sigX - arrowW, sigY + 5 + arrowH);
-          ctx.lineTo(sigX + arrowW, sigY + 5 + arrowH);
+        if (isSignalActive || isSignalFresh) {
+          // Glowing Neon Pulse Arrow
+          ctx.fillStyle = col;
+          ctx.shadowColor = col;
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          const arrowH = 10;
+          const arrowW = 7;
+          if (isBuy) {
+            ctx.moveTo(sigX, sigY + 5);
+            ctx.lineTo(sigX - arrowW, sigY + 5 + arrowH);
+            ctx.lineTo(sigX + arrowW, sigY + 5 + arrowH);
+          } else {
+            ctx.moveTo(sigX, sigY - 5);
+            ctx.lineTo(sigX - arrowW, sigY - 5 - arrowH);
+            ctx.lineTo(sigX + arrowW, sigY - 5 - arrowH);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Bulky Badge ONLY for active signals or signals in the last 60s
+          let statusBadge = '';
+          if (sig.status && sig.status.startsWith('TP')) {
+            const tierNum = sig.status.replace('TP', '').replace('_HIT', '');
+            const pipsNum = parseInt(tierNum, 10) * 50;
+            statusBadge = ` 🎯 TP${tierNum} HIT (+${pipsNum}p)`;
+          } else if (sig.status === 'BE_HIT') {
+            statusBadge = ' 🛡️ BE HIT (0p)';
+          } else if (sig.status === 'SL_HIT') {
+            statusBadge = ' ❌ SL HIT (-50p)';
+          }
+
+          const mainText = `🎯 [BM] ${sig.dir} [${sig.zoneName}]${statusBadge}`;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const bw = ctx.measureText(mainText).width + 12;
+          const bh = 16;
+          const bx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - bw - 4, sigX - bw / 2));
+          const rawBy = isBuy ? (sigY + 18) : (sigY - bh - 18);
+          const resolvedBy = this._resolveNonOverlappingY(rawBy, bh, 22);
+          const by = resolvedBy;
+
+          ctx.fillStyle = bgCol;
+          ctx.fillRect(bx, by, bw, bh);
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(bx, by, bw, bh);
+
+          ctx.fillStyle = col;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(mainText, bx + bw / 2, by + bh / 2);
         } else {
-          ctx.moveTo(sigX, sigY - 5);
-          ctx.lineTo(sigX - arrowW, sigY - 5 - arrowH);
-          ctx.lineTo(sigX + arrowW, sigY - 5 - arrowH);
+          // Subtle micro-marker for completed historical trade (chart stays clean & spacious)
+          ctx.fillStyle = isBuy ? 'rgba(0, 230, 118, 0.40)' : 'rgba(255, 51, 102, 0.40)';
+          ctx.beginPath();
+          if (isBuy) {
+            ctx.moveTo(sigX, sigY + 3);
+            ctx.lineTo(sigX - 4, sigY + 9);
+            ctx.lineTo(sigX + 4, sigY + 9);
+          } else {
+            ctx.moveTo(sigX, sigY - 3);
+            ctx.lineTo(sigX - 4, sigY - 9);
+            ctx.lineTo(sigX + 4, sigY - 9);
+          }
+          ctx.closePath();
+          ctx.fill();
         }
-        ctx.closePath();
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // Badge
-        let statusBadge = '';
-        if (sig.status && sig.status.startsWith('TP')) {
-          const tierNum = sig.status.replace('TP', '').replace('_HIT', '');
-          const pipsNum = parseInt(tierNum, 10) * 50;
-          statusBadge = ` 🎯 TP${tierNum} HIT (+${pipsNum}p)`;
-        } else if (sig.status === 'BE_HIT') {
-          statusBadge = ' 🛡️ BE HIT (0p)';
-        } else if (sig.status === 'SL_HIT') {
-          statusBadge = ' ❌ SL HIT (-50p)';
-        }
-
-        const mainText = `🎯 [BM] ${sig.dir} [${sig.zoneName}]${statusBadge}`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const bw = ctx.measureText(mainText).width + 12;
-        const bh = 16;
-        const bx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - bw - 4, sigX - bw / 2));
-        const rawBy = isBuy ? (sigY + 18) : (sigY - bh - 18);
-        const resolvedBy = this._resolveNonOverlappingY(rawBy, bh, 22);
-        const by = resolvedBy;
-
-        ctx.fillStyle = bgCol;
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 1.2;
-        ctx.strokeRect(bx, by, bw, bh);
-
-        ctx.fillStyle = col;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(mainText, bx + bw / 2, by + bh / 2);
       }
     }
 
