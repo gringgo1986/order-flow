@@ -819,7 +819,7 @@ class FootprintRenderer {
     ctx.fillRect(0, 0, this.width, this.height);
 
     // 1. Grid Lines & Right Price Scale
-    this._drawGrid(ctx);
+    this._drawGrid(ctx, snapshot);
 
     // 1B. Prop-Firm Session High/Low, PDH/PDL & Sweep Markers
     if (this.showSessionLevels && snapshot.sessions) {
@@ -890,7 +890,7 @@ class FootprintRenderer {
     }
   }
 
-  _drawGrid(ctx) {
+  _drawGrid(ctx, snapshot = null) {
     ctx.save();
     ctx.lineWidth = 1;
     ctx.font = 'bold 11px "JetBrains Mono", monospace';
@@ -911,6 +911,36 @@ class FootprintRenderer {
 
       ctx.fillStyle = '#64748b';
       ctx.fillText(p.toFixed(2), this.width - 8, y + 4);
+    }
+
+    // Live Current Price Neon Laser Line & Glowing Right-Axis Badge
+    const curP = snapshot ? (snapshot.last_price || snapshot.bid) : 0;
+    if (curP && curP > 0) {
+      const curY = this.priceToY(curP);
+      if (curY >= 20 && curY <= this.height - 70) {
+        ctx.save();
+        ctx.setLineDash([4, 2]);
+        ctx.strokeStyle = '#ffd60a';
+        ctx.lineWidth = 1.2;
+        ctx.shadowColor = '#ffd60a';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(0, curY);
+        ctx.lineTo(this.width - 70, curY);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        const pText = curP.toFixed(2);
+        ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
+        const pw = ctx.measureText(pText).width + 10;
+        ctx.fillStyle = '#ffd60a';
+        ctx.fillRect(this.width - pw - 4, curY - 9, pw, 18);
+        ctx.fillStyle = '#020617';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(pText, this.width - pw / 2 - 4, curY + 0.5);
+        ctx.restore();
+      }
     }
     ctx.restore();
   }
@@ -945,19 +975,36 @@ class FootprintRenderer {
       { price: sessions.ny_low,      label: '🗽 NY LOW',        col: '#c084fc', isMajor: false }
     ];
 
-    const drawnTagYs = [];
-    for (const lv of levels) {
-      if (!lv.price || lv.price <= 0) continue;
-      const y = this.priceToY(lv.price);
-      if (y < 20 || y > this.height - 70) continue;
+    // Consolidate nearby SNR levels within $0.40 to prevent badge piling
+    const consolidated = [];
+    for (const raw of levels) {
+      if (!raw.price || raw.price <= 0) continue;
+      const matched = consolidated.find(c => Math.abs(c.price - raw.price) < 0.40);
+      if (matched) {
+        if (!matched.labels.includes(raw.label)) matched.labels.push(raw.label);
+        if (raw.isMajor) { matched.isMajor = true; matched.col = raw.col; }
+      } else {
+        consolidated.push({
+          price: raw.price,
+          labels: [raw.label],
+          col: raw.col,
+          isMajor: raw.isMajor
+        });
+      }
+    }
 
-      // Smart Proximity Ray: Hanya lukis garisan melintang jika dekat harga semasa (±$3.50) untuk elak semak
+    const drawnTagSlots = [];
+    for (const lv of consolidated) {
+      const y = this.priceToY(lv.price);
+      if (y < 22 || y > this.height - 75) continue;
+
+      // Smart Proximity Ray: Hanya lukis garisan melintang jika dekat harga semasa (±$3.50)
       const curP = lastPrice || (candles && candles.length ? candles[candles.length - 1].close : 0);
       const isNear = curP > 0 ? (Math.abs(lv.price - curP) <= 3.50) : lv.isMajor;
 
       if (isNear) {
         ctx.save();
-        ctx.globalAlpha = lv.isMajor ? 0.38 : 0.22; // Soft translucent ray: footprint cell numbers stay 100% legible
+        ctx.globalAlpha = lv.isMajor ? 0.36 : 0.20; // Soft translucent ray
         ctx.setLineDash(lv.isMajor ? [6, 4] : [4, 4]);
         ctx.strokeStyle = lv.col;
         ctx.lineWidth = lv.isMajor ? 1.0 : 0.7;
@@ -968,20 +1015,21 @@ class FootprintRenderer {
         ctx.restore();
       }
 
-      const text = `${lv.label} $${lv.price.toFixed(2)}`;
+      const text = `${lv.labels.join(' • ')} $${lv.price.toFixed(2)}`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const tw = ctx.measureText(text).width + 10;
 
-      let tagX = 8;
+      // Strict Left Docking with Anti-Collision Vertical Stacking (Never shoots across chart)
       let tagY = y;
-      let colShift = 0;
-      while (drawnTagYs.some(pt => Math.abs(pt.y - tagY) < 16 && Math.abs(pt.x - tagX) < (tw + 12)) && colShift < 4) {
-        tagX += tw + 10;
-        colShift++;
+      let attempts = 0;
+      while (drawnTagSlots.some(slotY => Math.abs(slotY - tagY) < 15) && attempts < 5) {
+        tagY += 15;
+        attempts++;
       }
-      drawnTagYs.push({ x: tagX, y: tagY });
+      drawnTagSlots.push(tagY);
 
-      ctx.fillStyle = 'rgba(8, 13, 24, 0.92)';
+      const tagX = 8;
+      ctx.fillStyle = 'rgba(8, 13, 24, 0.94)';
       ctx.fillRect(tagX, tagY - 8, tw, 15);
       ctx.strokeStyle = lv.col;
       ctx.lineWidth = 0.9;
@@ -2055,39 +2103,53 @@ class FootprintRenderer {
                           (c._absorptionLow && c.delta > 0) || 
                           (activeDemand && c.delta > 10.0);
 
+      const isRecentSignal = (i >= candles.length - 2);
+
       if (isBullSetup) {
-        // Neon Glowing Pulse Arrow
-        ctx.fillStyle = '#00e676';
-        ctx.shadowColor = '#00e676';
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.moveTo(centerX, yLow + 28);
-        ctx.lineTo(centerX - 6, yLow + 38);
-        ctx.lineTo(centerX + 6, yLow + 38);
-        ctx.closePath();
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
         const zoneName = activeDemand ? activeDemand.name : 'DEMAND ABSORPTION';
-        const badgeText = `🎯 [CLUSTER] BUY [${zoneName}]`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const bw = ctx.measureText(badgeText).width + 12;
-        const bx = Math.max(10, centerX - bw / 2);
-        const by = Math.min((this.height || 600) - 86, yLow + 42);
 
-        ctx.fillStyle = 'rgba(5, 38, 22, 0.94)';
-        ctx.fillRect(bx, by, bw, 16);
-        ctx.strokeStyle = '#00e676';
-        ctx.lineWidth = 1.1;
-        ctx.strokeRect(bx, by, bw, 16);
-        ctx.fillStyle = '#00e676';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(badgeText, bx + bw / 2, by + 8);
+        if (isRecentSignal) {
+          // Neon Glowing Pulse Arrow & Full Bulky Badge for LIVE/FRESH signal
+          ctx.fillStyle = '#00e676';
+          ctx.shadowColor = '#00e676';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.moveTo(centerX, yLow + 28);
+          ctx.lineTo(centerX - 6, yLow + 38);
+          ctx.lineTo(centerX + 6, yLow + 38);
+          ctx.closePath();
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          const badgeText = `🎯 [CLUSTER] BUY [${zoneName}]`;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const bw = ctx.measureText(badgeText).width + 12;
+          const bx = Math.max(10, centerX - bw / 2);
+          const by = Math.min((this.height || 600) - 86, yLow + 42);
+
+          ctx.fillStyle = 'rgba(5, 38, 22, 0.94)';
+          ctx.fillRect(bx, by, bw, 16);
+          ctx.strokeStyle = '#00e676';
+          ctx.lineWidth = 1.1;
+          ctx.strokeRect(bx, by, bw, 16);
+          ctx.fillStyle = '#00e676';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(badgeText, bx + bw / 2, by + 8);
+        } else {
+          // Subtle micro-arrow for historical candle (keeps candle cells 100% visible)
+          ctx.fillStyle = 'rgba(0, 230, 118, 0.55)';
+          ctx.beginPath();
+          ctx.moveTo(centerX, yLow + 6);
+          ctx.lineTo(centerX - 4, yLow + 13);
+          ctx.lineTo(centerX + 4, yLow + 13);
+          ctx.closePath();
+          ctx.fill();
+        }
 
         // Register to Signals Journal with standard institutional 50p SL & Multi-TP
         const sigKey = `cl_buy_${c.time}`;
-        if (!this._emittedFpSignals.has(sigKey) && (i >= candles.length - 2)) {
+        if (!this._emittedFpSignals.has(sigKey) && isRecentSignal) {
           this._emittedFpSignals.add(sigKey);
           if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
             const entry = c.close;
@@ -2116,34 +2178,46 @@ class FootprintRenderer {
                           (activeSupply && c.delta < -10.0);
 
       if (isBearSetup) {
-        // Neon Glowing Pulse Arrow
-        ctx.fillStyle = '#ff3366';
-        ctx.shadowColor = '#ff3366';
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.moveTo(centerX, yHigh - 28);
-        ctx.lineTo(centerX - 6, yHigh - 38);
-        ctx.lineTo(centerX + 6, yHigh - 38);
-        ctx.closePath();
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
         const zoneName = activeSupply ? activeSupply.name : 'SUPPLY ABSORPTION';
-        const badgeText = `🎯 [CLUSTER] SELL [${zoneName}]`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const bw = ctx.measureText(badgeText).width + 12;
-        const bx = Math.max(10, centerX - bw / 2);
-        const by = Math.max(34, yHigh - 58);
 
-        ctx.fillStyle = 'rgba(45, 10, 20, 0.94)';
-        ctx.fillRect(bx, by, bw, 16);
-        ctx.strokeStyle = '#ff3366';
-        ctx.lineWidth = 1.1;
-        ctx.strokeRect(bx, by, bw, 16);
-        ctx.fillStyle = '#ff3366';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(badgeText, bx + bw / 2, by + 8);
+        if (isRecentSignal) {
+          // Neon Glowing Pulse Arrow & Full Bulky Badge for LIVE/FRESH signal
+          ctx.fillStyle = '#ff3366';
+          ctx.shadowColor = '#ff3366';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.moveTo(centerX, yHigh - 28);
+          ctx.lineTo(centerX - 6, yHigh - 38);
+          ctx.lineTo(centerX + 6, yHigh - 38);
+          ctx.closePath();
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          const badgeText = `🎯 [CLUSTER] SELL [${zoneName}]`;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const bw = ctx.measureText(badgeText).width + 12;
+          const bx = Math.max(10, centerX - bw / 2);
+          const by = Math.max(34, yHigh - 58);
+
+          ctx.fillStyle = 'rgba(45, 10, 20, 0.94)';
+          ctx.fillRect(bx, by, bw, 16);
+          ctx.strokeStyle = '#ff3366';
+          ctx.lineWidth = 1.1;
+          ctx.strokeRect(bx, by, bw, 16);
+          ctx.fillStyle = '#ff3366';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(badgeText, bx + bw / 2, by + 8);
+        } else {
+          // Subtle micro-arrow for historical candle (keeps candle cells 100% visible)
+          ctx.fillStyle = 'rgba(255, 51, 102, 0.55)';
+          ctx.beginPath();
+          ctx.moveTo(centerX, yHigh - 6);
+          ctx.lineTo(centerX - 4, yHigh - 13);
+          ctx.lineTo(centerX + 4, yHigh - 13);
+          ctx.closePath();
+          ctx.fill();
+        }
 
         // Register to Signals Journal with standard institutional 50p SL & Multi-TP
         const sigKey = `cl_sell_${c.time}`;
