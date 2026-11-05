@@ -1462,3 +1462,17 @@ header.app-header {
   box-shadow: 0 0 16px rgba(0, 240, 255, 0.8) !important;
   transition: all 0.08s ease !important;
 }
+
+/* ── Total Scrollbar Annihilation for Top Header ── */
+.app-header {
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.app-header::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
