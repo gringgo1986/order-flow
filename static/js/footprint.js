@@ -823,7 +823,7 @@ class FootprintRenderer {
 
     // 1B. Prop-Firm Session High/Low, PDH/PDL & Sweep Markers
     if (this.showSessionLevels && snapshot.sessions) {
-      this._drawSessionLevels(ctx, snapshot.sessions);
+      this._drawSessionLevels(ctx, snapshot.sessions, candles, snapshot.last_price);
     }
 
     // 1C. Composite Session Volume Profile (SVP) & Iceberg Overlays
@@ -915,7 +915,7 @@ class FootprintRenderer {
     ctx.restore();
   }
 
-  _drawSessionLevels(ctx, sessions) {
+  _drawSessionLevels(ctx, sessions, candles = [], lastPrice = 0) {
     if (!sessions) return;
     ctx.save();
     const levels = [
@@ -952,10 +952,12 @@ class FootprintRenderer {
       if (y < 20 || y > this.height - 70) continue;
 
       // Smart Proximity Ray: Hanya lukis garisan melintang jika dekat harga semasa (±$3.50) untuk elak semak
-      const curP = (candles && candles.length ? candles[candles.length - 1].close : 0);
+      const curP = lastPrice || (candles && candles.length ? candles[candles.length - 1].close : 0);
       const isNear = curP > 0 ? (Math.abs(lv.price - curP) <= 3.50) : lv.isMajor;
 
       if (isNear) {
+        ctx.save();
+        ctx.globalAlpha = lv.isMajor ? 0.38 : 0.22; // Soft translucent ray: footprint cell numbers stay 100% legible
         ctx.setLineDash(lv.isMajor ? [6, 4] : [4, 4]);
         ctx.strokeStyle = lv.col;
         ctx.lineWidth = lv.isMajor ? 1.0 : 0.7;
@@ -963,7 +965,7 @@ class FootprintRenderer {
         ctx.moveTo(80, y);
         ctx.lineTo(this.width - 70, y);
         ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.restore();
       }
 
       const text = `${lv.label} $${lv.price.toFixed(2)}`;
@@ -1473,6 +1475,8 @@ class FootprintRenderer {
 
     // 5. Render MarketDelta Style Imbalance Bounding Boxes (Kotak Label Hijau & Merah)
     if (this.showStackedImbalances !== false) {
+      const isRecentCandle = (candles && candles.length > 0) ? (candles.indexOf(rawCandle) >= candles.length - 2) : isLive;
+
       // ── Stacked Buy Imbalances (Kotak Hijau di Pucuk / Blok Belian) ──
       for (const stack of stackedBuyLevels) {
         const topP = Math.max(...stack) + step;
@@ -1501,16 +1505,18 @@ class FootprintRenderer {
         ctx.textAlign = 'center';
         ctx.fillText(`⚡BUY ${stack.length}x`, boxX + 2 + lblW / 2, yTop - 3.5);
 
-        // Extend Support Zone Ray forward to the live candle
-        ctx.save();
-        ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = 'rgba(0, 230, 118, 0.45)';
-        ctx.lineWidth = 1.0;
-        ctx.beginPath();
-        ctx.moveTo(x + this.candleWidth, (yTop + yBtm) / 2);
-        ctx.lineTo(this.width - 80, (yTop + yBtm) / 2);
-        ctx.stroke();
-        ctx.restore();
+        // Extend Support Zone Ray forward ONLY for the 2 most recent candles (keeps past chart clean)
+        if (isRecentCandle) {
+          ctx.save();
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = 'rgba(0, 230, 118, 0.40)';
+          ctx.lineWidth = 1.0;
+          ctx.beginPath();
+          ctx.moveTo(x + this.candleWidth, (yTop + yBtm) / 2);
+          ctx.lineTo(this.width - 80, (yTop + yBtm) / 2);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
 
       // ── Stacked Sell Imbalances (Kotak Merah di Akar / Blok Jualan) ──
@@ -1541,80 +1547,80 @@ class FootprintRenderer {
         ctx.textAlign = 'center';
         ctx.fillText(`⚡SELL ${stack.length}x`, boxX + 2 + lblW / 2, yBtm + 9.5);
 
-        // Extend Resistance Zone Ray forward to the live candle
-        ctx.save();
-        ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = 'rgba(255, 51, 102, 0.45)';
-        ctx.lineWidth = 1.0;
-        ctx.beginPath();
-        ctx.moveTo(x + this.candleWidth, (yTop + yBtm) / 2);
-        ctx.lineTo(this.width - 80, (yTop + yBtm) / 2);
-        ctx.stroke();
-        ctx.restore();
+        // Extend Resistance Zone Ray forward ONLY for the 2 most recent candles (keeps past chart clean)
+        if (isRecentCandle) {
+          ctx.save();
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = 'rgba(255, 51, 102, 0.40)';
+          ctx.lineWidth = 1.0;
+          ctx.beginPath();
+          ctx.moveTo(x + this.candleWidth, (yTop + yBtm) / 2);
+          ctx.lineTo(this.width - 80, (yTop + yBtm) / 2);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
     }
 
-    // 6. Extreme Wick Absorption Markers (Trapped Sellers / Trapped Buyers)
-    if (this.showWickAbsorption !== false) {
-      if (hasWickAbsorptionLow) {
-        ctx.fillStyle = 'rgba(5, 38, 22, 0.94)';
-        const txt = '🛡️ ABSORPTION LOW';
-        ctx.font = 'bold 8px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(txt).width + 8;
-        ctx.fillRect(centerX - tw / 2, yLow + 8, tw, 15);
-        ctx.strokeStyle = '#00e676';
-        ctx.lineWidth = 1.1;
-        ctx.strokeRect(centerX - tw / 2, yLow + 8, tw, 15);
-        ctx.fillStyle = '#00e676';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(txt, centerX, yLow + 15.5);
-      }
-      if (hasWickAbsorptionHigh) {
-        ctx.fillStyle = 'rgba(45, 10, 20, 0.94)';
-        const txt = '🛡️ ABSORPTION HIGH';
-        ctx.font = 'bold 8px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(txt).width + 8;
-        ctx.fillRect(centerX - tw / 2, yHigh - 23, tw, 15);
-        ctx.strokeStyle = '#ff3366';
-        ctx.lineWidth = 1.1;
-        ctx.strokeRect(centerX - tw / 2, yHigh - 23, tw, 15);
-        ctx.fillStyle = '#ff3366';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(txt, centerX, yHigh - 15.5);
-      }
-    }
+    // 6. Smart Consolidated Wick Absorption & Delta Divergence Badge (Zero Vertical Crowding)
+    const isUltraNarrowBadge = this.candleWidth < 70;
+    const footerHRef = isUltraNarrowBadge ? 40 : (this.candleWidth < 95 ? 52 : 64);
+    const footerSafeY = (this.height || 600) - footerHRef - 4;
 
-    // 6.5. Candle Delta Divergence Badge (Δ DIV)
-    if (this.showCandleDeltaDiv !== false) {
-      const footerYRef = this.height - 62;
-      if (isDeltaDivBullish) {
-        ctx.fillStyle = 'rgba(6, 40, 24, 0.92)';
-        const txt = `⚡ Δ DIV [-${Math.abs(rawCandle.delta || 0).toFixed(1)}]`;
-        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(txt).width + 8;
-        ctx.fillRect(centerX - tw / 2, footerYRef - 16, tw, 13);
-        ctx.strokeStyle = '#00e676';
-        ctx.lineWidth = 0.9;
-        ctx.strokeRect(centerX - tw / 2, footerYRef - 16, tw, 13);
-        ctx.fillStyle = '#00e676';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(txt, centerX, footerYRef - 9.5);
-      } else if (isDeltaDivBearish) {
-        ctx.fillStyle = 'rgba(45, 10, 20, 0.92)';
-        const txt = `⚡ Δ DIV [+${(rawCandle.delta || 0).toFixed(1)}]`;
-        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(txt).width + 8;
-        ctx.fillRect(centerX - tw / 2, footerYRef - 16, tw, 13);
-        ctx.strokeStyle = '#ff3366';
-        ctx.lineWidth = 0.9;
-        ctx.strokeRect(centerX - tw / 2, footerYRef - 16, tw, 13);
-        ctx.fillStyle = '#ff3366';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(txt, centerX, footerYRef - 9.5);
+    // ── Lower Wick Setup (Absorption Low & Bullish Delta Div) ──
+    if (this.showWickAbsorption !== false || this.showCandleDeltaDiv !== false) {
+      if (hasWickAbsorptionLow || isDeltaDivBullish) {
+        let btmBadge = '';
+        if (hasWickAbsorptionLow && isDeltaDivBullish) {
+          btmBadge = `🛡️ ABSORP + Δ DIV [-${Math.abs(rawCandle.delta || 0).toFixed(1)}]`;
+        } else if (hasWickAbsorptionLow) {
+          btmBadge = '🛡️ ABSORPTION LOW';
+        } else if (isDeltaDivBullish) {
+          btmBadge = `⚡ Δ DIV [-${Math.abs(rawCandle.delta || 0).toFixed(1)}]`;
+        }
+
+        if (btmBadge) {
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(btmBadge).width + 8;
+          // Guard against footer table collision
+          const badgeY = Math.min(footerSafeY - 18, yLow + 8);
+          ctx.fillStyle = 'rgba(5, 38, 22, 0.94)';
+          ctx.fillRect(centerX - tw / 2, badgeY, tw, 15);
+          ctx.strokeStyle = '#00e676';
+          ctx.lineWidth = 1.1;
+          ctx.strokeRect(centerX - tw / 2, badgeY, tw, 15);
+          ctx.fillStyle = '#00e676';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(btmBadge, centerX, badgeY + 7.5);
+        }
+      }
+
+      // ── Upper Wick Setup (Absorption High & Bearish Delta Div) ──
+      if (hasWickAbsorptionHigh || isDeltaDivBearish) {
+        let topBadge = '';
+        if (hasWickAbsorptionHigh && isDeltaDivBearish) {
+          topBadge = `🛡️ ABSORP + Δ DIV [+${(rawCandle.delta || 0).toFixed(1)}]`;
+        } else if (hasWickAbsorptionHigh) {
+          topBadge = '🛡️ ABSORPTION HIGH';
+        } else if (isDeltaDivBearish) {
+          topBadge = `⚡ Δ DIV [+${(rawCandle.delta || 0).toFixed(1)}]`;
+        }
+
+        if (topBadge) {
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(topBadge).width + 8;
+          const badgeY = Math.max(32, yHigh - 22);
+          ctx.fillStyle = 'rgba(45, 10, 20, 0.94)';
+          ctx.fillRect(centerX - tw / 2, badgeY, tw, 15);
+          ctx.strokeStyle = '#ff3366';
+          ctx.lineWidth = 1.1;
+          ctx.strokeRect(centerX - tw / 2, badgeY, tw, 15);
+          ctx.fillStyle = '#ff3366';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(topBadge, centerX, badgeY + 7.5);
+        }
       }
     }
 
@@ -2067,7 +2073,7 @@ class FootprintRenderer {
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
         const bw = ctx.measureText(badgeText).width + 12;
         const bx = Math.max(10, centerX - bw / 2);
-        const by = yLow + 42;
+        const by = Math.min((this.height || 600) - 86, yLow + 42);
 
         ctx.fillStyle = 'rgba(5, 38, 22, 0.94)';
         ctx.fillRect(bx, by, bw, 16);
@@ -2127,7 +2133,7 @@ class FootprintRenderer {
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
         const bw = ctx.measureText(badgeText).width + 12;
         const bx = Math.max(10, centerX - bw / 2);
-        const by = yHigh - 58;
+        const by = Math.max(34, yHigh - 58);
 
         ctx.fillStyle = 'rgba(45, 10, 20, 0.94)';
         ctx.fillRect(bx, by, bw, 16);
