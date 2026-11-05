@@ -288,7 +288,8 @@ class DOMManager {
       const isM30 = (m30Res > 0 && Math.abs(p - m30Res) <= 0.08) || (m30Sup > 0 && Math.abs(p - m30Sup) <= 0.08);
       const isM15 = (m15Res > 0 && Math.abs(p - m15Res) <= 0.08) || (m15Sup > 0 && Math.abs(p - m15Sup) <= 0.08);
       const hasIceberg = icebergs.some(ic => Math.abs(ic.price - p) <= 0.11 && (nowMs - ic.timestamp < 90000));
-      const hasSpoofPull = spoofEvents.some(sp => sp.type === 'PULLING' && Math.abs(sp.price - p) <= 0.08 && (nowMs - sp.timestamp < 12000));
+      const hasSpoofPull = spoofEvents.some(sp => sp.type === 'PULLING' && Math.abs(sp.price - p) <= 0.08 && (nowMs - sp.timestamp < 15000));
+      const hasSpoofStack = spoofEvents.some(sp => sp.type === 'STACKING' && Math.abs(sp.price - p) <= 0.08 && (nowMs - sp.timestamp < 15000));
       const isShark = vol >= 78.0;
       const isWall = vol >= 50.0;
       const barWidth = Math.min(100, (vol / scale) * 100);
@@ -298,7 +299,8 @@ class DOMManager {
 
       let badgePrefix = '';
       if (isMarketPriceRow) badgePrefix = '⚡ ';
-      else if (hasSpoofPull) badgePrefix = '⚡ ';
+      else if (hasSpoofPull) badgePrefix = '⚡ SPOOF ';
+      else if (hasSpoofStack) badgePrefix = '🧱 STACK ';
       else if (is1D) badgePrefix = isAboveMarket ? '🏛️1D-RES ' : '🏛️1D-SUP ';
       else if (is1DOpen) badgePrefix = '⚡1D-OPEN ';
       else if (isH8) badgePrefix = '🏛️H8 ';
@@ -315,7 +317,9 @@ class DOMManager {
       if (isMarketPriceRow) {
         rowBgStyle = 'background:rgba(255, 214, 10, 0.22); border-top:1px solid #ffd60a; border-bottom:1px solid #ffd60a; font-weight:800;';
       } else if (hasSpoofPull) {
-        rowBgStyle = 'background:rgba(239,68,68,0.22); border-right:2px solid #ef4444;';
+        rowBgStyle = 'background:rgba(239,68,68,0.28); border-right:3px solid #ef4444; border-left:3px solid #ef4444;';
+      } else if (hasSpoofStack) {
+        rowBgStyle = 'background:rgba(0,240,255,0.22); border-right:3px solid #00f0ff; border-left:3px solid #00f0ff;';
       } else if (is1D) {
         rowBgStyle = 'background:rgba(253,224,71,0.28); border-right:3px solid #fde047;';
       } else if (is1DOpen) {
