@@ -44,7 +44,15 @@
         <span id="txtTickCadence" style="color:#00f0ff; font-weight:700;">1s</span>
         <span id="txtTickClock" style="color:#94a3b8; font-size:9.5px;">--:--:--</span>
         <span id="txtTickLatency" style="color:#22c55e; font-size:9px; font-weight:700;">0ms</span>
-        <span style="display:none;" id="txtTickVelocity"></span>
+      </div>
+
+      <!-- ATAS Speed of Tape (Tick Velocity Radar) -->
+      <div id="tapeSpeedGauge" class="speed-tape-pill" title="ATAS Speed of Tape: Mengukur kelajuan transaksi sesaat (Tick Velocity) untuk mengesan ledakan volatiliti HFT jerung">
+        <span class="speed-icon">⚡</span>
+        <span class="speed-title">SPEED:</span>
+        <span id="txtTickVelocity" class="speed-val">1 t/s</span>
+        <div class="speed-meter-track"><div id="tapeSpeedFill" class="speed-meter-fill"></div></div>
+        <span id="tapeSpeedTag" class="speed-tag">NORMAL</span>
       </div>
 
       <div class="session-badge" id="sessionHeaderBadge" title="Sesi Dagangan Semasa & Penjejak Sapuan Kecairan" style="display:inline-flex; align-items:center; gap:4px; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.28); border-radius:4px; padding:2px 6px; font-family:var(--font-mono); font-size:10px; color:#fbbf24; font-weight:700;">
