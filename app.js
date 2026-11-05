@@ -666,6 +666,38 @@ class App {
       } else if (e.key === 'd' || e.key === 'D') {
         const btnDash = document.getElementById('btnOpenConfluenceDash');
         if (btnDash) btnDash.click();
+      } else if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        const btnFastBuy = document.getElementById('btnFastBuy');
+        if (btnFastBuy) {
+          btnFastBuy.classList.add('btn-press-flash');
+          setTimeout(() => btnFastBuy.classList.remove('btn-press-flash'), 200);
+          btnFastBuy.click();
+        }
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        const btnFastSell = document.getElementById('btnFastSell');
+        if (btnFastSell) {
+          btnFastSell.classList.add('btn-press-flash');
+          setTimeout(() => btnFastSell.classList.remove('btn-press-flash'), 200);
+          btnFastSell.click();
+        }
+      } else if (e.code === 'Space') {
+        e.preventDefault();
+        const btnFastBE = document.getElementById('btnFastBE');
+        if (btnFastBE) {
+          btnFastBE.classList.add('btn-press-flash');
+          setTimeout(() => btnFastBE.classList.remove('btn-press-flash'), 200);
+          btnFastBE.click();
+        }
+      } else if (e.key === 'x' || e.key === 'X') {
+        e.preventDefault();
+        const btnFastCloseAll = document.getElementById('btnFastCloseAll');
+        if (btnFastCloseAll) {
+          btnFastCloseAll.classList.add('btn-press-flash');
+          setTimeout(() => btnFastCloseAll.classList.remove('btn-press-flash'), 200);
+          btnFastCloseAll.click();
+        }
       }
     });
 
@@ -1409,24 +1441,59 @@ class App {
     }, 20);
   }
 
-  async sendTrade(action) {
-    const volume = parseFloat(this.inputLot.value) || 0.01;
-    const slPips = parseFloat(this.inputSL.value) || 0;
-    const tpPips = parseFloat(this.inputTP.value) || 0;
-
+  _playExecutionChime(isBuy = true) {
     try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(isBuy ? 587.33 : 440.0, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(isBuy ? 880.0 : 329.63, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.16);
+    } catch (e) {}
+  }
+
+  async sendTrade(action, overrideLot) {
+    const inputFastLot = document.getElementById('inputFastLot');
+    let volume = 0.05;
+    if (overrideLot !== undefined && overrideLot !== null && !isNaN(overrideLot) && overrideLot > 0) {
+      volume = overrideLot;
+    } else if (inputFastLot && parseFloat(inputFastLot.value) > 0) {
+      volume = parseFloat(inputFastLot.value);
+    } else if (this.inputLot && parseFloat(this.inputLot.value) > 0) {
+      volume = parseFloat(this.inputLot.value);
+    }
+
+    const slPips = parseFloat(this.inputSL ? this.inputSL.value : 40) || 40;
+    const tpPips = parseFloat(this.inputTP ? this.inputTP.value : 80) || 80;
+
+    this._playExecutionChime(action.toUpperCase() === 'BUY');
+    try {
+      const t0 = performance.now();
       const res = await fetch('/api/trade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: action,
+          action: action.toUpperCase(),
           volume: volume,
           sl_pips: slPips,
           tp_pips: tpPips
         })
       });
       const data = await res.json();
-      this.showToast(data.message || (action + ' executed!'));
+      const lat = Math.round(performance.now() - t0);
+      if (data.status === 'success') {
+        this.showToast(`⚡ ${action.toUpperCase()} ${volume.toFixed(2)}L BERJAYA! [${lat}ms] ${data.message || ''}`);
+      } else {
+        this.showToast(`🚨 ${data.message || 'Ralat tempahan'}`);
+      }
     } catch (err) {
       this.showToast('Order failed: ' + err.message);
     }
@@ -1526,8 +1593,38 @@ class App {
     if (this.elTickVelocity) {
       const tv = s.tick_velocity_1s || 1;
       const pv = s.price_velocity_1s !== undefined ? s.price_velocity_1s : 0.0;
-      this.elTickVelocity.textContent = `⚡ ${tv}t/s ($${pv.toFixed(2)})`;
-      this.elTickVelocity.style.color = tv >= 5 ? '#00e676' : '#ffb703';
+      this.elTickVelocity.textContent = `${tv} t/s`;
+
+      const gauge = document.getElementById('tapeSpeedGauge');
+      const fill = document.getElementById('tapeSpeedFill');
+      const tag = document.getElementById('tapeSpeedTag');
+
+      if (gauge && fill && tag) {
+        const pct = Math.min(100, Math.max(10, Math.round((tv / 20) * 100)));
+        fill.style.width = pct + '%';
+        gauge.classList.remove('speed-active', 'speed-surge', 'speed-burst');
+
+        if (tv >= 15) {
+          gauge.classList.add('speed-burst');
+          tag.textContent = '⚡ HFT BURST';
+          fill.style.background = '#ef4444';
+          this.elTickVelocity.style.color = '#f87171';
+        } else if (tv >= 9) {
+          gauge.classList.add('speed-surge');
+          tag.textContent = '🔥 SURGE';
+          fill.style.background = '#f97316';
+          this.elTickVelocity.style.color = '#fb923c';
+        } else if (tv >= 4) {
+          gauge.classList.add('speed-active');
+          tag.textContent = 'AKTIF';
+          fill.style.background = '#fbbf24';
+          this.elTickVelocity.style.color = '#fbbf24';
+        } else {
+          tag.textContent = 'NORMAL';
+          fill.style.background = '#38bdf8';
+          this.elTickVelocity.style.color = '#38bdf8';
+        }
+      }
     }
     if (this.elActiveSession && s.sessions && s.sessions.active_session) {
       const sw = s.sessions.sweep_alert;
