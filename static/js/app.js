@@ -664,7 +664,32 @@ class App {
         if (this.bookmap && this.bookmap.centerVertical) this.bookmap.centerVertical();
         if (this.footprint && this.footprint.centerVertical) this.footprint.centerVertical();
       } else if (e.key === 'd' || e.key === 'D') {
-        const btnDash = document.getElementById('btnOpenConfluenceDash');
+        const btnNewsModal = document.getElementById('btnOpenNewsSignalModal');
+    const modalNews = document.getElementById('newsSignalModal');
+    const btnCloseNews = document.getElementById('btnCloseNewsModal');
+    if (btnNewsModal && modalNews) {
+      btnNewsModal.addEventListener('click', () => {
+        const isShown = modalNews.style.display === 'flex';
+        modalNews.style.display = isShown ? 'none' : 'flex';
+      });
+    }
+    if (btnCloseNews && modalNews) {
+      btnCloseNews.addEventListener('click', () => {
+        modalNews.style.display = 'none';
+      });
+    }
+    const btnNewsBuy = document.getElementById('btnNewsModalBuy');
+    const btnNewsSell = document.getElementById('btnNewsModalSell');
+    if (btnNewsBuy) btnNewsBuy.addEventListener('click', () => {
+      const b = document.getElementById('btnFastBuy');
+      if (b) b.click();
+    });
+    if (btnNewsSell) btnNewsSell.addEventListener('click', () => {
+      const s = document.getElementById('btnFastSell');
+      if (s) s.click();
+    });
+
+    const btnDash = document.getElementById('btnOpenConfluenceDash');
         if (btnDash) btnDash.click();
       } else if (e.key === 'b' || e.key === 'B') {
         e.preventDefault();
@@ -1590,6 +1615,89 @@ class App {
     if (this.elTickCadence) {
       this.elTickCadence.textContent = s.feed_source === 'swissquote' ? '1s SWISSQUOTE' : '1s MT5 BROKER';
     }
+    // Update High-Impact News HUD & Signal Engine
+    if (s.macro_news) {
+      const mn = s.macro_news;
+      const ev = mn.event || {};
+      const sig = mn.signal || {};
+
+      // 1. Update Header Button Pill
+      const lblEvent = document.getElementById('txtNewsHeaderLabel');
+      const lblTimer = document.getElementById('badgeNewsHeaderCountdown');
+      const badgeBias = document.getElementById('badgeNewsHeaderBias');
+
+      if (lblEvent) lblEvent.textContent = `NEWS: ${ev.symbol || 'USD CPI'}`;
+      if (lblTimer) lblTimer.textContent = mn.countdown_text || '--m';
+      if (badgeBias) {
+        const isBuy = (sig.action || '').includes('BUY');
+        badgeBias.textContent = isBuy ? '🟢 BUY' : '🔴 SELL';
+        badgeBias.style.background = isBuy ? '#10b981' : '#ef4444';
+      }
+
+      // 2. Update News Signal Modal Content if open or in DOM
+      const titleEl = document.getElementById('newsModalTitle');
+      const countEl = document.getElementById('newsModalCountdownBadge');
+      const prevEl = document.getElementById('newsMetricPrev');
+      const fcEl = document.getElementById('newsMetricForecast');
+      const actEl = document.getElementById('newsMetricActual');
+      const devEl = document.getElementById('newsMetricDevDesc');
+      const sigCard = document.getElementById('newsSignalCard');
+      const sigActBig = document.getElementById('newsSignalActionBig');
+      const sigConf = document.getElementById('newsSignalConfBadge');
+      const sigTgt = document.getElementById('newsSignalTarget');
+      const sigReason = document.getElementById('newsSignalReason');
+      const sigRules = document.getElementById('newsSignalRulesList');
+
+      if (titleEl) titleEl.textContent = ev.name || '';
+      if (countEl) countEl.textContent = mn.countdown_text || '';
+      if (prevEl) prevEl.textContent = ev.previous || '';
+      if (fcEl) fcEl.textContent = ev.forecast || '';
+      if (actEl) actEl.textContent = ev.actual || '';
+      if (devEl) devEl.textContent = `*${ev.deviation_summary || ''}`;
+
+      if (sigCard && sigActBig) {
+        const isBuy = (sig.action || '').includes('BUY');
+        if (isBuy) {
+          sigCard.style.background = 'linear-gradient(135deg, rgba(16,185,129,0.14), rgba(6,78,59,0.22))';
+          sigCard.style.borderColor = '#10b981';
+          sigActBig.textContent = `🟢 ${sig.action} XAUUSD`;
+          sigActBig.style.color = '#10b981';
+          if (sigConf) sigConf.style.background = '#10b981';
+          if (sigTgt) {
+            sigTgt.textContent = `+${sig.target_pips || 50} Pips ($${sig.target_price || 0})`;
+            sigTgt.style.color = '#34d399';
+          }
+        } else {
+          sigCard.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.14), rgba(127,29,29,0.22))';
+          sigCard.style.borderColor = '#ef4444';
+          sigActBig.textContent = `🔴 ${sig.action} XAUUSD`;
+          sigActBig.style.color = '#ef4444';
+          if (sigConf) sigConf.style.background = '#ef4444';
+          if (sigTgt) {
+            sigTgt.textContent = `-${sig.target_pips || 50} Pips ($${sig.target_price || 0})`;
+            sigTgt.style.color = '#f87171';
+          }
+        }
+      }
+      if (sigConf) sigConf.textContent = `${sig.confidence || 90}% KEYAKINAN`;
+      if (sigReason) sigReason.textContent = sig.gold_reason || '';
+
+      if (sigRules && sig.orderflow_rules) {
+        sigRules.innerHTML = sig.orderflow_rules.map(r => `<li>${r}</li>`).join('');
+      }
+
+      // 3. Populate master schedule list
+      const schedList = document.getElementById('newsScheduleList');
+      if (schedList && mn.schedule && !schedList.hasChildNodes()) {
+        schedList.innerHTML = mn.schedule.map(item => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 6px; background:rgba(0,0,0,0.25); border-radius:4px; border-left:2px solid ${item.impact === 'HIGH_RED' ? '#ef4444' : '#f59e0b'};">
+            <span style="color:#f1f5f9; font-weight:700;">${item.name}</span>
+            <span style="color:#94a3b8; font-family:var(--font-mono);">${item.time_myt} MYT</span>
+          </div>
+        `).join('');
+      }
+    }
+
     if (this.elTickVelocity) {
       const tv = s.tick_velocity_1s || 1;
       const pv = s.price_velocity_1s !== undefined ? s.price_velocity_1s : 0.0;
