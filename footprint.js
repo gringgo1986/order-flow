@@ -801,8 +801,8 @@ class FootprintRenderer {
     }
 
     // Auto vertical bounds: fast-snap on mode switch, smooth track when live
-    const padMin = lowest - step;
-    const padMax = highest + step;
+    const padMin = lowest - (step * 2.2);
+    const padMax = highest + (step * 2.2);
     if (!this._boundsInitialized || Math.abs(this.minPrice - padMin) > 6.0) {
       this.minPrice = padMin;
       this.maxPrice = padMax;
@@ -951,14 +951,20 @@ class FootprintRenderer {
       const y = this.priceToY(lv.price);
       if (y < 20 || y > this.height - 70) continue;
 
-      ctx.setLineDash(lv.isMajor ? [8, 4] : [5, 4]);
-      ctx.strokeStyle = lv.col;
-      ctx.lineWidth = lv.isMajor ? 1.2 : 0.9;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(this.width - 70, y);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      // Smart Proximity Ray: Hanya lukis garisan melintang jika dekat harga semasa (±$3.50) untuk elak semak
+      const curP = (candles && candles.length ? candles[candles.length - 1].close : 0);
+      const isNear = curP > 0 ? (Math.abs(lv.price - curP) <= 3.50) : lv.isMajor;
+
+      if (isNear) {
+        ctx.setLineDash(lv.isMajor ? [6, 4] : [4, 4]);
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = lv.isMajor ? 1.0 : 0.7;
+        ctx.beginPath();
+        ctx.moveTo(80, y);
+        ctx.lineTo(this.width - 70, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       const text = `${lv.label} $${lv.price.toFixed(2)}`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
@@ -1858,11 +1864,16 @@ class FootprintRenderer {
     const maxChartX = this.width - 85;
 
     ctx.save();
-    for (let i = 0; i < candles.length - 1; i++) {
-      const c = candles[i];
-      if (!c._centerX) continue;
+    let drawnCountHigh = 0;
+    let drawnCountLow = 0;
 
-      if (c._unfinishedHigh) {
+    // Scan backwards from most recent candles (max 12 bars back, ignore old mitigated clutter)
+    const startIdx = Math.max(0, candles.length - 14);
+    for (let i = candles.length - 2; i >= startIdx; i--) {
+      const c = candles[i];
+      if (!c || !c._centerX) continue;
+
+      if (c._unfinishedHigh && drawnCountHigh < 2) {
         const p = c._unfinishedHigh;
         let tested = false;
         let sweptX = maxChartX;
@@ -1873,27 +1884,29 @@ class FootprintRenderer {
             break;
           }
         }
-        const y = this.priceToY(p + step * 0.5);
-        if (y >= 15 && y <= this.height - 75) {
-          ctx.strokeStyle = tested ? 'rgba(244, 63, 94, 0.28)' : '#f43f5e';
-          ctx.lineWidth = tested ? 0.9 : 1.6;
-          ctx.setLineDash(tested ? [3, 3] : [6, 3]);
-          ctx.beginPath();
-          ctx.moveTo(c._centerX, y);
-          ctx.lineTo(sweptX, y);
-          ctx.stroke();
-          ctx.setLineDash([]);
+        // Hanya lukis paras yang BELUM diuji (untested) untuk kekalkan carta bersih
+        if (!tested) {
+          const y = this.priceToY(p + step * 0.5);
+          if (y >= 15 && y <= this.height - 75) {
+            ctx.strokeStyle = '#f43f5e';
+            ctx.lineWidth = 1.3;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(c._centerX, y);
+            ctx.lineTo(maxChartX, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
 
-          if (!tested) {
             ctx.fillStyle = '#f43f5e';
             ctx.font = 'bold 8px "JetBrains Mono", monospace';
             ctx.textAlign = 'right';
             ctx.fillText(`⚡UF HIGH $${p.toFixed(2)}`, maxChartX - 4, y - 3);
+            drawnCountHigh++;
           }
         }
       }
 
-      if (c._unfinishedLow) {
+      if (c._unfinishedLow && drawnCountLow < 2) {
         const p = c._unfinishedLow;
         let tested = false;
         let sweptX = maxChartX;
@@ -1904,22 +1917,24 @@ class FootprintRenderer {
             break;
           }
         }
-        const y = this.priceToY(p + step * 0.5);
-        if (y >= 15 && y <= this.height - 75) {
-          ctx.strokeStyle = tested ? 'rgba(16, 185, 129, 0.28)' : '#10b981';
-          ctx.lineWidth = tested ? 0.9 : 1.6;
-          ctx.setLineDash(tested ? [3, 3] : [6, 3]);
-          ctx.beginPath();
-          ctx.moveTo(c._centerX, y);
-          ctx.lineTo(sweptX, y);
-          ctx.stroke();
-          ctx.setLineDash([]);
+        // Hanya lukis paras yang BELUM diuji (untested) untuk kekalkan carta bersih
+        if (!tested) {
+          const y = this.priceToY(p + step * 0.5);
+          if (y >= 15 && y <= this.height - 75) {
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 1.3;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(c._centerX, y);
+            ctx.lineTo(maxChartX, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
 
-          if (!tested) {
             ctx.fillStyle = '#10b981';
             ctx.font = 'bold 8px "JetBrains Mono", monospace';
             ctx.textAlign = 'right';
-            ctx.fillText(`⚡UF LOW $${p.toFixed(2)}`, maxChartX - 4, y - 3);
+            ctx.fillText(`⚡UF LOW $${p.toFixed(2)}`, maxChartX - 4, y + 9);
+            drawnCountLow++;
           }
         }
       }
