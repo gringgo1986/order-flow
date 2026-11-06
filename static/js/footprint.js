@@ -828,6 +828,9 @@ class FootprintRenderer {
 
     // 1C. Composite Session Volume Profile (SVP) & Iceberg Overlays
     this._drawSVPAndIcebergs(ctx, snapshot);
+    if (snapshot.snr_valid_zones && snapshot.snr_valid_zones.length > 0) {
+      this._drawSnrValidZones(ctx, snapshot.snr_valid_zones);
+    }
 
     // 2. Render Footprint Candles (Robust Multi-Bar Engine with Guaranteed Visibility)
     // Synchronize container width & height directly from canvas element
@@ -5993,6 +5996,49 @@ class FootprintRenderer {
     ctx.restore();
   }
 
-}
 
-window.FootprintRenderer = FootprintRenderer;
+  _drawSnrValidZones(ctx, snrZones) {
+    if (!snrZones || snrZones.length === 0) return;
+    for (const z of snrZones) {
+      const yTop = this.priceToY(z.zone_high);
+      const yBot = this.priceToY(z.zone_low);
+      if (yBot < 30 || yTop > (this.height || 600) - 40) continue;
+
+      const isRes = z.type === 'RESISTANCE';
+      const col = isRes ? '#f43f5e' : '#00e676';
+      const bgCol = isRes ? 'rgba(244, 63, 94, 0.10)' : 'rgba(0, 230, 118, 0.10)';
+      const h = Math.max(6, Math.abs(yBot - yTop));
+      const y = Math.min(yTop, yBot);
+
+      // Shaded Band
+      ctx.fillStyle = bgCol;
+      ctx.fillRect(0, y, this.width || 800, h);
+
+      // Dashed boundary
+      ctx.save();
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, y, this.width || 800, h);
+      ctx.restore();
+
+      // Left Margin Badge
+      const badgeTxt = isRes ? `🏆 SNR VALID RES (2MV) $${z.zone_high.toFixed(2)}` : `🏆 SNR VALID SUP (2MV) $${z.zone_low.toFixed(2)}`;
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      const bw = ctx.measureText(badgeTxt).width + 10;
+      const bx = 6;
+      const by = y + h / 2 - 7;
+
+      ctx.fillStyle = isRes ? 'rgba(38, 8, 16, 0.95)' : 'rgba(4, 30, 16, 0.95)';
+      ctx.fillRect(bx, by, bw, 14);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx, by, bw, 14);
+      ctx.fillStyle = col;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeTxt, bx + 5, by + 7);
+    }
+  }
+
+}
