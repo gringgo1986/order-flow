@@ -3668,7 +3668,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
 
     if (!this.signalsList) this.signalsList = [];
     this.signalsList.unshift(newSig);
-    if (this.signalsList.length > 50) this.signalsList = this.signalsList.slice(0, 50);
+    if (this.signalsList.length > 200) this.signalsList = this.signalsList.slice(0, 200);
     this._saveSignals();
     this._renderSignalsUI();
     this.showToast(`📡 Isyarat Baharu: ${newSig.direction} @ $${newSig.entryPrice.toFixed(2)} (SL: $${newSig.slPrice.toFixed(2)}, TP: $${newSig.tpPrice.toFixed(2)})`);
