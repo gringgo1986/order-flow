@@ -891,6 +891,11 @@ class BookmapRenderer {
       this._drawIcebergOrders(ctx, snapshot.icebergs);
     }
 
+    /* ── 8H2. DDBTC 4 Sifat SNR Valid Auto-Marking Zones ── */
+    if (snapshot.snr_valid_zones && snapshot.snr_valid_zones.length > 0) {
+      this._drawSnrValidZones(ctx, snapshot.snr_valid_zones);
+    }
+
     /* ── 8I. Real-Time Institutional Order Flow Buy/Sell Signals (Strict Location-First) ── */
     if (this.bmShowSignals !== false) {
       this._drawOrderFlowSignals(ctx, snapshot, now, currentPrice);
@@ -4125,6 +4130,49 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-}
 
-window.BookmapRenderer = BookmapRenderer;
+  _drawSnrValidZones(ctx, snrZones) {
+    if (!snrZones || snrZones.length === 0) return;
+    for (const z of snrZones) {
+      const yTop = this.priceToY(z.zone_high);
+      const yBot = this.priceToY(z.zone_low);
+      if (yBot < this.CHART_TOP || yTop > this.CHART_BOTTOM) continue;
+
+      const isRes = z.type === 'RESISTANCE';
+      const col = isRes ? '#f43f5e' : '#00e676';
+      const bgCol = isRes ? 'rgba(244, 63, 94, 0.12)' : 'rgba(0, 230, 118, 0.12)';
+      const h = Math.max(8, Math.abs(yBot - yTop));
+      const y = Math.min(yTop, yBot);
+
+      // Shaded Zone Box
+      ctx.fillStyle = bgCol;
+      ctx.fillRect(this.CHART_LEFT, y, this.CHART_WIDTH, h);
+
+      // Dashed Outline
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.1;
+      ctx.strokeRect(this.CHART_LEFT, y, this.CHART_WIDTH, h);
+      ctx.restore();
+
+      // Left Docked Label
+      const badgeTxt = isRes ? `🏆 SNR VALID RES (2MV) $${z.zone_high.toFixed(2)}` : `🏆 SNR VALID SUP (2MV) $${z.zone_low.toFixed(2)}`;
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      const bw = ctx.measureText(badgeTxt).width + 12;
+      const bx = this.CHART_LEFT + 8;
+      const by = y + h / 2 - 8;
+
+      ctx.fillStyle = isRes ? 'rgba(38, 8, 16, 0.95)' : 'rgba(4, 30, 16, 0.95)';
+      ctx.fillRect(bx, by, bw, 16);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx, by, bw, 16);
+      ctx.fillStyle = col;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeTxt, bx + 6, by + 8);
+    }
+  }
+
+}
