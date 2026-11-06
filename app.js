@@ -3682,9 +3682,10 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     if (s.bookmap_signals && Array.isArray(s.bookmap_signals)) {
       for (const bs of s.bookmap_signals) {
         if (!this.signalsList.some(sig => sig.id === bs.id)) {
+          const sigType = bs.type || `🎯 [BOOKMAP] ${bs.zone}`;
           this.addSignal({
             id: bs.id,
-            type: `🎯 [BOOKMAP] ${bs.zone}`,
+            type: sigType,
             direction: bs.direction,
             entryPrice: bs.price,
             slPrice: bs.sl,
