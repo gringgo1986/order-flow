@@ -80,6 +80,9 @@ class OrderFlowEngine:
         self.trapped_traders: List[Dict[str, Any]] = []
         self._last_trapped_candle_time = 0
         self.bookmap_signals: List[Dict[str, Any]] = []
+        self.snr_valid_zones: List[Dict[str, Any]] = []
+        self.snr_valid_signals: List[Dict[str, Any]] = []
+        self._last_snr_valid_time: float = 0.0
         self._last_bm_signal_time = 0.0
         self._last_bm_signal_dir = None
 
@@ -2419,6 +2422,169 @@ class OrderFlowEngine:
             self.spoof_events = self.spoof_events[-8:]
 
 
+    
+    def _evaluate_snr_valid_signals(self, p: float, now: float, now_ms: int):
+        """
+        DDBTC 4 Sifat SNR Valid & Confirmation (1 Makan 1 Engulf + 2MV Retest) Engine.
+        Sifat 1: 1 Makan 1 (Engulfing).
+        Sifat 2: Paling Atas (Extreme Swing High) / Paling Bawah (Extreme Swing Low).
+        Sifat 3: Paling Tajam (V-Shape sharp displacement >= $1.40).
+        Sifat 4: Ada 2 Movement (2MV - Retest & Rejection Confirmation).
+        """
+        if not self.candles or len(self.candles) < 8:
+            return
+
+        # Cooldown: 55 seconds
+        if now - self._last_snr_valid_time < 55.0:
+            return
+
+        candles = self.candles + ([self.current_candle] if self.current_candle else [])
+        n = len(candles)
+
+        # ── 1. SCAN FOR NEW VALID 1 MAKAN 1 ZONES ──
+        # Check recent candles (bars 3 to 14 from end) to discover 1 Makan 1 pivots
+        for i in range(max(2, n - 22), n - 3):
+            prev = candles[i - 1]
+            cur = candles[i]
+            t_id = cur.get("time", i)
+
+            # Check if zone already registered
+            if any(z.get("candle_time") == t_id for z in self.snr_valid_zones):
+                continue
+
+            # RESISTANCE: Bullish candle engulfed by Bearish candle (1 Makan 1)
+            is_prev_bull = prev["close"] > prev["open"]
+            is_cur_bear = cur["close"] < cur["open"]
+            is_bear_engulf = is_prev_bull and is_cur_bear and (cur["close"] <= prev["open"] + 0.15) and (cur["open"] >= prev["close"] - 0.15)
+
+            if is_bear_engulf:
+                # Sifat 2: Paling Atas (Local highest peak in surrounding 7 bars)
+                local_highs = [c["high"] for c in candles[max(0, i - 6):min(n, i + 6)]]
+                max_h = max(local_highs)
+                peak_h = max(prev["high"], cur["high"])
+                if peak_h >= max_h - 0.20:
+                    # Sifat 3: Paling Tajam (Rally away >= $1.40 drop after engulf)
+                    after_lows = [c["low"] for c in candles[i + 1:min(n, i + 6)]]
+                    min_after = min(after_lows) if after_lows else cur["low"]
+                    drop_dist = peak_h - min_after
+                    if drop_dist >= 1.40:
+                        zone_high = round(peak_h, 2)
+                        zone_low = round(min(prev["open"], cur["close"]), 2)
+                        self.snr_valid_zones.append({
+                            "id": f"snr_res_{t_id}",
+                            "type": "RESISTANCE",
+                            "zone_high": zone_high,
+                            "zone_low": zone_low,
+                            "candle_time": t_id,
+                            "created_idx": i,
+                            "tested_count": 0,
+                            "status": "1MV_ACTIVE",
+                            "label": f"🏆 SNR RES 1M1 (${zone_low:.2f}-${zone_high:.2f})"
+                        })
+
+            # SUPPORT: Bearish candle engulfed by Bullish candle (1 Makan 1)
+            is_prev_bear = prev["close"] < prev["open"]
+            is_cur_bull = cur["close"] > cur["open"]
+            is_bull_engulf = is_prev_bear and is_cur_bull and (cur["close"] >= prev["open"] - 0.15) and (cur["open"] <= prev["close"] + 0.15)
+
+            if is_bull_engulf:
+                # Sifat 2: Paling Bawah (Local lowest trough in surrounding 7 bars)
+                local_lows = [c["low"] for c in candles[max(0, i - 6):min(n, i + 6)]]
+                min_l = min(local_lows)
+                trough_l = min(prev["low"], cur["low"])
+                if trough_l <= min_l + 0.20:
+                    # Sifat 3: Paling Tajam (Rally away >= $1.40 up after engulf)
+                    after_highs = [c["high"] for c in candles[i + 1:min(n, i + 6)]]
+                    max_after = max(after_highs) if after_highs else cur["high"]
+                    rally_dist = max_after - trough_l
+                    if rally_dist >= 1.40:
+                        zone_low = round(trough_l, 2)
+                        zone_high = round(max(prev["open"], cur["close"]), 2)
+                        self.snr_valid_zones.append({
+                            "id": f"snr_sup_{t_id}",
+                            "type": "SUPPORT",
+                            "zone_high": zone_high,
+                            "zone_low": zone_low,
+                            "candle_time": t_id,
+                            "created_idx": i,
+                            "tested_count": 0,
+                            "status": "1MV_ACTIVE",
+                            "label": f"🏆 SNR SUP 1M1 (${zone_low:.2f}-${zone_high:.2f})"
+                        })
+
+        if len(self.snr_valid_zones) > 8:
+            self.snr_valid_zones = self.snr_valid_zones[-8:]
+
+        # ── 2. EVALUATE 2ND MOVEMENT (2MV) RETEST & CONFIRMATION SIGNAL ──
+        for z in list(self.snr_valid_zones):
+            # Check RESISTANCE 2MV retest: price returns to zone
+            if z["type"] == "RESISTANCE":
+                in_zone = (z["zone_low"] - 0.25 <= p <= z["zone_high"] + 0.35)
+                if in_zone and z["status"] == "1MV_ACTIVE":
+                    z["tested_count"] += 1
+                    z["status"] = "2MV_CONFIRMED"
+                    self._last_snr_valid_time = now
+
+                    sl = round(z["zone_high"] + 4.0, 2) # 40 pips above zone
+                    tp1 = round(p - 5.0, 2)
+                    tp2 = round(p - 10.0, 2)
+                    tp3 = round(p - 15.0, 2)
+
+                    sig = {
+                        "id": f"snr_res_{now_ms}",
+                        "timestamp": int(now),
+                        "type": "🏆 [SNR VALID] 1 MAKAN 1 RESISTANCE (2MV)",
+                        "direction": "SELL",
+                        "price": round(p, 2),
+                        "sl": sl,
+                        "tp1": tp1,
+                        "tp2": tp2,
+                        "tp3": tp3,
+                        "tp4": round(p - 20.0, 2),
+                        "tp5": round(p - 25.0, 2),
+                        "zone": f"DDBTC RES (${z['zone_low']:.2f}-${z['zone_high']:.2f})",
+                        "badge": "🏆 [SNR VALID] 1M1 SELL",
+                        "status": "ACTIVE"
+                    }
+                    self.snr_valid_signals.append(sig)
+                    self.bookmap_signals.append(sig)
+                    if len(self.bookmap_signals) > 12:
+                        self.bookmap_signals.pop(0)
+
+            # Check SUPPORT 2MV retest: price returns to zone
+            elif z["type"] == "SUPPORT":
+                in_zone = (z["zone_low"] - 0.35 <= p <= z["zone_high"] + 0.25)
+                if in_zone and z["status"] == "1MV_ACTIVE":
+                    z["tested_count"] += 1
+                    z["status"] = "2MV_CONFIRMED"
+                    self._last_snr_valid_time = now
+
+                    sl = round(z["zone_low"] - 4.0, 2) # 40 pips below zone
+                    tp1 = round(p + 5.0, 2)
+                    tp2 = round(p + 10.0, 2)
+                    tp3 = round(p + 15.0, 2)
+
+                    sig = {
+                        "id": f"snr_sup_{now_ms}",
+                        "timestamp": int(now),
+                        "type": "🏆 [SNR VALID] 1 MAKAN 1 SUPPORT (2MV)",
+                        "direction": "BUY",
+                        "price": round(p, 2),
+                        "sl": sl,
+                        "tp1": tp1,
+                        "tp2": tp2,
+                        "tp3": tp3,
+                        "tp4": round(p + 20.0, 2),
+                        "tp5": round(p + 25.0, 2),
+                        "zone": f"DDBTC SUP (${z['zone_low']:.2f}-${z['zone_high']:.2f})",
+                        "badge": "🏆 [SNR VALID] 1M1 BUY",
+                        "status": "ACTIVE"
+                    }
+                    self.snr_valid_signals.append(sig)
+                    self.bookmap_signals.append(sig)
+                    if len(self.bookmap_signals) > 12:
+                        self.bookmap_signals.pop(0)
+
     def _evaluate_bookmap_signals(self) -> List[Dict[str, Any]]:
         """
         Strict Location-First Institutional Bookmap Signal Engine:
@@ -2431,6 +2597,12 @@ class OrderFlowEngine:
         p = self.last_price if self.last_price > 0 else (self.current_bid if self.current_bid > 0 else 4008.0)
         if p <= 0:
             return self.bookmap_signals
+
+        # Evaluate DDBTC 4 Sifat SNR Valid Engine
+        try:
+            self._evaluate_snr_valid_signals(p, now, now_ms)
+        except Exception:
+            pass
 
         # Strict Cooldown (70 seconds minimum between signals of same bias)
         if now - self._last_bm_signal_time < 70.0:
@@ -3095,6 +3267,8 @@ class OrderFlowEngine:
             "mtf_confluence": self._evaluate_mtf_confluence(),
             "prop_firm_shield": self._evaluate_prop_firm_shield(),
             "bookmap_signals": self._evaluate_bookmap_signals(),
+            "snr_valid_zones": self.snr_valid_zones[-6:],
+            "snr_valid_signals": self.snr_valid_signals[-10:],
             "order_book": {
                 "bids": self.order_book_bids,
                 "asks": self.order_book_asks
