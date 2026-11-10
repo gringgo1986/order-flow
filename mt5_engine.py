@@ -2895,6 +2895,15 @@ class OrderFlowEngine:
                 if z_name:
                     self._failed_zone_cooldowns[z_name] = time.time()
 
+    def reset_all_signals(self):
+        """Reset and wipe all active and historical Bookmap and SNR signals in memory"""
+        self.bookmap_signals.clear()
+        self.snr_valid_signals.clear()
+        self._failed_zone_cooldowns.clear()
+        self._last_bm_signal_time = 0.0
+        self._last_snr_valid_time = 0.0
+        return True
+
     def _evaluate_mtf_confluence(self) -> Dict[str, Any]:
         """
         Multi-Timeframe Confluence Matrix:
