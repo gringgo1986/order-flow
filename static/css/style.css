@@ -318,12 +318,28 @@ header.app-header {
   height: 100%;
 }
 
+/* ==================== ULTRA-RESPONSIVE MOBILE TOUCH & GESTURE SYSTEM ==================== */
+canvas#bookmapCanvas,
+canvas#footprintCanvas,
+#bookmapCanvas,
+#footprintCanvas,
+.chart-container,
+.canvas-viewport,
+.chart-canvas {
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  overscroll-behavior: none !important;
+}
+
 canvas#bookmapCanvas, canvas#footprintCanvas {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  touch-action: none !important;
 }
 
 /* Chart Tooltip */
