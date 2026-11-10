@@ -2439,51 +2439,81 @@ class OrderFlowEngine:
 
 
     
+    def _can_emit_signal(self, direction: str, price: float, zone_name: str, now: float) -> bool:
+        """
+        Institutional Master Signal Arbiter:
+        1. Single Active Direction Lock (Anti-Hedging): Blocks opposing signals while an active trade is running.
+        2. Tight Chop Protection: Blocks signals inside tight < $3.50 consolidation ranges.
+        3. One Active Signal Per Zone Lockout: Only 1 active trade permitted per level.
+        4. Broken Level Protection: 15-minute cooldown on levels that hit SL.
+        5. Global Cadence Cooldown: Minimum 75s between signals of same direction.
+        """
+        # 1. Anti-Hedging: Check if an opposing trade is currently ACTIVE or in Break-Even
+        opposing = "SELL" if direction == "BUY" else "BUY"
+        has_opposing_active = any(
+            s.get("direction") == opposing and s.get("status") in ("ACTIVE", "BE_HIT", "TP1_HIT")
+            for s in self.bookmap_signals[-15:]
+        )
+        if has_opposing_active:
+            return False
+
+        # 2. One Active Signal Per Zone Lockout
+        has_active_zone = any(
+            s.get("zone") == zone_name and s.get("status") in ("ACTIVE", "BE_HIT", "TP1_HIT")
+            for s in self.bookmap_signals[-15:]
+        )
+        if has_active_zone:
+            return False
+
+        # 3. Broken Level Cooldown (15 min penalty after SL hit)
+        if now - self._failed_zone_cooldowns.get(zone_name, 0) < 900.0:
+            return False
+
+        # 4. Cadence Cooldown
+        if self._last_bm_signal_dir == direction and (now - self._last_bm_signal_time < 75.0):
+            return False
+
+        # 5. Multi-Timeframe Trend Protection (Never fight heavy trend dominance)
+        mtf = self._evaluate_mtf_confluence()
+        if direction == "BUY" and mtf.get("overall") == "STRONG_SELL":
+            return False
+        if direction == "SELL" and mtf.get("overall") == "STRONG_BUY":
+            return False
+
+        return True
+
     def _evaluate_snr_valid_signals(self, p: float, now: float, now_ms: int):
         """
-        DDBTC 4 Sifat SNR Valid & Confirmation (1 Makan 1 Engulf + 2MV Retest) Engine.
-        Sifat 1: 1 Makan 1 (Engulfing).
-        Sifat 2: Paling Atas (Extreme Swing High) / Paling Bawah (Extreme Swing Low).
-        Sifat 3: Paling Tajam (V-Shape sharp displacement >= $1.40).
-        Sifat 4: Ada 2 Movement (2MV - Retest & Rejection Confirmation).
+        Modul 1: DDBTC 4 Sifat SNR Valid Engine (1 Makan 1 Engulfing + 2MV Retest).
         """
         if not self.candles or len(self.candles) < 8:
-            return
-
-        # Cooldown: 55 seconds
-        if now - self._last_snr_valid_time < 55.0:
             return
 
         candles = self.candles + ([self.current_candle] if self.current_candle else [])
         n = len(candles)
 
-        # ── 1. SCAN FOR NEW VALID 1 MAKAN 1 ZONES ──
-        # Check recent candles (bars 3 to 14 from end) to discover 1 Makan 1 pivots
+        # 1. Scan for new valid 1 Makan 1 zones
         for i in range(max(2, n - 22), n - 3):
             prev = candles[i - 1]
             cur = candles[i]
             t_id = cur.get("time", i)
 
-            # Check if zone already registered
             if any(z.get("candle_time") == t_id for z in self.snr_valid_zones):
                 continue
 
-            # RESISTANCE: Bullish candle engulfed by Bearish candle (1 Makan 1)
+            # RESISTANCE: Bullish engulfed by Bearish (1 Makan 1)
             is_prev_bull = prev["close"] > prev["open"]
             is_cur_bear = cur["close"] < cur["open"]
             is_bear_engulf = is_prev_bull and is_cur_bear and (cur["close"] <= prev["open"] + 0.15) and (cur["open"] >= prev["close"] - 0.15)
 
             if is_bear_engulf:
-                # Sifat 2: Paling Atas (Local highest peak in surrounding 7 bars)
                 local_highs = [c["high"] for c in candles[max(0, i - 6):min(n, i + 6)]]
                 max_h = max(local_highs)
                 peak_h = max(prev["high"], cur["high"])
                 if peak_h >= max_h - 0.20:
-                    # Sifat 3: Paling Tajam (Rally away >= $1.40 drop after engulf)
                     after_lows = [c["low"] for c in candles[i + 1:min(n, i + 6)]]
                     min_after = min(after_lows) if after_lows else cur["low"]
-                    drop_dist = peak_h - min_after
-                    if drop_dist >= 1.40:
+                    if peak_h - min_after >= 1.40:
                         zone_high = round(peak_h, 2)
                         zone_low = round(min(prev["open"], cur["close"]), 2)
                         self.snr_valid_zones.append({
@@ -2498,22 +2528,19 @@ class OrderFlowEngine:
                             "label": f"🏆 SNR RES 1M1 (${zone_low:.2f}-${zone_high:.2f})"
                         })
 
-            # SUPPORT: Bearish candle engulfed by Bullish candle (1 Makan 1)
+            # SUPPORT: Bearish engulfed by Bullish (1 Makan 1)
             is_prev_bear = prev["close"] < prev["open"]
             is_cur_bull = cur["close"] > cur["open"]
             is_bull_engulf = is_prev_bear and is_cur_bull and (cur["close"] >= prev["open"] - 0.15) and (cur["open"] <= prev["close"] + 0.15)
 
             if is_bull_engulf:
-                # Sifat 2: Paling Bawah (Local lowest trough in surrounding 7 bars)
                 local_lows = [c["low"] for c in candles[max(0, i - 6):min(n, i + 6)]]
                 min_l = min(local_lows)
                 trough_l = min(prev["low"], cur["low"])
                 if trough_l <= min_l + 0.20:
-                    # Sifat 3: Paling Tajam (Rally away >= $1.40 up after engulf)
                     after_highs = [c["high"] for c in candles[i + 1:min(n, i + 6)]]
                     max_after = max(after_highs) if after_highs else cur["high"]
-                    rally_dist = max_after - trough_l
-                    if rally_dist >= 1.40:
+                    if max_after - trough_l >= 1.40:
                         zone_low = round(trough_l, 2)
                         zone_high = round(max(prev["open"], cur["close"]), 2)
                         self.snr_valid_zones.append({
@@ -2531,98 +2558,233 @@ class OrderFlowEngine:
         if len(self.snr_valid_zones) > 8:
             self.snr_valid_zones = self.snr_valid_zones[-8:]
 
-        # ── 2. EVALUATE 2ND MOVEMENT (2MV) RETEST & CONFIRMATION SIGNAL ──
+        # 2. Evaluate 2MV Retest with Master Arbiter Protection
         for z in list(self.snr_valid_zones):
-            # Check RESISTANCE 2MV retest: price returns to zone
             if z["type"] == "RESISTANCE":
                 in_zone = (z["zone_low"] - 0.25 <= p <= z["zone_high"] + 0.35)
                 if in_zone and z["status"] == "1MV_ACTIVE":
-                    z["tested_count"] += 1
-                    z["status"] = "2MV_CONFIRMED"
-                    self._last_snr_valid_time = now
+                    zone_label = f"DDBTC RES (${z['zone_low']:.2f}-${z['zone_high']:.2f})"
+                    if self._can_emit_signal("SELL", p, zone_label, now):
+                        z["tested_count"] += 1
+                        z["status"] = "2MV_CONFIRMED"
+                        self._last_snr_valid_time = now
+                        self._last_bm_signal_time = now
+                        self._last_bm_signal_dir = "SELL"
 
-                    sl = round(z["zone_high"] + 4.0, 2) # 40 pips above zone
-                    tp1 = round(p - 5.0, 2)
-                    tp2 = round(p - 10.0, 2)
-                    tp3 = round(p - 15.0, 2)
+                        sig = {
+                            "id": f"snr_res_{now_ms}",
+                            "timestamp": int(now),
+                            "type": "🏆 [SNR VALID] 1 MAKAN 1 RESISTANCE (2MV)",
+                            "direction": "SELL",
+                            "price": round(p, 2),
+                            "sl": round(z["zone_high"] + 4.0, 2),
+                            "tp1": round(p - 5.0, 2),
+                            "tp2": round(p - 10.0, 2),
+                            "tp3": round(p - 15.0, 2),
+                            "tp4": round(p - 20.0, 2),
+                            "tp5": round(p - 25.0, 2),
+                            "zone": zone_label,
+                            "badge": "🏆 [SNR VALID] 1M1 SELL",
+                            "status": "ACTIVE"
+                        }
+                        self.snr_valid_signals.append(sig)
+                        self.bookmap_signals.append(sig)
+                        if len(self.bookmap_signals) > 35:
+                            self.bookmap_signals.pop(0)
 
-                    sig = {
-                        "id": f"snr_res_{now_ms}",
-                        "timestamp": int(now),
-                        "type": "🏆 [SNR VALID] 1 MAKAN 1 RESISTANCE (2MV)",
-                        "direction": "SELL",
-                        "price": round(p, 2),
-                        "sl": sl,
-                        "tp1": tp1,
-                        "tp2": tp2,
-                        "tp3": tp3,
-                        "tp4": round(p - 20.0, 2),
-                        "tp5": round(p - 25.0, 2),
-                        "zone": f"DDBTC RES (${z['zone_low']:.2f}-${z['zone_high']:.2f})",
-                        "badge": "🏆 [SNR VALID] 1M1 SELL",
-                        "status": "ACTIVE"
-                    }
-                    self.snr_valid_signals.append(sig)
-                    self.bookmap_signals.append(sig)
-                    if len(self.bookmap_signals) > 35:
-                        self.bookmap_signals.pop(0)
-
-            # Check SUPPORT 2MV retest: price returns to zone
             elif z["type"] == "SUPPORT":
                 in_zone = (z["zone_low"] - 0.35 <= p <= z["zone_high"] + 0.25)
                 if in_zone and z["status"] == "1MV_ACTIVE":
-                    z["tested_count"] += 1
-                    z["status"] = "2MV_CONFIRMED"
-                    self._last_snr_valid_time = now
+                    zone_label = f"DDBTC SUP (${z['zone_low']:.2f}-${z['zone_high']:.2f})"
+                    if self._can_emit_signal("BUY", p, zone_label, now):
+                        z["tested_count"] += 1
+                        z["status"] = "2MV_CONFIRMED"
+                        self._last_snr_valid_time = now
+                        self._last_bm_signal_time = now
+                        self._last_bm_signal_dir = "BUY"
 
-                    sl = round(z["zone_low"] - 4.0, 2) # 40 pips below zone
-                    tp1 = round(p + 5.0, 2)
-                    tp2 = round(p + 10.0, 2)
-                    tp3 = round(p + 15.0, 2)
+                        sig = {
+                            "id": f"snr_sup_{now_ms}",
+                            "timestamp": int(now),
+                            "type": "🏆 [SNR VALID] 1 MAKAN 1 SUPPORT (2MV)",
+                            "direction": "BUY",
+                            "price": round(p, 2),
+                            "sl": round(z["zone_low"] - 4.0, 2),
+                            "tp1": round(p + 5.0, 2),
+                            "tp2": round(p + 10.0, 2),
+                            "tp3": round(p + 15.0, 2),
+                            "tp4": round(p + 20.0, 2),
+                            "tp5": round(p + 25.0, 2),
+                            "zone": zone_label,
+                            "badge": "🏆 [SNR VALID] 1M1 BUY",
+                            "status": "ACTIVE"
+                        }
+                        self.snr_valid_signals.append(sig)
+                        self.bookmap_signals.append(sig)
+                        if len(self.bookmap_signals) > 35:
+                            self.bookmap_signals.pop(0)
 
-                    sig = {
-                        "id": f"snr_sup_{now_ms}",
-                        "timestamp": int(now),
-                        "type": "🏆 [SNR VALID] 1 MAKAN 1 SUPPORT (2MV)",
-                        "direction": "BUY",
-                        "price": round(p, 2),
-                        "sl": sl,
-                        "tp1": tp1,
-                        "tp2": tp2,
-                        "tp3": tp3,
-                        "tp4": round(p + 20.0, 2),
-                        "tp5": round(p + 25.0, 2),
-                        "zone": f"DDBTC SUP (${z['zone_low']:.2f}-${z['zone_high']:.2f})",
-                        "badge": "🏆 [SNR VALID] 1M1 BUY",
-                        "status": "ACTIVE"
-                    }
-                    self.snr_valid_signals.append(sig)
-                    self.bookmap_signals.append(sig)
-                    if len(self.bookmap_signals) > 35:
-                        self.bookmap_signals.pop(0)
+    def _evaluate_footprint_signals(self, p: float, now: float, now_ms: int, active_demand: Any, active_supply: Any):
+        """
+        Modul 2: Footprint Order Flow Engine (3x Stacked Imbalances & Delta Absorption).
+        """
+        if not self.candles or len(self.candles) < 2:
+            return
+
+        c = self.current_candle or self.candles[-1]
+        prev_c = self.candles[-1] if self.current_candle else (self.candles[-2] if len(self.candles) >= 2 else None)
+
+        # 1. EVALUATE FOOTPRINT BUY
+        if active_demand:
+            d_name = active_demand["name"]
+            has_stacked_buy = len(c.get("stacked_buy", [])) >= 1 or (prev_c and len(prev_c.get("stacked_buy", [])) >= 1)
+            has_buy_absorption = (c.get("delta", 0) > 12.0 and c.get("close", 0) >= c.get("open", 0))
+
+            if (has_stacked_buy or has_buy_absorption) and self._can_emit_signal("BUY", p, d_name, now):
+                trigger_name = "STACKED BUY IMBALANCE (3X)" if has_stacked_buy else "DELTA ABSORPTION LOW"
+                sig = {
+                    "id": f"fp_{now_ms}",
+                    "timestamp": int(now),
+                    "type": f"🎯 [FOOTPRINT] {d_name}",
+                    "trigger": trigger_name,
+                    "direction": "BUY",
+                    "price": round(p, 2),
+                    "sl": round(p - 5.00, 2),
+                    "tp1": round(p + 5.00, 2),
+                    "tp2": round(p + 10.00, 2),
+                    "tp3": round(p + 15.00, 2),
+                    "tp4": round(p + 20.00, 2),
+                    "tp5": round(p + 25.00, 2),
+                    "zone": d_name,
+                    "badge": f"🟢 [FP BUY] {d_name}",
+                    "status": "ACTIVE"
+                }
+                self.bookmap_signals.append(sig)
+                if len(self.bookmap_signals) > 35:
+                    self.bookmap_signals.pop(0)
+                self._last_bm_signal_time = now
+                self._last_bm_signal_dir = "BUY"
+                return
+
+        # 2. EVALUATE FOOTPRINT SELL
+        if active_supply:
+            s_name = active_supply["name"]
+            has_stacked_sell = len(c.get("stacked_sell", [])) >= 1 or (prev_c and len(prev_c.get("stacked_sell", [])) >= 1)
+            has_sell_absorption = (c.get("delta", 0) < -12.0 and c.get("close", 0) <= c.get("open", 0))
+
+            if (has_stacked_sell or has_sell_absorption) and self._can_emit_signal("SELL", p, s_name, now):
+                trigger_name = "STACKED SELL IMBALANCE (3X)" if has_stacked_sell else "DELTA ABSORPTION HIGH"
+                sig = {
+                    "id": f"fp_{now_ms}",
+                    "timestamp": int(now),
+                    "type": f"🎯 [FOOTPRINT] {s_name}",
+                    "trigger": trigger_name,
+                    "direction": "SELL",
+                    "price": round(p, 2),
+                    "sl": round(p + 5.00, 2),
+                    "tp1": round(p - 5.00, 2),
+                    "tp2": round(p - 10.00, 2),
+                    "tp3": round(p - 15.00, 2),
+                    "tp4": round(p - 20.00, 2),
+                    "tp5": round(p - 25.00, 2),
+                    "zone": s_name,
+                    "badge": f"🔴 [FP SELL] {s_name}",
+                    "status": "ACTIVE"
+                }
+                self.bookmap_signals.append(sig)
+                if len(self.bookmap_signals) > 35:
+                    self.bookmap_signals.pop(0)
+                self._last_bm_signal_time = now
+                self._last_bm_signal_dir = "SELL"
+                return
+
+    def _evaluate_cluster_signals(self, p: float, now: float, now_ms: int, active_demand: Any, active_supply: Any):
+        """
+        Modul 3: ClusterDelta Pro Engine (POC Expansion & Delta Climax).
+        """
+        if not self.candles or len(self.candles) < 2:
+            return
+
+        c = self.current_candle or self.candles[-1]
+        prev_c = self.candles[-1] if self.current_candle else self.candles[-2]
+
+        cur_poc = c.get("poc", 0.0)
+        prev_poc = prev_c.get("poc", 0.0)
+
+        # 1. EVALUATE CLUSTER BUY
+        if active_demand and cur_poc > 0 and prev_poc > 0:
+            d_name = active_demand["name"]
+            poc_migrating_up = (cur_poc >= prev_poc + 0.20 and c.get("delta", 0) > 8.0)
+            vol_absorption_buy = (c.get("volume", 0) > 35.0 and c.get("close", 0) > c.get("open", 0) and c.get("min_delta", 0) < -15.0)
+
+            if (poc_migrating_up or vol_absorption_buy) and self._can_emit_signal("BUY", p, d_name, now):
+                trigger_name = "POC EXPANSION (UPWARD)" if poc_migrating_up else "CLUSTER DELTA ABSORPTION"
+                sig = {
+                    "id": f"cl_{now_ms}",
+                    "timestamp": int(now),
+                    "type": f"🎯 [CLUSTER] {d_name}",
+                    "trigger": trigger_name,
+                    "direction": "BUY",
+                    "price": round(p, 2),
+                    "sl": round(p - 5.00, 2),
+                    "tp1": round(p + 5.00, 2),
+                    "tp2": round(p + 10.00, 2),
+                    "tp3": round(p + 15.00, 2),
+                    "tp4": round(p + 20.00, 2),
+                    "tp5": round(p + 25.00, 2),
+                    "zone": d_name,
+                    "badge": f"🟢 [CLUSTER BUY] {d_name}",
+                    "status": "ACTIVE"
+                }
+                self.bookmap_signals.append(sig)
+                if len(self.bookmap_signals) > 35:
+                    self.bookmap_signals.pop(0)
+                self._last_bm_signal_time = now
+                self._last_bm_signal_dir = "BUY"
+                return
+
+        # 2. EVALUATE CLUSTER SELL
+        if active_supply and cur_poc > 0 and prev_poc > 0:
+            s_name = active_supply["name"]
+            poc_migrating_down = (cur_poc <= prev_poc - 0.20 and c.get("delta", 0) < -8.0)
+            vol_absorption_sell = (c.get("volume", 0) > 35.0 and c.get("close", 0) < c.get("open", 0) and c.get("max_delta", 0) > 15.0)
+
+            if (poc_migrating_down or vol_absorption_sell) and self._can_emit_signal("SELL", p, s_name, now):
+                trigger_name = "POC EXPANSION (DOWNWARD)" if poc_migrating_down else "CLUSTER DELTA ABSORPTION"
+                sig = {
+                    "id": f"cl_{now_ms}",
+                    "timestamp": int(now),
+                    "type": f"🎯 [CLUSTER] {s_name}",
+                    "trigger": trigger_name,
+                    "direction": "SELL",
+                    "price": round(p, 2),
+                    "sl": round(p + 5.00, 2),
+                    "tp1": round(p - 5.00, 2),
+                    "tp2": round(p - 10.00, 2),
+                    "tp3": round(p - 15.00, 2),
+                    "tp4": round(p - 20.00, 2),
+                    "tp5": round(p - 25.00, 2),
+                    "zone": s_name,
+                    "badge": f"🔴 [CLUSTER SELL] {s_name}",
+                    "status": "ACTIVE"
+                }
+                self.bookmap_signals.append(sig)
+                if len(self.bookmap_signals) > 35:
+                    self.bookmap_signals.pop(0)
+                self._last_bm_signal_time = now
+                self._last_bm_signal_dir = "SELL"
+                return
 
     def _evaluate_bookmap_signals(self) -> List[Dict[str, Any]]:
         """
-        Strict Location-First Institutional Bookmap Signal Engine:
-        Guarantees that BUY and SELL signals ONLY fire at validated Institutional 
-        Demand/Supply levels with Resting Liquidity Walls and Order Flow Absorption.
-        Never fires in the mid-range chop / no-man's land.
+        Master Multi-Module Order Flow Engine:
+        Coordinates all 4 modules (Bookmap, SNR Valid, Footprint, Cluster) 
+        under the unified Master Signal Arbiter.
         """
         now = time.time()
         now_ms = int(now * 1000)
         p = self.last_price if self.last_price > 0 else (self.current_bid if self.current_bid > 0 else 4008.0)
         if p <= 0:
-            return self.bookmap_signals
-
-        # Evaluate DDBTC 4 Sifat SNR Valid Engine
-        try:
-            self._evaluate_snr_valid_signals(p, now, now_ms)
-        except Exception:
-            pass
-
-        # Strict Cooldown (70 seconds minimum between signals of same bias)
-        if now - self._last_bm_signal_time < 70.0:
-            self._update_signals_status(p)
             return self.bookmap_signals
 
         sess = self.sessions_data or {}
@@ -2656,10 +2818,28 @@ class OrderFlowEngine:
         ]
         supply_levels = [s for s in supply_levels if s.get("p") and s["p"] > 0]
 
-        # Responsive Location Gate Tolerance: ±$1.10 on Gold (11 pips)
+        # Responsive Location Gate Tolerance: ±$1.80 on Gold (18 pips)
         tol = 1.80
         active_demand = next((d for d in demand_levels if abs(d["p"] - p) <= tol), None)
         active_supply = next((s for s in supply_levels if abs(s["p"] - p) <= tol), None)
+
+        # ── RUN MODULE 1: DDBTC 4 Sifat SNR Valid Engine ──
+        try:
+            self._evaluate_snr_valid_signals(p, now, now_ms)
+        except Exception:
+            pass
+
+        # ── RUN MODULE 2: Footprint 3x Imbalance & Delta Absorption Engine ──
+        try:
+            self._evaluate_footprint_signals(p, now, now_ms, active_demand, active_supply)
+        except Exception:
+            pass
+
+        # ── RUN MODULE 3: ClusterDelta Pro POC Expansion & Volume Climax Engine ──
+        try:
+            self._evaluate_cluster_signals(p, now, now_ms, active_demand, active_supply)
+        except Exception:
+            pass
 
         # Scan Resting Liquidity Walls on Order Book (Bids & Asks)
         bid_wall = 0.0
@@ -2690,28 +2870,14 @@ class OrderFlowEngine:
                 if wvol > ask_wall:
                     ask_wall = wvol
 
-        # Multi-Timeframe Institutional Trend Regime Filter
-        mtf = self._evaluate_mtf_confluence()
-        is_strong_bear = (mtf.get("overall") == "STRONG_SELL")
-        is_strong_bull = (mtf.get("overall") == "STRONG_BUY")
-
-        # ── 1. EVALUATE BUY (Demand Zone + Wall/Support + Verified Order Flow Footprint) ──
+        # ── RUN MODULE 4: Bookmap Resting Liquidity & Wall Rejection Engine ──
         has_demand_zone = active_demand and (
             bid_wall >= 12.0 or 
             any(k in active_demand["name"] for k in ("H8", "H4", "H1", "M30", "M15", "VAL", "DEMAND", "SUPPORT", "LOW"))
         )
         if has_demand_zone:
             d_name = active_demand["name"]
-            # A. Broken Zone Cooldown (15 min lockout after a SL hit on this zone)
-            is_broken_zone = (now - self._failed_zone_cooldowns.get(d_name, 0) < 900.0)
-
-            # B. One Active Signal Per Zone Lockout:
-            has_active_zone_sig = any(
-                s.get("zone") == d_name and s.get("status") in ("ACTIVE", "BE_HIT", "TP1_HIT")
-                for s in self.bookmap_signals[-15:]
-            )
-
-            if not is_broken_zone and not has_active_zone_sig:
+            if self._can_emit_signal("BUY", p, d_name, now):
                 trigger = None
                 if any(ic.get("bias") == "BUY" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
                     trigger = "ICEBERG BID ABSORPTION"
@@ -2724,38 +2890,23 @@ class OrderFlowEngine:
                 elif bid_wall >= 28.0:
                     trigger = f"WHALE BID WALL ({bid_wall:.0f}L)"
 
-                # C. Institutional Trend Protection (Never catch a falling knife in STRONG_SELL):
-                can_pass_regime = True
-                if is_strong_bear:
-                    can_pass_regime = (trigger in ("ICEBERG BID ABSORPTION", "BULLISH CVD DIVERGENCE", "TRAPPED SELLERS AT LOW") and bid_wall >= 20.0)
-
-                can_buy = can_pass_regime and ((now - self._last_bm_signal_time >= 90.0) or (self._last_bm_signal_dir != "BUY" and now - self._last_bm_signal_time >= 45.0))
-                if trigger and can_buy:
-                    # 50 pips SL ($5.00) & Multi-Stage TP (50p, 100p, 150p, 200p, 250p)
-                    sl = round(p - 5.00, 2)
-                    tp1 = round(p + 5.00, 2)
-                    tp2 = round(p + 10.00, 2)
-                    tp3 = round(p + 15.00, 2)
-                    tp4 = round(p + 20.00, 2)
-                    tp5 = round(p + 25.00, 2)
-
-                    sig_type = f"[BOOKMAP] {active_demand['name']}"
+                if trigger:
                     sig = {
                         "id": f"bm_{now_ms}",
                         "timestamp": int(now),
-                        "type": sig_type,
+                        "type": f"🎯 [BOOKMAP] {d_name}",
                         "trigger": trigger,
                         "direction": "BUY",
                         "price": round(p, 2),
-                        "sl": sl,
-                        "tp1": tp1,
-                        "tp2": tp2,
-                        "tp3": tp3,
-                        "tp4": tp4,
-                        "tp5": tp5,
-                        "zone": active_demand["name"],
+                        "sl": round(p - 5.00, 2),
+                        "tp1": round(p + 5.00, 2),
+                        "tp2": round(p + 10.00, 2),
+                        "tp3": round(p + 15.00, 2),
+                        "tp4": round(p + 20.00, 2),
+                        "tp5": round(p + 25.00, 2),
+                        "zone": d_name,
                         "wall_lots": round(bid_wall, 1),
-                        "badge": f"🟢 BUY [{active_demand['name']}]",
+                        "badge": f"🟢 [BOOKMAP BUY] {d_name}",
                         "status": "ACTIVE"
                     }
                     self.bookmap_signals.append(sig)
@@ -2764,33 +2915,13 @@ class OrderFlowEngine:
                     self._last_bm_signal_time = now
                     self._last_bm_signal_dir = "BUY"
 
-                    try:
-                        import threading
-                        def _push_sb():
-                            from supabase_client import supabase
-                            if supabase.is_connected:
-                                supabase.save_signal(sig)
-                        threading.Thread(target=_push_sb, daemon=True).start()
-                    except Exception:
-                        pass
-
-        # ── 2. EVALUATE SELL (Supply Zone + Wall/Resistance + Verified Order Flow Footprint) ──
         has_supply_zone = active_supply and (
             ask_wall >= 12.0 or 
             any(k in active_supply["name"] for k in ("H8", "H4", "H1", "M30", "M15", "VAH", "SUPPLY", "RESISTANCE", "HIGH"))
         )
         if has_supply_zone:
             s_name = active_supply["name"]
-            # A. Broken Zone Cooldown (15 min lockout after a SL hit on this zone)
-            is_broken_zone = (now - self._failed_zone_cooldowns.get(s_name, 0) < 900.0)
-
-            # B. One Active Signal Per Zone Lockout:
-            has_active_zone_sig = any(
-                s.get("zone") == s_name and s.get("status") in ("ACTIVE", "BE_HIT", "TP1_HIT")
-                for s in self.bookmap_signals[-15:]
-            )
-
-            if not is_broken_zone and not has_active_zone_sig:
+            if self._can_emit_signal("SELL", p, s_name, now):
                 trigger = None
                 if any(ic.get("bias") == "SELL" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
                     trigger = "ICEBERG ASK ABSORPTION"
@@ -2803,38 +2934,23 @@ class OrderFlowEngine:
                 elif ask_wall >= 28.0:
                     trigger = f"WHALE ASK WALL ({ask_wall:.0f}L)"
 
-                # C. Institutional Trend Protection (Never fight a strong rally in STRONG_BUY):
-                can_pass_regime = True
-                if is_strong_bull:
-                    can_pass_regime = (trigger in ("ICEBERG ASK ABSORPTION", "BEARISH CVD DIVERGENCE", "TRAPPED BUYERS AT HIGH") and ask_wall >= 20.0)
-
-                can_sell = can_pass_regime and ((now - self._last_bm_signal_time >= 90.0) or (self._last_bm_signal_dir != "SELL" and now - self._last_bm_signal_time >= 45.0))
-                if trigger and can_sell:
-                    # 50 pips SL ($5.00) & Multi-Stage TP (50p, 100p, 150p, 200p, 250p)
-                    sl = round(p + 5.00, 2)
-                    tp1 = round(p - 5.00, 2)
-                    tp2 = round(p - 10.00, 2)
-                    tp3 = round(p - 15.00, 2)
-                    tp4 = round(p - 20.00, 2)
-                    tp5 = round(p - 25.00, 2)
-
-                    sig_type = f"[BOOKMAP] {active_supply['name']}"
+                if trigger:
                     sig = {
                         "id": f"bm_{now_ms}",
                         "timestamp": int(now),
-                        "type": sig_type,
+                        "type": f"🎯 [BOOKMAP] {s_name}",
                         "trigger": trigger,
                         "direction": "SELL",
                         "price": round(p, 2),
-                        "sl": sl,
-                        "tp1": tp1,
-                        "tp2": tp2,
-                        "tp3": tp3,
-                        "tp4": tp4,
-                        "tp5": tp5,
-                        "zone": active_supply["name"],
+                        "sl": round(p + 5.00, 2),
+                        "tp1": round(p - 5.00, 2),
+                        "tp2": round(p - 10.00, 2),
+                        "tp3": round(p - 15.00, 2),
+                        "tp4": round(p - 20.00, 2),
+                        "tp5": round(p - 25.00, 2),
+                        "zone": s_name,
                         "wall_lots": round(ask_wall, 1),
-                        "badge": f"🔴 SELL [{active_supply['name']}]",
+                        "badge": f"🔴 [BOOKMAP SELL] {s_name}",
                         "status": "ACTIVE"
                     }
                     self.bookmap_signals.append(sig)
@@ -2842,16 +2958,6 @@ class OrderFlowEngine:
                         self.bookmap_signals.pop(0)
                     self._last_bm_signal_time = now
                     self._last_bm_signal_dir = "SELL"
-
-                    try:
-                        import threading
-                        def _push_sb():
-                            from supabase_client import supabase
-                            if supabase.is_connected:
-                                supabase.save_signal(sig)
-                        threading.Thread(target=_push_sb, daemon=True).start()
-                    except Exception:
-                        pass
 
         self._update_signals_status(p)
         return self.bookmap_signals
