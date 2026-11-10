@@ -85,6 +85,7 @@ class OrderFlowEngine:
         self._last_snr_valid_time: float = 0.0
         self._last_bm_signal_time = 0.0
         self._last_bm_signal_dir = None
+        self._failed_zone_cooldowns: Dict[str, float] = {}
 
         # Prop-Firm Feature 1: USD High-Impact News & Volatility Shield
         self.news_filter_enabled = True
@@ -2689,135 +2690,168 @@ class OrderFlowEngine:
                 if wvol > ask_wall:
                     ask_wall = wvol
 
-        # ── 1. EVALUATE BUY (Demand Zone + Wall/Support + High Confluence Trigger) ──
+        # Multi-Timeframe Institutional Trend Regime Filter
+        mtf = self._evaluate_mtf_confluence()
+        is_strong_bear = (mtf.get("overall") == "STRONG_SELL")
+        is_strong_bull = (mtf.get("overall") == "STRONG_BUY")
+
+        # ── 1. EVALUATE BUY (Demand Zone + Wall/Support + Verified Order Flow Footprint) ──
         has_demand_zone = active_demand and (
             bid_wall >= 12.0 or 
             any(k in active_demand["name"] for k in ("H8", "H4", "H1", "M30", "M15", "VAL", "DEMAND", "SUPPORT", "LOW"))
         )
         if has_demand_zone:
-            trigger = None
-            if any(ic.get("bias") == "BUY" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
-                trigger = "ICEBERG BID ABSORPTION"
-            elif any(tr.get("type") == "TRAPPED_SELLERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
-                trigger = "TRAPPED SELLERS AT LOW"
-            elif self.detected_divergence and self.detected_divergence.get("type") == "bullish":
-                trigger = "BULLISH CVD DIVERGENCE"
-            elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "BUY" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
-                trigger = "LIQUIDITY RAID & SWEEP"
-            elif bid_wall >= 24.0:
-                trigger = f"WHALE BID WALL ({bid_wall:.0f}L)"
-            elif abs(p - active_demand["p"]) <= 1.50:
-                trigger = f"DEMAND REBOUND ({active_demand['name']})"
+            d_name = active_demand["name"]
+            # A. Broken Zone Cooldown (15 min lockout after a SL hit on this zone)
+            is_broken_zone = (now - self._failed_zone_cooldowns.get(d_name, 0) < 900.0)
 
-            can_buy = (now - self._last_bm_signal_time >= 60.0) or (self._last_bm_signal_dir != "BUY" and now - self._last_bm_signal_time >= 30.0)
-            if trigger and can_buy:
-                # 50 pips SL ($5.00) & Multi-Stage TP (50p, 100p, 150p, 200p, 250p)
-                sl = round(p - 5.00, 2)
-                tp1 = round(p + 5.00, 2)
-                tp2 = round(p + 10.00, 2)
-                tp3 = round(p + 15.00, 2)
-                tp4 = round(p + 20.00, 2)
-                tp5 = round(p + 25.00, 2)
+            # B. One Active Signal Per Zone Lockout:
+            has_active_zone_sig = any(
+                s.get("zone") == d_name and s.get("status") in ("ACTIVE", "BE_HIT", "TP1_HIT")
+                for s in self.bookmap_signals[-15:]
+            )
 
-                sig_type = f"[BOOKMAP] {active_demand['name']}"
-                sig = {
-                    "id": f"bm_{now_ms}",
-                    "timestamp": int(now),
-                    "type": sig_type,
-                    "trigger": trigger,
-                    "direction": "BUY",
-                    "price": round(p, 2),
-                    "sl": sl,
-                    "tp1": tp1,
-                    "tp2": tp2,
-                    "tp3": tp3,
-                    "tp4": tp4,
-                    "tp5": tp5,
-                    "zone": active_demand["name"],
-                    "wall_lots": round(bid_wall, 1),
-                    "badge": f"🟢 BUY [{active_demand['name']}]",
-                    "status": "ACTIVE"
-                }
-                self.bookmap_signals.append(sig)
-                if len(self.bookmap_signals) > 35:
-                    self.bookmap_signals.pop(0)
-                self._last_bm_signal_time = now
-                self._last_bm_signal_dir = "BUY"
+            if not is_broken_zone and not has_active_zone_sig:
+                trigger = None
+                if any(ic.get("bias") == "BUY" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
+                    trigger = "ICEBERG BID ABSORPTION"
+                elif any(tr.get("type") == "TRAPPED_SELLERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
+                    trigger = "TRAPPED SELLERS AT LOW"
+                elif self.detected_divergence and self.detected_divergence.get("type") == "bullish":
+                    trigger = "BULLISH CVD DIVERGENCE"
+                elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "BUY" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
+                    trigger = "LIQUIDITY RAID & SWEEP"
+                elif bid_wall >= 28.0:
+                    trigger = f"WHALE BID WALL ({bid_wall:.0f}L)"
 
-                try:
-                    import threading
-                    def _push_sb():
-                        from supabase_client import supabase
-                        if supabase.is_connected:
-                            supabase.save_signal(sig)
-                    threading.Thread(target=_push_sb, daemon=True).start()
-                except Exception:
-                    pass
+                # C. Institutional Trend Protection (Never catch a falling knife in STRONG_SELL):
+                can_pass_regime = True
+                if is_strong_bear:
+                    can_pass_regime = (trigger in ("ICEBERG BID ABSORPTION", "BULLISH CVD DIVERGENCE", "TRAPPED SELLERS AT LOW") and bid_wall >= 20.0)
 
-        # ── 2. EVALUATE SELL (Supply Zone + Wall/Resistance + High Confluence Trigger) ──
+                can_buy = can_pass_regime and ((now - self._last_bm_signal_time >= 90.0) or (self._last_bm_signal_dir != "BUY" and now - self._last_bm_signal_time >= 45.0))
+                if trigger and can_buy:
+                    # 50 pips SL ($5.00) & Multi-Stage TP (50p, 100p, 150p, 200p, 250p)
+                    sl = round(p - 5.00, 2)
+                    tp1 = round(p + 5.00, 2)
+                    tp2 = round(p + 10.00, 2)
+                    tp3 = round(p + 15.00, 2)
+                    tp4 = round(p + 20.00, 2)
+                    tp5 = round(p + 25.00, 2)
+
+                    sig_type = f"[BOOKMAP] {active_demand['name']}"
+                    sig = {
+                        "id": f"bm_{now_ms}",
+                        "timestamp": int(now),
+                        "type": sig_type,
+                        "trigger": trigger,
+                        "direction": "BUY",
+                        "price": round(p, 2),
+                        "sl": sl,
+                        "tp1": tp1,
+                        "tp2": tp2,
+                        "tp3": tp3,
+                        "tp4": tp4,
+                        "tp5": tp5,
+                        "zone": active_demand["name"],
+                        "wall_lots": round(bid_wall, 1),
+                        "badge": f"🟢 BUY [{active_demand['name']}]",
+                        "status": "ACTIVE"
+                    }
+                    self.bookmap_signals.append(sig)
+                    if len(self.bookmap_signals) > 35:
+                        self.bookmap_signals.pop(0)
+                    self._last_bm_signal_time = now
+                    self._last_bm_signal_dir = "BUY"
+
+                    try:
+                        import threading
+                        def _push_sb():
+                            from supabase_client import supabase
+                            if supabase.is_connected:
+                                supabase.save_signal(sig)
+                        threading.Thread(target=_push_sb, daemon=True).start()
+                    except Exception:
+                        pass
+
+        # ── 2. EVALUATE SELL (Supply Zone + Wall/Resistance + Verified Order Flow Footprint) ──
         has_supply_zone = active_supply and (
             ask_wall >= 12.0 or 
             any(k in active_supply["name"] for k in ("H8", "H4", "H1", "M30", "M15", "VAH", "SUPPLY", "RESISTANCE", "HIGH"))
         )
         if has_supply_zone:
-            trigger = None
-            if any(ic.get("bias") == "SELL" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
-                trigger = "ICEBERG ASK ABSORPTION"
-            elif any(tr.get("type") == "TRAPPED_BUYERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
-                trigger = "TRAPPED BUYERS AT HIGH"
-            elif self.detected_divergence and self.detected_divergence.get("type") == "bearish":
-                trigger = "BEARISH CVD DIVERGENCE"
-            elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "SELL" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
-                trigger = "LIQUIDITY RAID & SWEEP"
-            elif ask_wall >= 24.0:
-                trigger = f"WHALE ASK WALL ({ask_wall:.0f}L)"
-            elif abs(p - active_supply["p"]) <= 1.50:
-                trigger = f"SUPPLY REJECTION ({active_supply['name']})"
+            s_name = active_supply["name"]
+            # A. Broken Zone Cooldown (15 min lockout after a SL hit on this zone)
+            is_broken_zone = (now - self._failed_zone_cooldowns.get(s_name, 0) < 900.0)
 
-            can_sell = (now - self._last_bm_signal_time >= 60.0) or (self._last_bm_signal_dir != "SELL" and now - self._last_bm_signal_time >= 30.0)
-            if trigger and can_sell:
-                # 50 pips SL ($5.00) & Multi-Stage TP (50p, 100p, 150p, 200p, 250p)
-                sl = round(p + 5.00, 2)
-                tp1 = round(p - 5.00, 2)
-                tp2 = round(p - 10.00, 2)
-                tp3 = round(p - 15.00, 2)
-                tp4 = round(p - 20.00, 2)
-                tp5 = round(p - 25.00, 2)
+            # B. One Active Signal Per Zone Lockout:
+            has_active_zone_sig = any(
+                s.get("zone") == s_name and s.get("status") in ("ACTIVE", "BE_HIT", "TP1_HIT")
+                for s in self.bookmap_signals[-15:]
+            )
 
-                sig_type = f"[BOOKMAP] {active_supply['name']}"
-                sig = {
-                    "id": f"bm_{now_ms}",
-                    "timestamp": int(now),
-                    "type": sig_type,
-                    "trigger": trigger,
-                    "direction": "SELL",
-                    "price": round(p, 2),
-                    "sl": sl,
-                    "tp1": tp1,
-                    "tp2": tp2,
-                    "tp3": tp3,
-                    "tp4": tp4,
-                    "tp5": tp5,
-                    "zone": active_supply["name"],
-                    "wall_lots": round(ask_wall, 1),
-                    "badge": f"🔴 SELL [{active_supply['name']}]",
-                    "status": "ACTIVE"
-                }
-                self.bookmap_signals.append(sig)
-                if len(self.bookmap_signals) > 35:
-                    self.bookmap_signals.pop(0)
-                self._last_bm_signal_time = now
-                self._last_bm_signal_dir = "SELL"
+            if not is_broken_zone and not has_active_zone_sig:
+                trigger = None
+                if any(ic.get("bias") == "SELL" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
+                    trigger = "ICEBERG ASK ABSORPTION"
+                elif any(tr.get("type") == "TRAPPED_BUYERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
+                    trigger = "TRAPPED BUYERS AT HIGH"
+                elif self.detected_divergence and self.detected_divergence.get("type") == "bearish":
+                    trigger = "BEARISH CVD DIVERGENCE"
+                elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "SELL" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
+                    trigger = "LIQUIDITY RAID & SWEEP"
+                elif ask_wall >= 28.0:
+                    trigger = f"WHALE ASK WALL ({ask_wall:.0f}L)"
 
-                try:
-                    import threading
-                    def _push_sb():
-                        from supabase_client import supabase
-                        if supabase.is_connected:
-                            supabase.save_signal(sig)
-                    threading.Thread(target=_push_sb, daemon=True).start()
-                except Exception:
-                    pass
+                # C. Institutional Trend Protection (Never fight a strong rally in STRONG_BUY):
+                can_pass_regime = True
+                if is_strong_bull:
+                    can_pass_regime = (trigger in ("ICEBERG ASK ABSORPTION", "BEARISH CVD DIVERGENCE", "TRAPPED BUYERS AT HIGH") and ask_wall >= 20.0)
+
+                can_sell = can_pass_regime and ((now - self._last_bm_signal_time >= 90.0) or (self._last_bm_signal_dir != "SELL" and now - self._last_bm_signal_time >= 45.0))
+                if trigger and can_sell:
+                    # 50 pips SL ($5.00) & Multi-Stage TP (50p, 100p, 150p, 200p, 250p)
+                    sl = round(p + 5.00, 2)
+                    tp1 = round(p - 5.00, 2)
+                    tp2 = round(p - 10.00, 2)
+                    tp3 = round(p - 15.00, 2)
+                    tp4 = round(p - 20.00, 2)
+                    tp5 = round(p - 25.00, 2)
+
+                    sig_type = f"[BOOKMAP] {active_supply['name']}"
+                    sig = {
+                        "id": f"bm_{now_ms}",
+                        "timestamp": int(now),
+                        "type": sig_type,
+                        "trigger": trigger,
+                        "direction": "SELL",
+                        "price": round(p, 2),
+                        "sl": sl,
+                        "tp1": tp1,
+                        "tp2": tp2,
+                        "tp3": tp3,
+                        "tp4": tp4,
+                        "tp5": tp5,
+                        "zone": active_supply["name"],
+                        "wall_lots": round(ask_wall, 1),
+                        "badge": f"🔴 SELL [{active_supply['name']}]",
+                        "status": "ACTIVE"
+                    }
+                    self.bookmap_signals.append(sig)
+                    if len(self.bookmap_signals) > 35:
+                        self.bookmap_signals.pop(0)
+                    self._last_bm_signal_time = now
+                    self._last_bm_signal_dir = "SELL"
+
+                    try:
+                        import threading
+                        def _push_sb():
+                            from supabase_client import supabase
+                            if supabase.is_connected:
+                                supabase.save_signal(sig)
+                        threading.Thread(target=_push_sb, daemon=True).start()
+                    except Exception:
+                        pass
 
         self._update_signals_status(p)
         return self.bookmap_signals
@@ -2857,6 +2891,9 @@ class OrderFlowEngine:
             elif not sig.get("is_be_active") and gain_pips <= -50.0:
                 sig["status"] = "SL_HIT"
                 sig["result_pips"] = -50.0
+                z_name = sig.get("zone")
+                if z_name:
+                    self._failed_zone_cooldowns[z_name] = time.time()
 
     def _evaluate_mtf_confluence(self) -> Dict[str, Any]:
         """
