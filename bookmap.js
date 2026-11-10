@@ -319,6 +319,10 @@ class BookmapRenderer {
     this.timeOffsetMs = 0;
   }
 
+  centerToPrice() {
+    this.centerVertical();
+  }
+
   setTimeframe(tf) {
     const tfMap = {
       'M1':  180000,
