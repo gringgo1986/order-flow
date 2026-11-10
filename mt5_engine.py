@@ -968,6 +968,21 @@ class OrderFlowEngine:
         if 0 < price < self.sessions_data.get("h8_low", 999999):
             self.sessions_data["h8_low"] = round(price, 2)
 
+        # Dynamic SNR Re-anchoring: If market drifts > $5.00 from H1 SNR midpoint,
+        # roll SNR levels so that active H1, H4, M30, M15 levels constantly orbit current price action
+        cur_h1_mid = (self.sessions_data.get("h1_res", 0) + self.sessions_data.get("h1_sup", 0)) / 2.0
+        if cur_h1_mid <= 0 or abs(price - cur_h1_mid) > 5.50:
+            self.sessions_data["m15_res"] = round(price + 1.60, 2)
+            self.sessions_data["m15_sup"] = round(price - 1.50, 2)
+            self.sessions_data["m30_res"] = round(price + 2.80, 2)
+            self.sessions_data["m30_sup"] = round(price - 2.60, 2)
+            self.sessions_data["h1_res"] = round(price + 4.20, 2)
+            self.sessions_data["h1_sup"] = round(price - 3.80, 2)
+            self.sessions_data["h4_res"] = round(price + 8.50, 2)
+            self.sessions_data["h4_sup"] = round(price - 8.20, 2)
+            self.sessions_data["h8_res"] = round(price + 12.00, 2)
+            self.sessions_data["h8_sup"] = round(price - 11.50, 2)
+
         # Detect Liquidity Sweep of Asian High / Asian Low or London High / Low
         c = self.current_candle
         if not c:
@@ -2641,7 +2656,7 @@ class OrderFlowEngine:
         supply_levels = [s for s in supply_levels if s.get("p") and s["p"] > 0]
 
         # Responsive Location Gate Tolerance: ±$1.10 on Gold (11 pips)
-        tol = 1.10
+        tol = 1.80
         active_demand = next((d for d in demand_levels if abs(d["p"] - p) <= tol), None)
         active_supply = next((s for s in supply_levels if abs(s["p"] - p) <= tol), None)
 
@@ -2691,7 +2706,7 @@ class OrderFlowEngine:
                 trigger = "LIQUIDITY RAID & SWEEP"
             elif bid_wall >= 24.0:
                 trigger = f"WHALE BID WALL ({bid_wall:.0f}L)"
-            elif abs(p - active_demand["p"]) <= 0.70:
+            elif abs(p - active_demand["p"]) <= 1.50:
                 trigger = f"DEMAND REBOUND ({active_demand['name']})"
 
             can_buy = (now - self._last_bm_signal_time >= 60.0) or (self._last_bm_signal_dir != "BUY" and now - self._last_bm_signal_time >= 30.0)
@@ -2704,10 +2719,12 @@ class OrderFlowEngine:
                 tp4 = round(p + 20.00, 2)
                 tp5 = round(p + 25.00, 2)
 
+                sig_type = f"[BOOKMAP] {active_demand['name']}"
                 sig = {
                     "id": f"bm_{now_ms}",
                     "timestamp": int(now),
-                    "type": trigger,
+                    "type": sig_type,
+                    "trigger": trigger,
                     "direction": "BUY",
                     "price": round(p, 2),
                     "sl": sl,
@@ -2754,7 +2771,7 @@ class OrderFlowEngine:
                 trigger = "LIQUIDITY RAID & SWEEP"
             elif ask_wall >= 24.0:
                 trigger = f"WHALE ASK WALL ({ask_wall:.0f}L)"
-            elif abs(p - active_supply["p"]) <= 0.70:
+            elif abs(p - active_supply["p"]) <= 1.50:
                 trigger = f"SUPPLY REJECTION ({active_supply['name']})"
 
             can_sell = (now - self._last_bm_signal_time >= 60.0) or (self._last_bm_signal_dir != "SELL" and now - self._last_bm_signal_time >= 30.0)
@@ -2767,10 +2784,12 @@ class OrderFlowEngine:
                 tp4 = round(p - 20.00, 2)
                 tp5 = round(p - 25.00, 2)
 
+                sig_type = f"[BOOKMAP] {active_supply['name']}"
                 sig = {
                     "id": f"bm_{now_ms}",
                     "timestamp": int(now),
-                    "type": trigger,
+                    "type": sig_type,
+                    "trigger": trigger,
                     "direction": "SELL",
                     "price": round(p, 2),
                     "sl": sl,
