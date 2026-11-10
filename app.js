@@ -3585,6 +3585,18 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     }
 
     this._renderSignalsUI();
+    this._fetchServerSignals();
+  }
+
+  async _fetchServerSignals() {
+    try {
+      const res = await fetch('/api/signals');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && Array.isArray(data.signals) && data.signals.length > 0) {
+        this._evaluateSignals({ bookmap_signals: data.signals });
+      }
+    } catch (e) {}
   }
 
   _saveSignals() {
@@ -3773,6 +3785,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       this._saveSignals();
     }
     this._renderSignalsUI();
+    this._fetchServerSignals();
   }
 
   _renderSignalsUI() {
