@@ -1120,7 +1120,7 @@ canvas#cvdCanvas {
 }
 
 .main-workspace.dock-collapsed {
-  grid-template-rows: 1fr 32px !important;
+  grid-template-rows: 1fr 34px !important;
 }
 
 .main-workspace.dock-collapsed .dock-content {
@@ -1265,13 +1265,16 @@ header.app-header {
 }
 
 .main-workspace.dock-collapsed {
-  grid-template-rows: 1fr 28px !important;
+  grid-template-rows: 1fr 34px !important;
 }
 
 .main-workspace.dock-collapsed .dock-tabs {
-  padding: 2px 8px !important;
+  height: 34px !important;
+  padding: 0 10px !important;
   background: #080c14 !important;
   border-top: 1px solid #1e293b !important;
+  display: flex !important;
+  align-items: center !important;
 }
 
 .layers-menu button.tool-btn {
