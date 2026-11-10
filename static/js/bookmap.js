@@ -563,7 +563,7 @@ class BookmapRenderer {
   get LEFT_AXIS_W() { return 54; }
   get COB_WIDTH()   { return 108; }
   get HIST_HEIGHT() { return 56; }
-  get TOP_PADDING() { return 28; }
+  get TOP_PADDING() { return 0; }
   get CHART_TOP()   { return this.TOP_PADDING; }
   get CHART_BOTTOM(){ return this.height - this.HIST_HEIGHT; }
   get CHART_LEFT()  { return this.LEFT_AXIS_W; }
@@ -3420,234 +3420,29 @@ class BookmapRenderer {
 
   /* ─── Interactive Top Bookmap Pro HUD Header & Imbalance Gauges ─ */
   _drawTopHUD(ctx, snapshot) {
-    ctx.save();
-    const topH = this.TOP_PADDING;
     this.bmHudHitboxes = [];
-
-    ctx.fillStyle = '#080f1a';
-    ctx.fillRect(0, 0, this.CHART_RIGHT, topH);
-
-    ctx.strokeStyle = '#1b2d48';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, topH);
-    ctx.lineTo(this.CHART_RIGHT, topH);
-    ctx.stroke();
-
-    // 1. Thermal Spectrum Bar (Click to cycle Theme: THERMO -> CYBER -> GOLD)
-    const palX = 8;
-    const palY = 6;
-    const palW = 86;
-    const palH = 15;
-
-    const palGrad = ctx.createLinearGradient(palX, 0, palX + palW, 0);
-    if (this.bmPaletteMode === 'cyber') {
-      palGrad.addColorStop(0.0, '#1e1b4b');
-      palGrad.addColorStop(0.4, '#3b82f6');
-      palGrad.addColorStop(0.7, '#00f5d4');
-      palGrad.addColorStop(1.0, '#f72585');
-    } else if (this.bmPaletteMode === 'gold') {
-      palGrad.addColorStop(0.0, '#1c1917');
-      palGrad.addColorStop(0.4, '#d97706');
-      palGrad.addColorStop(0.75, '#facc15');
-      palGrad.addColorStop(1.0, '#e11d48');
-    } else {
-      palGrad.addColorStop(0.00, '#081a36');
-      palGrad.addColorStop(0.25, '#0077b6');
-      palGrad.addColorStop(0.50, '#00d4ff');
-      palGrad.addColorStop(0.72, '#ffd60a');
-      palGrad.addColorStop(0.90, '#ff7700');
-      palGrad.addColorStop(1.00, '#d90429');
-    }
-
-    ctx.fillStyle = palGrad;
-    ctx.fillRect(palX, palY, palW, palH);
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(palX, palY, palW, palH);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`🎨 ${this.bmPaletteMode.toUpperCase()}`, palX + palW / 2, palY + 10.5);
-    this.bmHudHitboxes.push({
-      x: palX, y: palY, w: palW, h: palH,
-      onClick: () => {
-        const modes = ['thermo', 'cyber', 'gold'];
-        this.bmPaletteMode = modes[(modes.indexOf(this.bmPaletteMode) + 1) % modes.length];
-      }
-    });
-
-    // 2. Interactive Bookmap Pro Control Pills
-    let pillX = palX + palW + 5;
-    const drawHudPill = (label, isActive, activeCol, onClick) => {
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
-      const w = Math.ceil(ctx.measureText(label).width) + 8;
-      const y = 6;
-      const h = 15;
-      if (pillX + w > this.CHART_RIGHT - 245) return; // Keep room for right imbalance gauges
-      ctx.fillStyle = isActive ? activeCol : '#111c2d';
-      ctx.fillRect(pillX, y, w, h);
-      ctx.strokeStyle = isActive ? '#ffffff' : '#273e60';
-      ctx.lineWidth = 0.8;
-      ctx.strokeRect(pillX, y, w, h);
-      ctx.fillStyle = isActive ? '#04101e' : '#94a3b8';
-      ctx.textAlign = 'center';
-      ctx.fillText(label, pillX + w / 2, y + 10.5);
-      this.bmHudHitboxes.push({ x: pillX, y, w, h, onClick });
-      pillX += w + 3;
-    };
-
-    // 2A. Zen Pro Mode Toggle (Pristine, Uncluttered Bookmap)
-    drawHudPill(
-      this.bmZenMode ? '🧘 Zen: ON' : '🧘 Zen: OFF',
-      this.bmZenMode,
-      '#00f0ff',
-      () => {
-        this.bmZenMode = !this.bmZenMode;
-        if (window.orderFlowApp && window.orderFlowApp.showToast) {
-          window.orderFlowApp.showToast(this.bmZenMode ? '🧘 Mod Zen Pro Aktif: Paparan Bersih Tanpa Gangguan Teks' : '📊 Mod Analisis Penuh: Semua Tag & Isyarat Dipaparkan');
-        }
-      }
-    );
-
-    // Dynamic Contrast Dial (AUTO / LOW / MED / HIGH)
-    const contrastCol = this.bmContrastMode === 'HIGH' ? '#f43f5e' : (this.bmContrastMode === 'MED' ? '#38bdf8' : (this.bmContrastMode === 'LOW' ? '#a78bfa' : '#fbbf24'));
-    drawHudPill(`🎚️ ${this.bmContrastMode}`, true, contrastCol, () => {
-      const modes = ['AUTO', 'LOW', 'MED', 'HIGH'];
-      this.bmContrastMode = modes[(modes.indexOf(this.bmContrastMode) + 1) % modes.length];
-    });
-
-    // World-Class Liquidity Sweeps Visualizer Toggle
-    drawHudPill(
-      `⚡ SWEEP: ${this.bmShowSweeps !== false ? 'ON' : 'OFF'}`,
-      this.bmShowSweeps !== false,
-      '#00f0ff',
-      () => { this.bmShowSweeps = this.bmShowSweeps === false; }
-    );
-
-    // 2C. Whale Inflow Radar Alert Toggle (Sudden Large Lot Alerts)
-    drawHudPill(
-      this.whaleRadarEnabled !== false ? '🚨 Radar: ON' : '🔕 Radar: OFF',
-      this.whaleRadarEnabled !== false,
-      this.whaleRadarEnabled !== false ? '#ffd60a' : '#64748b',
-      () => {
-        this.whaleRadarEnabled = this.whaleRadarEnabled === false;
-        if (window.orderFlowApp && window.orderFlowApp.showToast) {
-          window.orderFlowApp.showToast(this.whaleRadarEnabled ? '🚨 Radar Amaran Jerung Diaktifkan: Amaran Audio & Visual Aktif' : '🔕 Radar Amaran Jerung Dimatikan');
-        }
-      }
-    );
-
-    // World-Class Order Flow Measurement Ruler Tool
-    drawHudPill(
-      `📏 RULER: ${this.bmRulerActive ? 'ON' : 'OFF'}`,
-      this.bmRulerActive,
-      '#facc15',
-      () => {
-        this.bmRulerActive = !this.bmRulerActive;
-        if (!this.bmRulerActive) {
-          this.bmRulerPointA = null;
-          this.bmRulerPointB = null;
-        }
-      }
-    );
-
-    // Minimalist Essential HUD: Redundant trade buttons removed (handled by DOM console)
-    drawHudPill(`📈 CVD: ${this.bmShowCvdCurve ? 'ON' : 'OFF'}`, this.bmShowCvdCurve, '#c084fc', () => { this.bmShowCvdCurve = !this.bmShowCvdCurve; });
-    
+    // Clean Canvas: Row 3 HUD buttons removed to eliminate visual clutter.
+    // If user panned the chart away from live price, display a subtle floating center button:
     if (Math.abs(this.priceOffset || 0) > 0.05 || Math.abs(this.timeOffsetMs || 0) >= 1000) {
-      drawHudPill(
-        `🎯 Tengah`,
-        true,
-        '#fbbf24',
-        () => { this.centerVertical(); }
-      );
+      const liveP = snapshot.last_price || snapshot.bid || 0;
+      if (liveP > 0) {
+        ctx.save();
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        const txt = `🎯 Pusatkan Semula ($${liveP.toFixed(2)})`;
+        const w = ctx.measureText(txt).width + 16;
+        const x = this.CHART_LEFT + 8;
+        const y = 8;
+        const h = 20;
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.90)';
+        ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = '#050a14';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(txt, x + w / 2, y + h / 2);
+        this.bmHudHitboxes.push({ x, y, w, h, onClick: () => { this.centerVertical(); } });
+        ctx.restore();
+      }
     }
-
-    // Floating Clickable Alert Banner if User Panned Live Price Outside the Screen
-    const liveP = snapshot.last_price || snapshot.bid || 0;
-    if (liveP > 0 && (liveP < this.minPrice + 0.3 || liveP > this.maxPrice - 0.3)) {
-      const dirArrow = liveP > this.maxPrice ? '⬆️ DI ATAS SKRIN' : '⬇️ DI BAWAH SKRIN';
-      const alertTxt = `🎯 HARGA SEMASA ($${liveP.toFixed(2)}) ${dirArrow} — KLIK SINI UNTUK KEMBALI KE TENGAH`;
-      ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
-      const bw = ctx.measureText(alertTxt).width + 24;
-      const bh = 24;
-      const bx = this.CHART_LEFT + (this.CHART_WIDTH - bw) / 2;
-      const by = this.CHART_TOP + 12;
-
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.95)';
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(bx, by, bw, bh);
-
-      ctx.fillStyle = '#04101e';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(alertTxt, bx + bw / 2, by + bh / 2);
-
-      this.bmHudHitboxes.push({
-        x: bx, y: by, w: bw, h: bh,
-        onClick: () => { this.centerVertical(); }
-      });
-    }
-
-    // 3. Book & Volume Imbalance Gauges on the Right
-    let totalBidDepth = 0;
-    let totalAskDepth = 0;
-    const ob = snapshot.order_book || {};
-    for (const v of Object.values(ob.bids || {})) totalBidDepth += v;
-    for (const v of Object.values(ob.asks || {})) totalAskDepth += v;
-    const totalBook = Math.max(1, totalBidDepth + totalAskDepth);
-    const bookImbalancePct = Math.round(((totalBidDepth - totalAskDepth) / totalBook) * 100);
-
-    let buyVolTotal = 0;
-    let sellVolTotal = 0;
-    const hudTrades = (this._tradesHistoryBuffer && this._tradesHistoryBuffer.length > 0)
-      ? this._tradesHistoryBuffer
-      : (snapshot.trades || []);
-    for (const t of hudTrades.slice(-40)) {
-      buyVolTotal  += t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
-      sellVolTotal += t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
-    }
-    const totalVol = Math.max(1, buyVolTotal + sellVolTotal);
-    const volImbalancePct = Math.round(((buyVolTotal - sellVolTotal) / totalVol) * 100);
-
-    const gaugeW = 68;
-    const gaugeH = 9;
-
-    const bookX = this.CHART_RIGHT - 245;
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-    ctx.textAlign = 'right';
-    const bookSign = bookImbalancePct >= 0 ? '+' : '';
-    ctx.fillText(`Book: ${bookSign}${bookImbalancePct}%`, bookX - 5, 16);
-
-    const bidBarW = Math.round((totalBidDepth / totalBook) * gaugeW);
-    ctx.fillStyle = '#00e676';
-    ctx.fillRect(bookX, 9, bidBarW, gaugeH);
-    ctx.fillStyle = '#ff3366';
-    ctx.fillRect(bookX + bidBarW, 9, gaugeW - bidBarW, gaugeH);
-    ctx.strokeStyle = '#1b2d48';
-    ctx.strokeRect(bookX, 9, gaugeW, gaugeH);
-
-    const volX = this.CHART_RIGHT - 82;
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-    ctx.textAlign = 'right';
-    const volSign = volImbalancePct >= 0 ? '+' : '';
-    ctx.fillText(`Vol: ${volSign}${volImbalancePct}%`, volX - 5, 16);
-
-    const buyBarW = Math.round((buyVolTotal / totalVol) * gaugeW);
-    ctx.fillStyle = '#00e676';
-    ctx.fillRect(volX, 9, buyBarW, gaugeH);
-    ctx.fillStyle = '#ff3366';
-    ctx.fillRect(volX + buyBarW, 9, gaugeW - buyBarW, gaugeH);
-    ctx.strokeStyle = '#1b2d48';
-    ctx.strokeRect(volX, 9, gaugeW, gaugeH);
-
-    ctx.restore();
   }
 
   /* ─── Interactive Tooltip on Hover ────────────────────────────── */
