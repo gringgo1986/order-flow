@@ -329,15 +329,34 @@ class App {
       btnExpSigCSV.addEventListener('click', () => this.exportSignalsToCSV());
     }
 
-    // Clear Signals History
+    // Clear Signals History & Reset to Zero
     const btnClrSig = document.getElementById('btnClearSignalsHistory');
     if (btnClrSig) {
-      btnClrSig.addEventListener('click', () => {
-        if (confirm('Padam semua rekod sejarah isyarat?')) {
+      btnClrSig.addEventListener('click', async () => {
+        if (confirm('Adakah anda pasti mahu memadamkan semua rekod isyarat dan menetapkan semula jurnal ke sifar (0)?')) {
+          this._signalsResetTime = Date.now();
+          try {
+            localStorage.setItem('gringgo_signals_reset_ts', this._signalsResetTime.toString());
+          } catch (e) {}
+
           this.signalsList = [];
           this._saveSignals();
+
+          if (this.bookmap && this.bookmap._bmSignalsHistory) {
+            this.bookmap._bmSignalsHistory = [];
+          }
+          if (this.footprint && this.footprint._emittedFpSignals) {
+            this.footprint._emittedFpSignals.clear();
+          }
+
+          try {
+            await fetch('/api/reset_signals', { method: 'POST' });
+          } catch (e) {
+            console.warn('[Signals Reset] Ralat memanggil API backend:', e);
+          }
+
           this._renderSignalsUI();
-          this.showToast('🗑️ Sejarah isyarat telah dipadam.');
+          this.showToast('🗑️ Semua rekod isyarat telah diset semula ke sifar!');
         }
       });
     }
@@ -3540,6 +3559,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
 
   _initSignalsTracker() {
     try {
+      this._signalsResetTime = parseInt(localStorage.getItem('gringgo_signals_reset_ts') || '0', 10);
       const saved = localStorage.getItem('gringgo_signals_journal');
       if (saved) {
         this.signalsList = JSON.parse(saved);
@@ -3560,7 +3580,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       this.signalsList = [];
     }
 
-    if (!this.signalsList || this.signalsList.length === 0) {
+    if ((!this.signalsList || this.signalsList.length === 0) && !this._signalsResetTime) {
       const now = Date.now();
       const p = 4053.90;
       this.signalsList = [
@@ -3712,6 +3732,10 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     // 1. Auto-Sync Confirmed Signals from Backend Engine
     if (s.bookmap_signals && Array.isArray(s.bookmap_signals)) {
       for (const bs of s.bookmap_signals) {
+        // Guard against ingesting old signals generated before user reset
+        if (this._signalsResetTime && bs.timestamp && (bs.timestamp * 1000 <= this._signalsResetTime)) {
+          continue;
+        }
         if (!this.signalsList.some(sig => sig.id === bs.id)) {
           let sigType = bs.type;
           if (!sigType || ['ICEBERG BID ABSORPTION', 'TRAPPED SELLERS AT LOW', 'ICEBERG ASK ABSORPTION', 'TRAPPED BUYERS AT HIGH', 'BULLISH CVD DIVERGENCE', 'BEARISH CVD DIVERGENCE', 'LIQUIDITY RAID & SWEEP'].includes(sigType) || (!sigType.includes('[BOOKMAP]') && !sigType.includes('[SNR VALID]'))) {
