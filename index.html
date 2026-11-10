@@ -41,8 +41,8 @@
       <!-- Precision Pulse & Sesi -->
       <div class="precision-badge" id="precisionBadge" title="Status Pengambilan Harga Live Setiap 1 Saat (Tepat)" style="display:inline-flex; align-items:center; gap:5px; background:rgba(0,240,255,0.06); border:1px solid rgba(0,240,255,0.25); border-radius:4px; padding:2px 6px; font-family:var(--font-mono); font-size:10px;">
         <span class="pulse-dot" style="width:6px; height:6px; background:#00e676; border-radius:50%; box-shadow:0 0 6px #00e676; display:inline-block;"></span>
-        <span id="txtTickCadence" style="color:#00f0ff; font-weight:700;">1s</span>
-        <span id="txtTickClock" style="color:#94a3b8; font-size:9.5px;">--:--:--</span>
+        <span id="txtTickCadence" style="display:none;">1s</span>
+        <span id="txtTickClock" style="display:none;">--:--:--</span>
         <span id="txtTickLatency" style="color:#22c55e; font-size:9px; font-weight:700;">0ms</span>
       </div>
 
@@ -90,7 +90,7 @@
         <span>📊</span> DOM
       </button>
       <!-- ADMIN PANEL (Hidden from top bar; accessible via Bottom Dock) -->
-      <button id="btnOpenAdminModal" style="display:none;">
+      <button id="btnOpenAdminModal" style="display:none !important;">
         <span>👑</span> ADMIN PANEL
       </button>
       <!-- LOGOUT (Hidden from top bar; accessible via Bottom Dock) -->
@@ -154,12 +154,12 @@
       <button class="tool-btn" id="btnHelpGuide" style="display:none !important;" title="Panduan & Kamus Order Flow">❓</button>
 
       <!-- User Profile Badge & Admin Panel Launcher -->
-      <div id="userProfileStrip" style="display:inline-flex; align-items:center; gap:5px; margin-left:3px; font-family:var(--font-mono); border-left:1px solid #1e293b; padding-left:6px;">
+      <div id="userProfileStrip" style="display:none !important; align-items:center; gap:5px; margin-left:3px; font-family:var(--font-mono); border-left:1px solid #1e293b; padding-left:6px;">
         <span id="lblUserBadge" style="font-size:9.5px; color:#ffd60a; font-weight:700; display:inline-flex; align-items:center; gap:3px;">
           <span>👤</span> <span id="lblUsername">Memuatkan...</span>
         </span>
         <span id="lblPlanBadge" style="background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:700;">VIP</span>
-        <button id="btnOpenAdminModal" style="display:none; background:linear-gradient(135deg, #d97706, #b45309); border:1px solid #f59e0b; color:#fff; font-weight:800; padding:2px 7px; font-size:9px; border-radius:4px; cursor:pointer;" title="Buka Panel Pengurusan Pelanggan & Jualan ID">👑 ADMIN</button>
+        <button id="btnOpenAdminModal" style="display:none !important;" title="Buka Panel Pengurusan Pelanggan & Jualan ID">👑 ADMIN</button>
         
       </div>
 
@@ -181,9 +181,9 @@
 
       <div class="chart-toolbar">
         <div class="chart-tools-left">
-          <button class="tool-btn" id="btnZoomIn" title="Besarkan saiz lilin & harga (Zoom In)">🔍+</button>
-          <button class="tool-btn" id="btnZoomOut" title="Kecilkan saiz lilin (Zoom Out)">🔍-</button>
-          <button class="tool-btn" id="btnZoomReset" title="Set semula zoom & pusatkan semula harga & masa (Atau Double-Click Carta)">⟲</button>
+          <button class="tool-btn" id="btnZoomIn" style="display:none !important;" title="Besarkan saiz lilin & harga (Zoom In)">🔍+</button>
+          <button class="tool-btn" id="btnZoomOut" style="display:none !important;" title="Kecilkan saiz lilin (Zoom Out)">🔍-</button>
+          <button class="tool-btn" id="btnZoomReset" style="display:none !important;" title="Set semula zoom & pusatkan semula harga & masa (Atau Double-Click Carta)">⟲</button>
 
           <!-- Canvas Interactive Drawing Tools -->
           <div class="drawing-tools-group" style="display:inline-flex; align-items:center; gap:2px; border-left:1px solid #1e293b; padding-left:4px; margin-left:2px;">
@@ -268,7 +268,7 @@
 
           <!-- Bubble Size Slider (Context-Aware: Bookmap Only) -->
           <div id="bookmapBubbleWrap" style="display:inline-flex; align-items:center; gap:3px; margin-right:2px;" title="Sensitiviti saiz buble order flow">
-            <span class="tool-tag" style="font-size:9.5px;">Buble:</span>
+            <span class="tool-tag" style="font-size:9.5px; color:#38bdf8; font-weight:700;">🫧 Buih:</span>
             <input type="range" id="sliderBubbleZoom" min="0.4" max="2.5" step="0.1" value="1.0" style="width:40px; cursor:pointer;">
           </div>
 
