@@ -2960,7 +2960,26 @@ class OrderFlowEngine:
                     self._last_bm_signal_dir = "SELL"
 
         self._update_signals_status(p)
+        self._save_signals_to_disk()
         return self.bookmap_signals
+
+    def _load_signals_from_disk(self):
+        try:
+            if hasattr(self, 'signals_storage_file') and os.path.exists(self.signals_storage_file):
+                with open(self.signals_storage_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list) and len(data) > 0:
+                        self.bookmap_signals = data[-50:]
+        except Exception:
+            pass
+
+    def _save_signals_to_disk(self):
+        try:
+            if hasattr(self, 'signals_storage_file'):
+                with open(self.signals_storage_file, "w", encoding="utf-8") as f:
+                    json.dump(self.bookmap_signals[-50:], f)
+        except Exception:
+            pass
 
     def _update_signals_status(self, p: float):
         """Updates win/loss status of active signals across TP1 to TP20 (50 to 1000 pips) and manages Auto-BE"""
@@ -3008,6 +3027,11 @@ class OrderFlowEngine:
         self._failed_zone_cooldowns.clear()
         self._last_bm_signal_time = 0.0
         self._last_snr_valid_time = 0.0
+        try:
+            if hasattr(self, 'signals_storage_file') and os.path.exists(self.signals_storage_file):
+                os.remove(self.signals_storage_file)
+        except Exception:
+            pass
         return True
 
     def _evaluate_mtf_confluence(self) -> Dict[str, Any]:
