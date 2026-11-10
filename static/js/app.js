@@ -177,7 +177,7 @@ class App {
       this.btnToggleDock.addEventListener('click', () => {
         this.toggleBottomDock(!this.isDockCollapsed);
       const btd = document.getElementById('btnToggleDock');
-      if (btd) btd.textContent = this.isDockCollapsed ? '▲ Buka Insights & Tape' : '▼ Kecilkan Dock';
+      if (btd) btd.textContent = this.isDockCollapsed ? '▲' : '▼';
       });
     }
 
@@ -2162,7 +2162,7 @@ class App {
     });
 
     if (this.btnToggleDock) {
-      this.btnToggleDock.textContent = this.isDockCollapsed ? '▲ Buka Dock' : '▼ Kecilkan Dock';
+      this.btnToggleDock.textContent = this.isDockCollapsed ? '▲' : '▼';
     }
     setTimeout(() => {
       window.dispatchEvent(new Event('resize'));
@@ -2801,7 +2801,7 @@ class App {
         const btnDock = document.getElementById('btnAdminDock');
         if (u.role === 'admin') {
           if (btnAdmin) btnAdmin.style.display = 'none'; // Keep top bar clean
-          if (btnDock) btnDock.style.display = 'inline-flex'; // Accessible in bottom dock
+          if (btnDock) btnDock.style.display = 'none'; // Accessible in bottom dock
         } else {
           if (btnAdmin) btnAdmin.style.display = 'none';
           if (btnDock) btnDock.style.display = 'none';
