@@ -3511,52 +3511,6 @@ class BookmapRenderer {
       }
     );
 
-    // 2B. Smart Whale Category HUD Pill (Noise / Normal / Major / Mega / Tutup)
-    const currentTier = this.bmBubbleCategory || (this.bmBubbleFilter === 'all' ? 'noise' : (this.bmBubbleFilter === 'whale' ? 'normal' : 'off'));
-    let bubLabel = '🫧 Semua (Noise)';
-    let bubCol = '#10b981';
-    let bubActive = true;
-
-    if (currentTier === 'mega') {
-      bubLabel = '👑 Mega Shark (≥80L)';
-      bubCol = '#f43f5e';
-    } else if (currentTier === 'major') {
-      bubLabel = '🏛️ Major Inst (≥35L)';
-      bubCol = '#fbbf24';
-    } else if (currentTier === 'normal') {
-      bubLabel = '🐋 Normal (≥12L)';
-      bubCol = '#38bdf8';
-    } else if (currentTier === 'off') {
-      bubLabel = '🚫 Buih: Tutup';
-      bubCol = '#64748b';
-      bubActive = false;
-    }
-
-    drawHudPill(
-      bubLabel,
-      bubActive,
-      bubCol,
-      () => {
-        // Cycle: noise -> normal -> major -> mega -> off -> noise
-        let nextTier = 'noise';
-        if (this.bmBubbleCategory === 'noise' || !this.bmBubbleCategory) nextTier = 'normal';
-        else if (this.bmBubbleCategory === 'normal') nextTier = 'major';
-        else if (this.bmBubbleCategory === 'major') nextTier = 'mega';
-        else if (this.bmBubbleCategory === 'mega') nextTier = 'off';
-        else nextTier = 'noise';
-
-        this.setBubbleCategory(nextTier);
-
-        if (window.orderFlowApp && window.orderFlowApp.showToast) {
-          const toastMsg = nextTier === 'noise' ? '🫧 Kategori: Semua Transaksi Pasaran (Termasuk Noise <10L)'
-            : (nextTier === 'normal' ? '🐋 Kategori: Normal Whale (≥12.0 Lot) [Potensi Win: 65%+]'
-            : (nextTier === 'major' ? '🏛️ Kategori: Major Institutional (≥35.0 Lot) [Potensi Win: 78%+]'
-            : (nextTier === 'mega' ? '👑 Kategori: Mega Shark (≥80.0 Lot) [Potensi Win: 88%-93%]' : '🚫 Buih: Dimatikan (Heatmap Sahaja)')));
-          window.orderFlowApp.showToast(toastMsg);
-        }
-      }
-    );
-
     // Dynamic Contrast Dial (AUTO / LOW / MED / HIGH)
     const contrastCol = this.bmContrastMode === 'HIGH' ? '#f43f5e' : (this.bmContrastMode === 'MED' ? '#38bdf8' : (this.bmContrastMode === 'LOW' ? '#a78bfa' : '#fbbf24'));
     drawHudPill(`🎚️ ${this.bmContrastMode}`, true, contrastCol, () => {
@@ -3599,68 +3553,9 @@ class BookmapRenderer {
       }
     );
 
-    // Feature 4: On-Canvas Quick Action Trade HUD
-    drawHudPill('⚡ BUY', true, '#059669', () => {
-      if (window.orderFlowApp && window.orderFlowApp.sendTrade) {
-        window.orderFlowApp.sendTrade('BUY');
-      }
-    });
-    drawHudPill('⚡ SELL', true, '#dc2626', () => {
-      if (window.orderFlowApp && window.orderFlowApp.sendTrade) {
-        window.orderFlowApp.sendTrade('SELL');
-      }
-    });
-    drawHudPill('🎯 BE', false, '#38bdf8', () => {
-      fetch('/api/breakeven_all', { method: 'POST' }).then(r => r.json()).then(res => {
-        if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
-      });
-    });
-    drawHudPill('❌ CLOSE', false, '#f43f5e', () => {
-      fetch('/api/close_all', { method: 'POST' }).then(r => r.json()).then(res => {
-        if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message);
-      });
-    });
-
-    drawHudPill(
-      this.bmWallFilterOnly ? '🔥 Wall ≥28L' : '🔥 Semua',
-      this.bmWallFilterOnly,
-      '#fbbf24',
-      () => { this.bmWallFilterOnly = !this.bmWallFilterOnly; }
-    );
-    drawHudPill(
-      `🟢 Bid/Ask: ${this.bmShowBidAskChannel ? 'ON' : 'OFF'}`,
-      this.bmShowBidAskChannel,
-      '#4ade80',
-      () => { this.bmShowBidAskChannel = !this.bmShowBidAskChannel; }
-    );
-    drawHudPill(
-      `🦈 Jerung: ${this.bmShowSharkWalls !== false ? 'ON' : 'OFF'}`,
-      this.bmShowSharkWalls !== false,
-      '#fbbf24',
-      () => { this.bmShowSharkWalls = this.bmShowSharkWalls === false; }
-    );
-    drawHudPill(
-      `🐋 Paus: ${this.bmShowWhaleLabels ? 'ON' : 'OFF'}`,
-      this.bmShowWhaleLabels,
-      '#38bdf8',
-      () => { this.bmShowWhaleLabels = !this.bmShowWhaleLabels; }
-    );
-    drawHudPill(
-      `📈 CVD: ${this.bmShowCvdCurve ? 'ON' : 'OFF'}`,
-      this.bmShowCvdCurve,
-      '#c084fc',
-      () => { this.bmShowCvdCurve = !this.bmShowCvdCurve; }
-    );
-    drawHudPill(
-      `🎯 SGNL: ${this.bmShowSignals !== false ? 'ON' : 'OFF'}`,
-      this.bmShowSignals !== false,
-      '#38bdf8',
-      () => { this.bmShowSignals = this.bmShowSignals === false; }
-    );
-    drawHudPill('◀', false, '#38bdf8', () => { this.panHorizontal(-1); });
-    drawHudPill('▶', false, '#38bdf8', () => { this.panHorizontal(1); });
-    drawHudPill('▲', false, '#38bdf8', () => { this.panVertical(1); });
-    drawHudPill('▼', false, '#38bdf8', () => { this.panVertical(-1); });
+    // Minimalist Essential HUD: Redundant trade buttons removed (handled by DOM console)
+    drawHudPill(`📈 CVD: ${this.bmShowCvdCurve ? 'ON' : 'OFF'}`, this.bmShowCvdCurve, '#c084fc', () => { this.bmShowCvdCurve = !this.bmShowCvdCurve; });
+    
     if (Math.abs(this.priceOffset || 0) > 0.05 || Math.abs(this.timeOffsetMs || 0) >= 1000) {
       drawHudPill(
         `🎯 Tengah`,
