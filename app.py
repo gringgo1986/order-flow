@@ -114,11 +114,12 @@ async def background_tick_stream():
 
             if connected_clients:
                 snapshot = engine.get_full_snapshot(initial=False)
-                # Broadcast to all active browser connections
+                # High-Concurrency Optimization: Serialize JSON once for all 30+ simultaneous clients
+                payload_text = json.dumps(snapshot)
                 dead_clients = set()
                 for client in connected_clients:
                     try:
-                        await client.send_json(snapshot)
+                        await client.send_text(payload_text)
                     except Exception:
                         dead_clients.add(client)
                 for dead in dead_clients:
