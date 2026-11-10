@@ -3634,13 +3634,31 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     } catch (e) {}
   }
 
-  addSignal({ id, type, direction, entryPrice, slPrice, tpPrice, tp1, tp2, tp3, tp4, tp5, slPips = 50, tpPips = 50 }) {
+  addSignal({ id, type, direction, entryPrice, slPrice, tpPrice, tp1, tp2, tp3, tp4, tp5, zone, slPips = 50, tpPips = 50 }) {
     if (!entryPrice || entryPrice <= 0) return;
     const now = Date.now();
     const sigId = id || `SIG-${now.toString().slice(-4)}`;
 
     // Anti-duplication guard
     if (this.signalsList && this.signalsList.some(s => s.id === sigId)) return;
+
+    // Anti-Spam & One-Active-Per-Zone Guard:
+    // Block adding duplicate signal if an active signal already exists on the same zone,
+    // or if a signal on the same zone was added within the last 4 minutes (240s)
+    const newDir = direction.toUpperCase();
+    const cleanZone = (zone || type || '').replace(/^[^\w\s]+/, '').trim();
+    if (this.signalsList && this.signalsList.length > 0) {
+      const isDuplicateZone = this.signalsList.some(s => {
+        if (s.direction !== newDir) return false;
+        const existZone = (s.zone || s.type || '').replace(/^[^\w\s]+/, '').trim();
+        const sameZone = existZone && cleanZone && (existZone === cleanZone || existZone.includes(cleanZone) || cleanZone.includes(existZone));
+        if (!sameZone) return false;
+        const isActive = s.status === 'ACTIVE' || s.status === 'BE_HIT';
+        const isRecent = s.timestamp && (now - s.timestamp < 240000);
+        return isActive || isRecent;
+      });
+      if (isDuplicateZone) return;
+    }
 
     const isBuy = direction.toUpperCase() === 'BUY';
     const finalSl = (slPrice && slPrice > 0) ? slPrice : +(isBuy ? entryPrice - 5.00 : entryPrice + 5.00).toFixed(2);
@@ -3671,6 +3689,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       tp3: parseFloat(finalTp3),
       tp4: parseFloat(finalTp4),
       tp5: parseFloat(finalTp5),
+      zone: zone || type || '',
       status: 'ACTIVE',
       resultPips: 0.0,
       floatingPips: 0.0,
@@ -3718,6 +3737,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             tp3: bs.tp3,
             tp4: bs.tp4,
             tp5: bs.tp5,
+            zone: bs.zone,
             slPips: 50,
             tpPips: 50
           });
