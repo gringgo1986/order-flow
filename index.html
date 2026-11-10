@@ -422,19 +422,19 @@
       <div class="dock-tabs" style="justify-content:space-between;">
         <div style="display:flex; gap:4px; align-items:center;">
           <button class="dock-tab active" data-tab="insights">
-            Order Flow Insights ⚡
+            ⚡ Insights
           </button>
           <button class="dock-tab" data-tab="tape">
-            Time & Sales (Tape)
+            📜 Tape
           </button>
           <button class="dock-tab" data-tab="signals" id="tabBtnSignals" style="color:#34d399; font-weight:800;">
-            📡 Rekod Signal (Win/Loss) <span id="badgeSignalWinLoss" style="background:rgba(0,230,118,0.2); border:1px solid #00e676; color:#00e676; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:800; margin-left:4px;">0W / 0L</span>
+            🎯 Rekod Signal <span id="badgeSignalWinLoss" style="background:rgba(0,230,118,0.2); border:1px solid #00e676; color:#00e676; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:800; margin-left:4px;">0W / 0L</span>
           </button>
           <!-- Bottom Dock Admin & Logout Access -->
-          <button class="dock-tab" id="btnAdminDock" style="display:inline-flex; align-items:center; gap:4px; color:#fbbf24; font-weight:800; border:1px solid rgba(245,158,11,0.4); background:rgba(245,158,11,0.15); margin-left:6px; cursor:pointer;" title="Buka Panel Pentadbir: Pengurusan Pelanggan & Penjualan ID">
+          <button class="dock-tab" id="btnAdminDock" style="display:none !important;">
             <span>👑</span> PENGURUSAN ID (ADMIN)
           </button>
-          <button class="dock-tab" id="btnLogoutDock" style="display:inline-flex; align-items:center; gap:4px; color:#fca5a5; font-weight:800; border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.15); margin-left:4px; cursor:pointer;" title="Log Keluar dari Terminal">
+          <button class="dock-tab" id="btnLogoutDock" style="display:none !important;">
             <span>🚪</span> LOG KELUAR
           </button>
           <!-- Feature 6: Tape Lot Size Filter -->
@@ -455,8 +455,8 @@
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:5px;">
-          <button class="tool-btn" id="btnExpandDock" style="font-size:10px; padding:2px 8px; border-color:#ffd60a; color:#ffd60a; font-weight:800; cursor:pointer;" title="Besarkan Dock (50% Skrin) untuk melihat lebih banyak rekod isyarat">⤢ Besarkan Dock</button>
-          <button class="tool-btn" id="btnToggleDock" style="font-size:10px; padding:2px 8px; border-color:#38bdf8; color:#38bdf8; font-weight:700; cursor:pointer;" title="Kecilkan atau Buka Panel Bawah">▼ Kecilkan Dock</button>
+          <button class="tool-btn" id="btnExpandDock" style="font-size:11px; padding:2px 7px; border-color:#ffd60a; color:#ffd60a; font-weight:800; cursor:pointer;" title="Besarkan Dock (50% Skrin)">⤢</button>
+          <button class="tool-btn" id="btnToggleDock" style="font-size:11px; padding:2px 7px; border-color:#38bdf8; color:#38bdf8; font-weight:700; cursor:pointer;" title="Buka / Kecilkan Panel Bawah">▲</button>
         </div>
       </div>
 
