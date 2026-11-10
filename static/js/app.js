@@ -1942,7 +1942,7 @@ class App {
       if (s.spoof_events && s.spoof_events.length > 0) {
         const lastSp = s.spoof_events[s.spoof_events.length - 1];
         if (Date.now() - lastSp.timestamp < 12000) {
-          spoofPill.style.display = 'inline-flex';
+          spoofPill.style.display = 'none';
           spoofTxt.textContent = lastSp.badge;
           const isPull = lastSp.type === 'PULLING';
           spoofPill.style.backgroundColor = isPull ? 'rgba(239, 68, 68, 0.26)' : 'rgba(0, 240, 255, 0.20)';
