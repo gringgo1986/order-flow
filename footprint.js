@@ -2162,28 +2162,10 @@ class FootprintRenderer {
           ctx.fill();
         }
 
-        // Register to Signals Journal with standard institutional 50p SL & Multi-TP
+        // Cluster signals are now evaluated 24/7 by the unified backend engine (mt5_engine.py)
         const sigKey = `cl_buy_${c.time}`;
         if (!this._emittedFpSignals.has(sigKey) && isRecentSignal) {
           this._emittedFpSignals.add(sigKey);
-          if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
-            const entry = c.close;
-            window.orderFlowApp.addSignal({
-              id: 'cl_' + c.time,
-              type: `🎯 [CLUSTER] ${zoneName}`,
-              direction: 'BUY',
-              entryPrice: entry,
-              slPrice: +(entry - 5.00).toFixed(2),
-              tpPrice: +(entry + 5.00).toFixed(2),
-              tp1: +(entry + 5.00).toFixed(2),
-              tp2: +(entry + 10.00).toFixed(2),
-              tp3: +(entry + 15.00).toFixed(2),
-              tp4: +(entry + 20.00).toFixed(2),
-              tp5: +(entry + 25.00).toFixed(2),
-              slPips: 50,
-              tpPips: 50
-            });
-          }
         }
       }
 
@@ -2234,28 +2216,10 @@ class FootprintRenderer {
           ctx.fill();
         }
 
-        // Register to Signals Journal with standard institutional 50p SL & Multi-TP
+        // Cluster signals are now evaluated 24/7 by the unified backend engine (mt5_engine.py)
         const sigKey = `cl_sell_${c.time}`;
         if (!this._emittedFpSignals.has(sigKey) && (i >= candles.length - 2)) {
           this._emittedFpSignals.add(sigKey);
-          if (window.orderFlowApp && typeof window.orderFlowApp.addSignal === 'function') {
-            const entry = c.close;
-            window.orderFlowApp.addSignal({
-              id: 'cl_' + c.time,
-              type: `🎯 [CLUSTER] ${zoneName}`,
-              direction: 'SELL',
-              entryPrice: entry,
-              slPrice: +(entry + 5.00).toFixed(2),
-              tpPrice: +(entry - 5.00).toFixed(2),
-              tp1: +(entry - 5.00).toFixed(2),
-              tp2: +(entry - 10.00).toFixed(2),
-              tp3: +(entry - 15.00).toFixed(2),
-              tp4: +(entry - 20.00).toFixed(2),
-              tp5: +(entry - 25.00).toFixed(2),
-              slPips: 50,
-              tpPips: 50
-            });
-          }
         }
       }
     }
