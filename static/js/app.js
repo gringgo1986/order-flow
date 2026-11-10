@@ -2800,8 +2800,8 @@ class App {
         }
         const btnDock = document.getElementById('btnAdminDock');
         if (u.role === 'admin') {
-          if (btnAdmin) btnAdmin.style.display = 'inline-flex';
-          if (btnDock) btnDock.style.display = 'inline-flex';
+          if (btnAdmin) btnAdmin.style.display = 'none'; // Keep top bar clean
+          if (btnDock) btnDock.style.display = 'inline-flex'; // Accessible in bottom dock
         } else {
           if (btnAdmin) btnAdmin.style.display = 'none';
           if (btnDock) btnDock.style.display = 'none';
