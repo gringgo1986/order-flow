@@ -106,6 +106,12 @@ async def background_tick_stream():
     while True:
         try:
             engine.poll_feed()
+            # 24/7 Autonomous Master Engine: Evaluates order flow & signals continuously without needing any active clients!
+            try:
+                engine._evaluate_bookmap_signals()
+            except Exception:
+                pass
+
             if connected_clients:
                 snapshot = engine.get_full_snapshot(initial=False)
                 # Broadcast to all active browser connections
@@ -407,6 +413,11 @@ def reset_candles():
     engine.candles = []
     engine._seed_initial_data()
     return {"status": "success", "message": "Candles reset to fresh high-definition state"}
+
+@app.get("/api/signals")
+def get_all_signals_endpoint():
+    """Returns all 24/7 autonomous signals recorded by the server engine"""
+    return {"status": "success", "signals": engine.bookmap_signals}
 
 @app.post("/api/reset_signals")
 def reset_signals_endpoint():
