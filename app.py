@@ -408,6 +408,11 @@ def reset_candles():
     engine._seed_initial_data()
     return {"status": "success", "message": "Candles reset to fresh high-definition state"}
 
+@app.post("/api/reset_signals")
+def reset_signals_endpoint():
+    engine.reset_all_signals()
+    return {"status": "success", "message": "Semua rekod isyarat dan zon penyejukan telah diset semula ke sifar"}
+
 @app.get("/api/history")
 def history_endpoint(limit: int = 1000, tf: str = None):
     if tf and tf != engine.timeframe:
