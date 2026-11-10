@@ -519,6 +519,10 @@ class FootprintRenderer {
     this._cdAnchorMid = null;
   }
 
+  centerToPrice() {
+    this.centerVertical();
+  }
+
   _sliceCandlesWithOffset(rawCandles, count) {
     const total = rawCandles.length;
     if (total <= count) {
