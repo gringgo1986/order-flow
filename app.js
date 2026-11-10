@@ -3580,69 +3580,8 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       this.signalsList = [];
     }
 
-    if ((!this.signalsList || this.signalsList.length === 0) && !this._signalsResetTime) {
-      const now = Date.now();
-      const p = 4053.90;
-      this.signalsList = [
-        {
-          id: 'SIG-101',
-          timestamp: now - 3600000 * 3,
-          timeStr: new Date(now - 3600000 * 3).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-          type: '⭐ SMC Asian High Sweep (Turtle Soup)',
-          direction: 'SELL',
-          entryPrice: p + 8.50,
-          slPrice: p + 12.00,
-          tpPrice: p + 1.50,
-          status: 'WIN',
-          resultPips: 70.0,
-          closedAt: now - 3600000 * 2,
-          closePrice: p + 1.50
-        },
-        {
-          id: 'SIG-102',
-          timestamp: now - 3600000 * 2,
-          timeStr: new Date(now - 3600000 * 2).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-          type: '⚡ Order Flow Absorption Reversal',
-          direction: 'BUY',
-          entryPrice: p - 5.00,
-          slPrice: p - 8.50,
-          tpPrice: p + 2.00,
-          status: 'WIN',
-          resultPips: 70.0,
-          closedAt: now - 3600000,
-          closePrice: p + 2.00
-        },
-        {
-          id: 'SIG-103',
-          timestamp: now - 3600000,
-          timeStr: new Date(now - 3600000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-          type: '🏛️ Volume Profile dPOC Retest',
-          direction: 'BUY',
-          entryPrice: p - 2.00,
-          slPrice: p - 5.50,
-          tpPrice: p + 5.00,
-          status: 'LOSS',
-          resultPips: -35.0,
-          closedAt: now - 1800000,
-          closePrice: p - 5.50
-        },
-        {
-          id: 'SIG-104',
-          timestamp: now - 900000,
-          timeStr: new Date(now - 900000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-          type: '🎯 Quad-Confluence 4/4 A+ Setup',
-          direction: 'BUY',
-          entryPrice: p,
-          slPrice: p - 3.50,
-          tpPrice: p + 7.00,
-          status: 'ACTIVE',
-          resultPips: 0.0,
-          floatingPips: 14.5,
-          closedAt: null,
-          closePrice: null
-        }
-      ];
-      this._saveSignals();
+    if (!this.signalsList) {
+      this.signalsList = [];
     }
 
     this._renderSignalsUI();
@@ -3662,12 +3601,18 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     // Anti-duplication guard
     if (this.signalsList && this.signalsList.some(s => s.id === sigId)) return;
 
-    // Anti-Spam & One-Active-Per-Zone Guard:
-    // Block adding duplicate signal if an active signal already exists on the same zone,
-    // or if a signal on the same zone was added within the last 4 minutes (240s)
+    // Anti-Hedging & Anti-Spam Guard:
     const newDir = direction.toUpperCase();
     const cleanZone = (zone || type || '').replace(/^[^\w\s]+/, '').trim();
     if (this.signalsList && this.signalsList.length > 0) {
+      // 1. Single Active Direction Lock (Anti-Hedging)
+      // Block opposing signal if there is an active signal running in the opposite direction
+      const hasOpposingActive = this.signalsList.some(s => {
+        return s.direction !== newDir && (s.status === 'ACTIVE' || s.status === 'BE_HIT');
+      });
+      if (hasOpposingActive) return;
+
+      // 2. One Active Signal Per Zone Lockout
       const isDuplicateZone = this.signalsList.some(s => {
         if (s.direction !== newDir) return false;
         const existZone = (s.zone || s.type || '').replace(/^[^\w\s]+/, '').trim();
