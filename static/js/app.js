@@ -3543,6 +3543,18 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       const saved = localStorage.getItem('gringgo_signals_journal');
       if (saved) {
         this.signalsList = JSON.parse(saved);
+        // Automatically upgrade raw trigger labels in history to proper SNR levels
+        if (this.signalsList && Array.isArray(this.signalsList)) {
+          this.signalsList.forEach(sig => {
+            if (sig.type === 'TRAPPED SELLERS AT LOW' || sig.type === 'ICEBERG BID ABSORPTION') {
+              sig.type = '🎯 [BOOKMAP] H1 SNR SUPPORT';
+            } else if (sig.type === 'TRAPPED BUYERS AT HIGH' || sig.type === 'ICEBERG ASK ABSORPTION') {
+              sig.type = '🎯 [BOOKMAP] H4 SNR RESISTANCE';
+            } else if (sig.type && (sig.type.startsWith('WHALE BID WALL') || sig.type.startsWith('WHALE ASK WALL'))) {
+              sig.type = '🎯 [BOOKMAP] M30 SNR SUPPORT';
+            }
+          });
+        }
       }
     } catch (e) {
       this.signalsList = [];
@@ -3682,7 +3694,18 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     if (s.bookmap_signals && Array.isArray(s.bookmap_signals)) {
       for (const bs of s.bookmap_signals) {
         if (!this.signalsList.some(sig => sig.id === bs.id)) {
-          const sigType = bs.type || `🎯 [BOOKMAP] ${bs.zone}`;
+          let sigType = bs.type;
+          if (!sigType || ['ICEBERG BID ABSORPTION', 'TRAPPED SELLERS AT LOW', 'ICEBERG ASK ABSORPTION', 'TRAPPED BUYERS AT HIGH', 'BULLISH CVD DIVERGENCE', 'BEARISH CVD DIVERGENCE', 'LIQUIDITY RAID & SWEEP'].includes(sigType) || (!sigType.includes('[BOOKMAP]') && !sigType.includes('[SNR VALID]'))) {
+            if (bs.zone) {
+              sigType = `🎯 [BOOKMAP] ${bs.zone}`;
+            } else if (sigType) {
+              sigType = `🎯 [BOOKMAP] ${sigType}`;
+            } else {
+              sigType = `🎯 [BOOKMAP] DEMAND/SUPPLY`;
+            }
+          } else if (!sigType.startsWith('🎯') && !sigType.startsWith('🏆')) {
+            sigType = `🎯 ${sigType}`;
+          }
           this.addSignal({
             id: bs.id,
             type: sigType,
@@ -3691,6 +3714,10 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             slPrice: bs.sl,
             tpPrice: bs.tp1,
             tp1: bs.tp1,
+            tp2: bs.tp2,
+            tp3: bs.tp3,
+            tp4: bs.tp4,
+            tp5: bs.tp5,
             slPips: 50,
             tpPips: 50
           });
