@@ -110,7 +110,7 @@
       <div id="radarAdvice" style="display:none;"><span id="radarAdviceText"></span></div>
 
       <!-- MTF Mini Pills -->
-      <div id="mtfMatrixBar" style="display:inline-flex; align-items:center; gap:3px; background:rgba(15,23,42,0.6); padding:2px 4px; border-radius:4px; border:1px solid #1e293b;">
+      <div id="mtfMatrixBar" style="display:none; align-items:center; gap:3px; background:rgba(15,23,42,0.6); padding:2px 4px; border-radius:4px; border:1px solid #1e293b;">
         <span class="mtf-pill" id="mtfPillM1" style="font-size:9px; font-weight:700; color:#94a3b8;">M1:⚪</span>
         <span class="mtf-pill" id="mtfPillM5" style="font-size:9px; font-weight:700; color:#94a3b8;">M5:⚪</span>
         <span class="mtf-pill" id="mtfPillM15" style="font-size:9px; font-weight:700; color:#94a3b8;">M15:⚪</span>
@@ -128,7 +128,7 @@
       </div>
 
       <!-- Prop Firm Shield Status Badge -->
-      <div id="propFirmBadge" style="display:inline-flex; align-items:center; gap:3px; background:rgba(16,185,129,0.12); border:1px solid #10b981; border-radius:4px; padding:2px 6px; color:#34d399; font-weight:700; font-size:9.5px; cursor:pointer;" title="Klik untuk togol status Pelindung Prop-Firm">
+      <div id="propFirmBadge" style="display:none; align-items:center; gap:3px; background:rgba(16,185,129,0.12); border:1px solid #10b981; border-radius:4px; padding:2px 6px; color:#34d399; font-weight:700; font-size:9.5px; cursor:pointer;" title="Klik untuk togol status Pelindung Prop-Firm">
         <span>🛡️</span>
         <span id="propFirmStatusText">AMAN</span>
       </div>
@@ -136,17 +136,17 @@
       <!-- Quad-Confluence Signal Dashboard Button -->
             <!-- SOP Order Flow 3-Step Dashboard Button -->
       <!-- High-Impact News Signal Button -->
-      <button class="tool-btn news-signal-btn" id="btnOpenNewsSignalModal" style="padding:2px 9px; font-size:9.5px; font-weight:800; background:linear-gradient(135deg, rgba(239,68,68,0.25), rgba(245,158,11,0.25)); border:1px solid #f59e0b; color:#fbbf24; display:inline-flex; align-items:center; gap:5px; cursor:pointer; box-shadow:0 0 10px rgba(245,158,11,0.25);" title="Buka Enjin Isyarat & Analisis Berita High-Impact (BUY/SELL) XAUUSD">
+      <button class="tool-btn news-signal-btn" id="btnOpenNewsSignalModal" style="display:none; padding:2px 9px; font-size:9.5px; font-weight:800; background:linear-gradient(135deg, rgba(239,68,68,0.25), rgba(245,158,11,0.25)); border:1px solid #f59e0b; color:#fbbf24; display:inline-flex; align-items:center; gap:5px; cursor:pointer; box-shadow:0 0 10px rgba(245,158,11,0.25);" title="Buka Enjin Isyarat & Analisis Berita High-Impact (BUY/SELL) XAUUSD">
         <span>📰</span>
         <span id="txtNewsHeaderLabel">NEWS: USD CPI</span>
         <span id="badgeNewsHeaderCountdown" style="color:#94a3b8; font-size:8.5px;">--m</span>
         <span id="badgeNewsHeaderBias" style="padding:1px 5px; border-radius:3px; background:#10b981; color:#fff; font-size:8px; font-weight:900;">🟢 BUY</span>
       </button>
 
-      <button class="tool-btn" id="btnOpenSopDash" style="padding:2px 9px; font-size:9.5px; font-weight:800; background:linear-gradient(135deg, rgba(56,189,248,0.22), rgba(16,185,129,0.22)); border:1px solid #38bdf8; color:#38bdf8; display:inline-flex; align-items:center; gap:4px; cursor:pointer; box-shadow:0 0 10px rgba(56,189,248,0.25);" title="Buka Dashboard SOP Dagangan 3-Langkah Rasmi">
+      <button class="tool-btn" id="btnOpenSopDash" style="display:none; padding:2px 9px; font-size:9.5px; font-weight:800; background:linear-gradient(135deg, rgba(56,189,248,0.22), rgba(16,185,129,0.22)); border:1px solid #38bdf8; color:#38bdf8; display:inline-flex; align-items:center; gap:4px; cursor:pointer; box-shadow:0 0 10px rgba(56,189,248,0.25);" title="Buka Dashboard SOP Dagangan 3-Langkah Rasmi">
         <span>📋</span> SOP DASHBOARD
       </button>
-      <button class="tool-btn" id="btnOpenConfluenceDash" style="padding:2px 8px; font-size:9.5px; font-weight:800; background:rgba(255,214,10,0.12); border:1px solid #ffd60a; color:#ffd60a; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" title="Buka Dashboard Analisis Konfluens 4-Modul">
+      <button class="tool-btn" id="btnOpenConfluenceDash" style="display:none; padding:2px 8px; font-size:9.5px; font-weight:800; background:rgba(255,214,10,0.12); border:1px solid #ffd60a; color:#ffd60a; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" title="Buka Dashboard Analisis Konfluens 4-Modul">
         <span>🎯</span> DASHBOARD
       </button>
 
