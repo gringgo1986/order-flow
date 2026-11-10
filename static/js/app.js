@@ -3248,58 +3248,218 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
   }
 
   _setupMobileTouchGestures() {
-    const canvases = [this.bookmapCanvas, this.footprintCanvas].filter(Boolean);
-    canvases.forEach(canvas => {
+    const targets = [
+      { canvas: this.bookmapCanvas, getMod: () => this.bookmap, type: 'bookmap' },
+      { canvas: this.footprintCanvas, getMod: () => this.footprint, type: 'footprint' }
+    ].filter(item => Boolean(item.canvas));
+
+    targets.forEach(({ canvas, getMod, type }) => {
+      let isTouching = false;
+      let isPinching = false;
       let touchStartX = 0;
       let touchStartY = 0;
+      let startPriceOffset = 0;
+      let startTimeOffset = 0;
+      let startBarOffset = 0;
+      let startSpan = 4.5;
+      let startZoom = 1.0;
+      let startCandleW = 10;
+      let initialPinchDist = 0;
       let lastTapTime = 0;
 
+      const getPinchDistance = (t1, t2) => {
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        return Math.hypot(dx, dy);
+      };
+
+      // 1. TOUCH START: Prevent browser page scrolling & initiate chart pan / pinch / double-tap
       canvas.addEventListener('touchstart', (e) => {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+
+        const mod = getMod();
+        const rect = canvas.getBoundingClientRect();
+
         if (e.touches.length === 1) {
           const t = e.touches[0];
-          const rect = canvas.getBoundingClientRect();
+          isTouching = true;
+          isPinching = false;
           touchStartX = t.clientX - rect.left;
           touchStartY = t.clientY - rect.top;
 
+          if (mod) {
+            startPriceOffset = mod.priceOffset || 0;
+            if (type === 'bookmap') {
+              startTimeOffset = mod.timeOffsetMs || 0;
+              startSpan = mod.bmHalfSpan || 4.5;
+              mod._isDragging = true;
+              mod._dragStartX = touchStartX;
+              mod._dragStartY = touchStartY;
+              mod._dragStartOffset = startPriceOffset;
+              mod._dragStartTimeOffset = startTimeOffset;
+              mod._dragStartSpan = startSpan;
+              mod._dragMode = (touchStartX < (mod.CHART_LEFT || 0) || touchStartX > (mod.CHART_RIGHT || canvas.width)) ? 'scale' : 'pan';
+            } else {
+              startBarOffset = mod.barOffset || 0;
+              startZoom = mod.viewMode === 'candlestick' ? (mod.csVerticalScale || 1.0) : (mod.verticalZoom || 1.0);
+              mod._isDragging = true;
+              mod._dragStartX = touchStartX;
+              mod._dragStartY = touchStartY;
+              mod._dragStartOffset = startPriceOffset;
+              mod._dragStartBarOffset = startBarOffset;
+              mod._dragStartZoom = startZoom;
+              const rightBoundary = mod.viewMode === 'clusterdelta' ? (mod.width - 70) : (mod.width - 75);
+              mod._dragMode = (touchStartX >= rightBoundary) ? 'scale' : 'pan';
+            }
+          }
+
+          // Double Tap (< 300ms) -> Center to Live Market Price
           const now = Date.now();
-          if (now - lastTapTime < 320) {
-            if (this.footprint && this.footprint.centerVertical) {
-              this.footprint.centerVertical();
+          if (now - lastTapTime < 300) {
+            if (mod && mod.centerVertical) {
+              mod.centerVertical();
               this.showToast('🎯 Carta Dipusatkan Semula');
             }
-            if (this.bookmap && this.bookmap.centerToPrice) {
-              this.bookmap.centerToPrice();
-            }
             lastTapTime = 0;
+            isTouching = false;
             return;
           }
           lastTapTime = now;
 
+          // Dispatch synthetic mousedown with full mouse properties (buttons: 1)
           const mouseEvent = new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
             clientX: t.clientX,
             clientY: t.clientY,
-            button: 0
+            button: 0,
+            buttons: 1
           });
           canvas.dispatchEvent(mouseEvent);
-        }
-      }, { passive: true });
 
+        } else if (e.touches.length === 2) {
+          isTouching = false;
+          isPinching = true;
+          initialPinchDist = getPinchDistance(e.touches[0], e.touches[1]);
+          if (mod) {
+            if (type === 'bookmap') {
+              startSpan = mod.bmHalfSpan || 4.5;
+            } else {
+              startZoom = mod.verticalZoom || 1.0;
+              startCandleW = mod.candleWidth || 12;
+            }
+          }
+        }
+      }, { passive: false });
+
+      // 2. TOUCH MOVE: Silky Smooth 60fps pan and pinch-to-zoom
       canvas.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 1) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+
+        const mod = getMod();
+        const rect = canvas.getBoundingClientRect();
+
+        if (e.touches.length === 1 && isTouching && mod) {
           const t = e.touches[0];
+          const curX = t.clientX - rect.left;
+          const curY = t.clientY - rect.top;
+          const dx = curX - touchStartX;
+          const dy = curY - touchStartY;
+
+          if (type === 'bookmap') {
+            if (mod._dragMode === 'scale') {
+              mod.bmHalfSpan = Math.max(1.5, Math.min(15.0, startSpan + dy * 0.025));
+            } else {
+              const priceSpan = (mod.bmHalfSpan || 4.5) * 2;
+              const chartH = Math.max(150, mod.CHART_HEIGHT || canvas.height);
+              const dPrice = (dy / chartH) * priceSpan;
+              mod.priceOffset = Number((startPriceOffset + dPrice).toFixed(2));
+
+              const histW = Math.max(200, mod.HIST_TIME_W || (canvas.width - 150));
+              const dTime = (dx / histW) * (mod.timeWindowMs || 60000);
+              const maxBack = (mod.timeWindowMs || 60000) * 5;
+              const minForward = -Math.round((mod.timeWindowMs || 60000) * 0.35);
+              mod.timeOffsetMs = Math.max(minForward, Math.min(maxBack, Math.round(startTimeOffset + dTime)));
+            }
+          } else {
+            // Footprint / ClusterDelta / Candlestick
+            if (mod._dragMode === 'scale') {
+              const deltaScale = dy * 0.005;
+              if (mod.viewMode === 'candlestick') {
+                mod.csVerticalScale = Math.max(0.4, Math.min(3.0, startZoom - deltaScale));
+              } else {
+                mod.verticalZoom = Math.max(0.4, Math.min(3.0, startZoom - deltaScale));
+              }
+            } else {
+              const priceSpan = (mod.maxPrice - mod.minPrice) || 20;
+              const chartH = Math.max(150, mod.height - 70);
+              const dPrice = (dy / chartH) * priceSpan;
+              mod.priceOffset = Number((startPriceOffset + dPrice).toFixed(2));
+
+              const candleW = Math.max(8, mod.candleWidth || 20);
+              const dBars = Math.round(dx / candleW);
+              mod.barOffset = Math.max(0, startBarOffset + dBars);
+            }
+          }
+
           const mouseEvent = new MouseEvent('mousemove', {
+            bubbles: true,
+            cancelable: true,
             clientX: t.clientX,
             clientY: t.clientY,
-            button: 0
+            button: 0,
+            buttons: 1
           });
           canvas.dispatchEvent(mouseEvent);
-        }
-      }, { passive: true });
 
-      canvas.addEventListener('touchend', (e) => {
-        const mouseEvent = new MouseEvent('mouseup', { button: 0 });
+        } else if (e.touches.length === 2 && isPinching && mod) {
+          // Pinch-to-zoom calculation
+          const currentDist = getPinchDistance(e.touches[0], e.touches[1]);
+          if (initialPinchDist > 5) {
+            const pinchRatio = currentDist / initialPinchDist;
+
+            if (type === 'bookmap') {
+              const newSpan = startSpan / pinchRatio;
+              mod.bmHalfSpan = Math.max(1.5, Math.min(15.0, Number(newSpan.toFixed(2))));
+            } else {
+              if (mod.viewMode === 'candlestick') {
+                const newCandleW = startCandleW * pinchRatio;
+                mod.candleWidth = Math.max(4, Math.min(50, Math.round(newCandleW)));
+              } else {
+                const newZoom = startZoom * pinchRatio;
+                mod.verticalZoom = Math.max(0.5, Math.min(3.0, Number(newZoom.toFixed(2))));
+              }
+            }
+          }
+        }
+      }, { passive: false });
+
+      // 3. TOUCH END / CANCEL: Terminate dragging state safely
+      const onTouchEnd = (e) => {
+        if (e.cancelable) e.preventDefault();
+        isTouching = false;
+        isPinching = false;
+
+        const mod = getMod();
+        if (mod) {
+          mod._isDragging = false;
+          mod._dragMode = null;
+        }
+
+        const mouseEvent = new MouseEvent('mouseup', {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          buttons: 0
+        });
+        canvas.dispatchEvent(mouseEvent);
         window.dispatchEvent(mouseEvent);
-      }, { passive: true });
+      };
+
+      canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+      canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
     });
   }
 
