@@ -131,8 +131,10 @@ class FootprintRenderer {
       if (!this.canvas || !this.canvas.parentElement) return;
       const rect = this.canvas.parentElement.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      this.width = Math.max(rect.width, 600);
-      this.height = Math.max(rect.height, 300);
+      const measuredW = rect.width || window.innerWidth || 360;
+      const measuredH = rect.height || 300;
+      this.width = Math.max(Math.floor(measuredW), 260);
+      this.height = Math.max(Math.floor(measuredH), 180);
       this.canvas.width = Math.floor(this.width * dpr);
       this.canvas.height = Math.floor(this.height * dpr);
       this.canvas.style.width = this.width + 'px';
@@ -140,6 +142,7 @@ class FootprintRenderer {
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', () => setTimeout(resize, 120));
     setTimeout(resize, 50);
     setTimeout(resize, 350);
   }
