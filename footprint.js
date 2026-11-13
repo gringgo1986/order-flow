@@ -2236,8 +2236,9 @@ class FootprintRenderer {
 
   /* ─── Top Footprint Control Strip HUD (Pills & Hitboxes) ─────────────────────── */
   _drawFootprintTopHUD(ctx, snapshot) {
-    ctx.save();
     this.fpToolbarHitboxes = [];
+    return; // Clean Zen Canvas: Eliminates double toolbar conflict with HTML toolbar
+    ctx.save();
     const topH = 21;
 
     // Header Background Strip (Slim & Sleek Micro-HUD)
@@ -2425,9 +2426,9 @@ class FootprintRenderer {
       return;
     }
 
-    const topControlH = 24; // Interactive ClusterDelta Pro control bar at very top
+    const topControlH = 0; // Zen Pro Mode: Removed duplicate trading buttons and HUD from inside canvas!
     const topTableH = 68;   // 4-row institutional telemetry header (Vol, Delta, Δ%/Div, Time)
-    const topHeaderH = topControlH + topTableH; // 92px total header
+    const topHeaderH = topControlH + topTableH; // 68px clean header
     const bottomStripH = 26;
     const isProfileCollapsed = this.cdShowProfilePanel === false || this.width < 560;
     const volColW = isProfileCollapsed ? 0 : 84;
@@ -2492,8 +2493,9 @@ class FootprintRenderer {
     ctx.fillStyle = '#202328';
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // 3. Render Interactive ClusterDelta Pro Control Strip (y: 0..24)
+    // 3. Render Interactive ClusterDelta Pro Control Strip (y: 0..topControlH)
     this.cdToolbarHitboxes = [];
+    if (topControlH > 0) {
     ctx.fillStyle = '#111827';
     ctx.fillRect(0, 0, this.width, topControlH);
     ctx.strokeStyle = '#334155';
@@ -2619,6 +2621,7 @@ class FootprintRenderer {
     if (Math.abs(this.priceOffset || 0) > 0.05 || (this.barOffset || 0) > 0) {
       drawPill('🎯 Tengah', true, '#fbbf24', () => { this.centerVertical(); });
     }
+    } // end if (topControlH > 0)
 
     // 3.5 Institutional ClusterDelta Orderflow Signal Engine & Permanent Frozen Cache
     // VERSION 3: STRICT LOCATION-FIRST (BUY ONLY AT DEMAND/SUPPORT, SELL ONLY AT SUPPLY/RESISTANCE)
@@ -4134,7 +4137,7 @@ class FootprintRenderer {
       if (!lastPrice) return;
 
     // Layout geometry (World-Class TradingView Obsidian Layout)
-    const topBarH = 34;
+    const topBarH = 0; // Clean Zen Canvas: 0px padding, no double toolbar
     const rightAxisW = 76;
     const bottomTimeH = 22;
     const volPaneH = Math.max(54, Math.floor((this.height - topBarH - bottomTimeH) * 0.18));
