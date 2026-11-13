@@ -1,9 +1,9 @@
 /* ====================================================================
-   XAUUSD Pro Order Flow & Bookmap - Service Worker (PWA Engine) v38.0
+   XAUUSD Pro Order Flow & Bookmap - Service Worker (PWA Engine) v39.0
    Cache-Busting & Immediate Update Engine
    ==================================================================== */
 
-const CACHE_NAME = 'gringgo-orderflow-v38.0';
+const CACHE_NAME = 'gringgo-orderflow-v39.0';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -14,7 +14,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          console.log('[SW v38.0] Deleting obsolete cache:', key);
+          console.log('[SW v39.0] Deleting obsolete cache:', key);
           return caches.delete(key);
         })
       );
