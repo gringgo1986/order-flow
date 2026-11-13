@@ -38,10 +38,15 @@ body {
   color: var(--text-main);
   font-family: var(--font-sans);
   height: 100vh;
+  height: 100dvh; /* Dynamic Mobile Viewport */
   display: flex;
   flex-direction: column;
   overflow: hidden;
   user-select: none;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 /* ==================== TOP NAVIGATION HEADER ==================== */
@@ -1318,18 +1323,18 @@ header.app-header {
 .mobile-dom-fab {
   display: none;
   position: fixed;
-  bottom: 24px;
-  right: 14px;
+  bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
   z-index: 99999;
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   border: 1px solid #38bdf8;
   color: #ffffff;
   font-family: var(--font-mono, monospace);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 800;
-  padding: 8px 13px;
-  border-radius: 20px;
-  box-shadow: 0 4px 15px rgba(2, 132, 199, 0.5);
+  padding: 8px 15px;
+  border-radius: 22px;
+  box-shadow: 0 4px 18px rgba(2, 132, 199, 0.6);
   cursor: pointer;
   align-items: center;
   gap: 6px;
@@ -1346,12 +1351,32 @@ header.app-header {
     display: flex !important;
   }
   
-  /* On mobile portrait, default to collapsing DOM if not already opened by user */
-  .main-workspace:not(.dom-forced-open) {
+  /* On mobile, keep chart workspace full width */
+  .main-workspace {
     grid-template-columns: 1fr 0px !important;
   }
+  
   .main-workspace:not(.dom-forced-open) .trading-sidebar {
     display: none !important;
+  }
+
+  /* Sleek Floating Slide-Over Drawer for DOM Ladder on Mobile (Zero Chart Squishing) */
+  .main-workspace.dom-forced-open .trading-sidebar {
+    display: flex !important;
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    width: min(340px, 88vw) !important;
+    height: 100% !important;
+    z-index: 200 !important;
+    box-shadow: -6px 0 28px rgba(0, 0, 0, 0.88), 0 0 16px rgba(0, 240, 255, 0.25) !important;
+    border-left: 1px solid rgba(56, 189, 248, 0.6) !important;
+    animation: slideInDrawer 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  @keyframes slideInDrawer {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
   }
 
   /* Responsive Vertical Split View (Top Bookmap, Bottom Footprint) */
@@ -1366,6 +1391,34 @@ header.app-header {
     height: 50% !important;
     top: 50% !important;
     left: 0 !important;
+  }
+}
+
+/* Landscape Mode Ultra-Compact Header & Toolbar for Maximum Chart Canvas */
+@media (max-height: 520px) and (orientation: landscape) {
+  header.app-header {
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 6px !important;
+  }
+  .chart-toolbar {
+    height: 28px !important;
+    padding: 0 6px !important;
+  }
+  .tool-btn, .nav-btn {
+    min-height: 24px !important;
+    padding: 2px 7px !important;
+    font-size: 10px !important;
+  }
+  .main-workspace.dock-collapsed {
+    grid-template-rows: 1fr 26px !important;
+  }
+  .dock-tabs {
+    height: 26px !important;
+  }
+  .dock-tab {
+    padding: 2px 8px !important;
+    font-size: 9.5px !important;
   }
 }
 
