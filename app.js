@@ -2799,12 +2799,16 @@ class App {
           elP.style.borderColor = u.remaining_days > 5 ? '#38bdf8' : '#f59e0b';
         }
         const btnDock = document.getElementById('btnAdminDock');
+        const btnLogout = document.getElementById('btnLogoutDock');
         if (u.role === 'admin') {
           if (btnAdmin) btnAdmin.style.display = 'none'; // Keep top bar clean
-          if (btnDock) btnDock.style.display = 'none'; // Accessible in bottom dock
+          if (btnDock) btnDock.style.display = 'inline-flex'; // Visible beside Rekod Signal
         } else {
           if (btnAdmin) btnAdmin.style.display = 'none';
-          if (btnDock) btnDock.style.display = 'none';
+          if (btnDock) btnDock.style.display = 'none'; // Only admin sees admin panel
+        }
+        if (btnLogout) {
+          btnLogout.style.display = 'inline-flex'; // Always visible beside Rekod Signal
         }
 
         // Auto open admin modal if URL contains admin=1 or hash #admin
