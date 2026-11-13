@@ -1017,22 +1017,30 @@ class FootprintRenderer {
       const y = this.priceToY(lv.price);
       if (y < 22 || y > this.height - 75) continue;
 
-      // Smart Proximity Ray: Hanya lukis garisan melintang jika dekat harga semasa (±$3.50)
-      const curP = lastPrice || (candles && candles.length ? candles[candles.length - 1].close : 0);
-      const isNear = curP > 0 ? (Math.abs(lv.price - curP) <= 3.50) : lv.isMajor;
+      // High-Visibility Neon Luminous SNR Ray with Dark Contrast Halo (Always drawn for all in-view SNR levels!)
+      ctx.save();
+      // 1. Dark contrast underlay so ray pops against dark/light background
+      ctx.strokeStyle = 'rgba(6, 10, 18, 0.90)';
+      ctx.lineWidth = lv.isMajor ? 3.0 : 2.4;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(80, y);
+      ctx.lineTo(this.width - 70, y);
+      ctx.stroke();
 
-      if (isNear) {
-        ctx.save();
-        ctx.globalAlpha = lv.isMajor ? 0.36 : 0.20; // Soft translucent ray
-        ctx.setLineDash(lv.isMajor ? [6, 4] : [4, 4]);
-        ctx.strokeStyle = lv.col;
-        ctx.lineWidth = lv.isMajor ? 1.0 : 0.7;
-        ctx.beginPath();
-        ctx.moveTo(80, y);
-        ctx.lineTo(this.width - 70, y);
-        ctx.stroke();
-        ctx.restore();
-      }
+      // 2. Glowing Neon SNR Ray (Full 92% visibility, crisp glow)
+      ctx.globalAlpha = 0.92;
+      ctx.setLineDash(lv.isMajor ? [8, 4] : [5, 4]);
+      ctx.strokeStyle = lv.col;
+      ctx.lineWidth = lv.isMajor ? 1.8 : 1.3;
+      ctx.shadowColor = lv.col;
+      ctx.shadowBlur = lv.isMajor ? 6 : 3.5;
+      ctx.beginPath();
+      ctx.moveTo(80, y);
+      ctx.lineTo(this.width - 70, y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
 
       const text = `${lv.labels.join(' • ')} $${lv.price.toFixed(2)}`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
