@@ -1613,3 +1613,21 @@ header.app-header {
     font-weight: 700 !important;
   }
 }
+
+@media (max-width: 900px) {
+  .dock-tabs {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+  .dock-tabs::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  .dock-tab {
+    flex-shrink: 0 !important;
+  }
+}
