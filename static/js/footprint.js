@@ -842,13 +842,14 @@ class FootprintRenderer {
     // 2. Render Footprint Candles (Robust Multi-Bar Engine with Guaranteed Visibility)
     // Synchronize container width & height directly from canvas element
     if (this.canvas && this.canvas.clientWidth) {
-      this.width = Math.max(this.canvas.clientWidth, 600);
-      this.height = Math.max(this.canvas.clientHeight, 300);
+      this.width = Math.max(this.canvas.clientWidth || 360, 260);
+      this.height = Math.max(this.canvas.clientHeight || 260, 180);
     }
+    const leftMargin = 120; // Safe zone reserved for Left SNR Level Badges
     const rightMargin = 85;
     const spacing = 18;
     this.candleSpacing = spacing;
-    const usableW = Math.max(300, this.width - rightMargin - 20);
+    const usableW = Math.max(260, this.width - rightMargin - leftMargin);
     const dynamicW = Math.floor(usableW / Math.max(1, candles.length)) - spacing;
     this.candleWidth = Math.max(90, Math.min(150, dynamicW));
 
@@ -856,10 +857,16 @@ class FootprintRenderer {
     const rightAnchorX = this.width - rightMargin - this.candleWidth - 8;
     this.hoverCell = null;
 
+    // Safe clipping region: candles scroll smoothly without overlapping left SNR tags or right price scale
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(leftMargin, 0, Math.max(10, this.width - leftMargin - rightMargin + 10), this.height);
+    ctx.clip();
+
     for (let i = 0; i < candles.length; i++) {
       const candleIndexFromRight = (candles.length - 1) - i;
       const x = rightAnchorX - (candleIndexFromRight * (this.candleWidth + spacing));
-      if (x < -this.candleWidth - 40 || x > this.width) continue;
+      if (x + this.candleWidth < leftMargin || x > this.width) continue;
 
       try {
         this._drawSingleFootprint(ctx, candles[i], x, (i === candles.length - 1), candles);
@@ -873,6 +880,8 @@ class FootprintRenderer {
 
     // 2.25. Draw Unfinished Auction Rays across bars
     this._drawFootprintUnfinishedRays(ctx, candles, rightAnchorX);
+
+    ctx.restore();
 
     // 2.28. Draw Cumulative Delta Sparkline
     this._drawFootprintCvdSparkline(ctx, candles);
@@ -3846,6 +3855,20 @@ class FootprintRenderer {
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
     ctx.strokeRect(panelX, topControlH, rightPanelW, topTableH);
+
+    // 1-Click interactive hitbox to collapse/expand Profile Panel
+    this.cdToolbarHitboxes.push({
+      x: panelX,
+      y: topControlH,
+      w: rightPanelW,
+      h: topTableH,
+      onClick: () => {
+        this.cdShowProfilePanel = (this.cdShowProfilePanel === false);
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          window.orderFlowApp.showToast(this.cdShowProfilePanel ? '📊 Panel Profil Kluster Dibuka' : '📉 Panel Profil Kluster Dikecutkan (Lebar Penuh)');
+        }
+      }
+    });
 
     if (volColW > 0) {
       // Full session totals
