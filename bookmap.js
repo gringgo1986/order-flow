@@ -571,7 +571,7 @@ class BookmapRenderer {
     return Boolean(this.width && this.width < 560);
   }
   get LEFT_AXIS_W() { return this.isMobileScreen ? 38 : 54; }
-  get COB_WIDTH()   { return this.isMobileScreen ? 58 : 108; }
+  get COB_WIDTH()   { return this.isMobileScreen ? 78 : 128; }
   get HIST_HEIGHT() { return (this.height && this.height < 450) ? 42 : 56; }
   get TOP_PADDING() { return 0; }
   get CHART_TOP()   { return this.TOP_PADDING; }
@@ -2984,16 +2984,17 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── High-Resolution Right COB with Dynamic Whale Category Filter ─── */
+  /* ─── High-Resolution Right COB: Harga & Lot Pesanan Bank (Bida & Tanya) ─── */
   _drawCOB(ctx, orderBook, currentPrice, bid, ask) {
     ctx.save();
     const sx = this.CHART_RIGHT;
     const sw = this.COB_WIDTH;
 
-    ctx.fillStyle = '#060a12';
+    // Dark sleek background
+    ctx.fillStyle = '#060a14';
     ctx.fillRect(sx, 0, sw, this.height);
 
-    // High-tech Neon Vertical Separator (Separating Projection from COB)
+    // High-tech Neon Vertical Separator
     ctx.strokeStyle = '#00d4ff';
     ctx.lineWidth   = 1.5;
     ctx.shadowColor = '#00d4ff';
@@ -3004,188 +3005,148 @@ class BookmapRenderer {
     ctx.stroke();
     ctx.shadowBlur  = 0;
 
-    // 🎯 USER REQUIREMENT: COB filters automatically based on selected Whale Category!
-    const tier = this.bmBubbleCategory || 'noise';
-    let cobMinLot = 0.0;
-    let cobHeader = 'COB • SEMUA (NOISE)';
-    let cobHeaderCol = '#10b981';
-    let cobHeaderBg = 'rgba(16, 185, 129, 0.18)';
+    // Header: HARGA ($) | LOT BANK (L)
+    const hdrH = 22;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+    ctx.fillRect(sx, 0, sw, hdrH);
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx, 0, sw, hdrH);
 
-    if (tier === 'mega') {
-      cobMinLot = 80.0;
-      cobHeader = '👑 COB • MEGA ≥80L';
-      cobHeaderCol = '#f43f5e';
-      cobHeaderBg = 'rgba(244, 63, 94, 0.22)';
-    } else if (tier === 'major') {
-      cobMinLot = 35.0;
-      cobHeader = '🏛️ COB • MAJOR ≥35L';
-      cobHeaderCol = '#fbbf24';
-      cobHeaderBg = 'rgba(251, 191, 36, 0.20)';
-    } else if (tier === 'normal') {
-      cobMinLot = 12.0;
-      cobHeader = '🐋 COB • WHALE ≥12L';
-      cobHeaderCol = '#38bdf8';
-      cobHeaderBg = 'rgba(56, 189, 248, 0.20)';
-    } else if (tier === 'off') {
-      cobMinLot = 0.0;
-      cobHeader = 'COB • HEATMAP';
-      cobHeaderCol = '#94a3b8';
-      cobHeaderBg = '#0f172a';
-    }
+    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('HARGA', sx + 5, 14.5);
 
-    ctx.fillStyle = cobHeaderBg;
-    ctx.fillRect(sx, 0, sw, this.TOP_PADDING);
-    ctx.fillStyle  = cobHeaderCol;
-    ctx.font       = 'bold 8.5px "JetBrains Mono", monospace';
-    ctx.textAlign  = 'center';
-    ctx.fillText(cobHeader, sx + sw / 2, 18);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('LOT BANK', sx + sw - 5, 14.5);
 
     const bids = (orderBook && orderBook.bids) || {};
     const asks = (orderBook && orderBook.asks) || {};
-    const oldestSnap = this._depthHistoryBuffer.length > 0 ? this._depthHistoryBuffer[0] : null;
     const cyLive = currentPrice ? this.priceToY(currentPrice) : -999;
 
-    // 0. Base Continuous Vertical Right Price Scale (Standardized with Footprint & Cluster)
-    // Ensures vertical price scale is 100% visible at all times, independent of whale filters!
-    const priceStep = 0.50;
-    const startP = Math.floor(this.minPrice / priceStep) * priceStep;
-
-    ctx.save();
-    for (let p = startP; p <= this.maxPrice + priceStep; p = Math.round((p + priceStep) * 100) / 100) {
-      const y = this.priceToY(p);
-      if (y < this.CHART_TOP + 6 || y > this.CHART_BOTTOM - 6) continue;
-
-      const isWholeDollar = Math.abs(Math.round(p) - p) < 0.01;
-
-      // Small tick marks on right scale border
-      ctx.strokeStyle = isWholeDollar ? 'rgba(56, 189, 248, 0.45)' : 'rgba(71, 85, 105, 0.30)';
-      ctx.lineWidth = isWholeDollar ? 1.2 : 0.6;
-      ctx.beginPath();
-      ctx.moveTo(sx, y);
-      ctx.lineTo(sx + (isWholeDollar ? 6 : 3), y);
-      ctx.stroke();
-
-      // Right Price Scale Number (Whole dollars in crisp silver, half dollars in subtle slate)
-      if (Math.abs(y - cyLive) > 10) {
-        ctx.font = isWholeDollar ? 'bold 9.5px "JetBrains Mono", monospace' : '8.5px "JetBrains Mono", monospace';
-        ctx.textAlign = 'left';
-        ctx.fillStyle = isWholeDollar ? '#cbd5e1' : '#64748b';
-        ctx.fillText(p.toFixed(2), sx + 6, y + 3);
-      }
-    }
-    ctx.restore();
-
-    let maxDepth = 1;
-    for (const v of Object.values(bids)) maxDepth = Math.max(maxDepth, v);
-    for (const v of Object.values(asks)) maxDepth = Math.max(maxDepth, v);
+    let maxDepth = 40;
+    for (const v of Object.values(bids)) maxDepth = Math.max(maxDepth, parseFloat(v) || 0);
+    for (const v of Object.values(asks)) maxDepth = Math.max(maxDepth, parseFloat(v) || 0);
     maxDepth = Math.max(maxDepth, 45);
 
-    // 1. Render smooth $0.10 liquidity depth silhouette bars
-    const barStep = 0.10;
-    const startBarP = Math.floor(this.minPrice / barStep) * barStep;
-    const barH = Math.max(2.5, Math.abs(this.priceToY(0) - this.priceToY(barStep)) - 0.8);
-    let visibleWallCount = 0;
+    // Dynamic price step based on visible chart zoom
+    const pxPer10 = Math.abs(this.priceToY(0) - this.priceToY(0.10));
+    let ladderStep = 0.50;
+    if (pxPer10 >= 12) ladderStep = 0.10;
+    else if (pxPer10 * 2 >= 13) ladderStep = 0.20;
+    else if (pxPer10 * 5 >= 13) ladderStep = 0.50;
+    else ladderStep = 1.00;
 
-    for (let p = startBarP; p <= this.maxPrice + barStep; p = Math.round((p + barStep) * 100) / 100) {
+    const startP = Math.floor(this.minPrice / ladderStep) * ladderStep;
+
+    for (let p = startP; p <= this.maxPrice + ladderStep; p = Math.round((p + ladderStep) * 100) / 100) {
       const y = this.priceToY(p);
-      if (y < this.CHART_TOP + 6 || y > this.CHART_BOTTOM - 6) continue;
+      if (y < this.CHART_TOP + hdrH + 4 || y > this.CHART_BOTTOM - 6) continue;
 
-      const pStr  = p.toFixed(2);
-      const bVol  = bids[pStr] || bids[p.toFixed(1)] || bids[p] || 0;
-      const aVol  = asks[pStr] || asks[p.toFixed(1)] || asks[p] || 0;
-      const vol   = Math.max(bVol, aVol);
-      if (vol <= 0) continue;
+      const pStr = p.toFixed(2);
+      let bVol = parseFloat(bids[pStr] ?? bids[p.toFixed(1)] ?? bids[p] ?? 0);
+      let aVol = parseFloat(asks[pStr] ?? asks[p.toFixed(1)] ?? asks[p] ?? 0);
 
-      // 🎯 STRICT WHALE TIER FILTER: Only display order book levels that meet or exceed category threshold!
-      if (vol < cobMinLot) {
-        continue;
-      }
-      visibleWallCount++;
-
-      const isBid = bVol >= aVol;
-      const isMega = vol >= 80.0;
-      const isMajor = vol >= 35.0;
-      const isWall = vol >= 54.0;
-      const barW = Math.min(sw - 4, (vol / maxDepth) * (sw - 4));
-
-      // Visual styling according to tier:
-      if (isMega) {
-        // Mega Shark (≥80L): Intense Glowing Crimson / Gold Crown Border
-        ctx.fillStyle = isBid ? 'rgba(0, 230, 118, 0.65)' : 'rgba(244, 63, 94, 0.65)';
-        ctx.fillRect(sx + 2, y - barH / 2, barW, barH);
-        ctx.strokeStyle = '#ffd60a';
-        ctx.lineWidth = 1.6;
-        ctx.strokeRect(sx + 2, y - barH / 2, barW, barH);
-      } else if (isMajor) {
-        // Major Institutional (≥35L): Radiant Amber Border
-        ctx.fillStyle = isBid ? 'rgba(0, 230, 118, 0.50)' : 'rgba(251, 191, 36, 0.50)';
-        ctx.fillRect(sx + 2, y - barH / 2, barW, barH);
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 1.2;
-        ctx.strokeRect(sx + 2, y - barH / 2, barW, barH);
-      } else {
-        ctx.fillStyle = isBid
-          ? (isWall ? 'rgba(0, 230, 118, 0.45)' : 'rgba(0, 230, 118, 0.22)')
-          : (isWall ? 'rgba(255, 51, 102, 0.45)' : 'rgba(255, 51, 102, 0.22)');
-        ctx.fillRect(sx + 2, y - barH / 2, barW, barH);
-        if (isWall) {
-          ctx.strokeStyle = isBid ? '#00e676' : '#ff3366';
-          ctx.lineWidth = 0.9;
-          ctx.strokeRect(sx + 2, y - barH / 2, barW, barH);
+      // Aggregate nearby resting orders if ladder step is larger than 10 cents
+      if (ladderStep > 0.10 && bVol === 0 && aVol === 0) {
+        const half = ladderStep / 2;
+        for (const bp of Object.keys(bids)) {
+          if (Math.abs(parseFloat(bp) - p) < half) bVol = Math.max(bVol, parseFloat(bids[bp]));
+        }
+        for (const ap of Object.keys(asks)) {
+          if (Math.abs(parseFloat(ap) - p) < half) aVol = Math.max(aVol, parseFloat(asks[ap]));
         }
       }
 
-      // Print Price & Lot Numbers cleanly on all matching whale levels
-      const cents = Math.round(p * 100) % 100;
-      const isHalfDollar = (cents === 0 || cents === 50);
-      const shouldShowLabel = cobMinLot > 0 || isHalfDollar || vol >= 50;
+      const isAsk = p >= (currentPrice || 0);
+      const vol = isAsk ? (aVol || bVol || 0) : (bVol || aVol || 0);
+      const isWholeDollar = Math.abs(Math.round(p) - p) < 0.01;
+      const isHalfDollar = Math.abs(Math.round(p * 2) - p * 2) < 0.01;
 
-      if (shouldShowLabel && Math.abs(y - cyLive) > 11) {
-        let deltaDepth = 0;
-        if (oldestSnap) {
-          const oldVol = isBid ? (oldestSnap.bids[pStr] || 0) : (oldestSnap.asks[pStr] || 0);
-          if (oldVol > 0) deltaDepth = Math.round(vol - oldVol);
+      // 1. Visual Liquidity Depth Bar (Silhouette representing bank resting order size)
+      if (vol > 0) {
+        const barW = Math.min(sw - 4, (vol / maxDepth) * (sw - 4));
+        const isMega = vol >= 80.0;
+        const isMajor = vol >= 35.0;
+
+        if (isMega) {
+          ctx.fillStyle = isAsk ? 'rgba(244, 63, 94, 0.55)' : 'rgba(0, 230, 118, 0.55)';
+          ctx.fillRect(sx + sw - barW - 2, y - 6, barW, 12);
+          ctx.strokeStyle = '#ffd60a';
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(sx + sw - barW - 2, y - 6, barW, 12);
+        } else if (isMajor) {
+          ctx.fillStyle = isAsk ? 'rgba(251, 191, 36, 0.45)' : 'rgba(16, 185, 129, 0.45)';
+          ctx.fillRect(sx + sw - barW - 2, y - 6, barW, 12);
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(sx + sw - barW - 2, y - 6, barW, 12);
+        } else {
+          ctx.fillStyle = isAsk ? 'rgba(255, 51, 102, 0.22)' : 'rgba(0, 230, 118, 0.22)';
+          ctx.fillRect(sx + sw - barW - 2, y - 6, barW, 12);
         }
+      }
 
-        ctx.font      = isMega ? 'bold 9px "JetBrains Mono", monospace' : (isMajor ? 'bold 8.5px "JetBrains Mono", monospace' : '8px "JetBrains Mono", monospace');
+      // 2. Horizontal Tick on Scale Border
+      ctx.strokeStyle = isWholeDollar ? 'rgba(56, 189, 248, 0.45)' : 'rgba(71, 85, 105, 0.30)';
+      ctx.lineWidth = isWholeDollar ? 1.0 : 0.6;
+      ctx.beginPath();
+      ctx.moveTo(sx, y);
+      ctx.lineTo(sx + (isWholeDollar ? 5 : 3), y);
+      ctx.stroke();
+
+      // 3. Print Harga ($) & Lot Bank (L)
+      if (Math.abs(y - cyLive) > 9) {
+        // Harga ($) - Sebelah Kiri Lajur
         ctx.textAlign = 'left';
-        ctx.fillStyle = isMega ? '#ffd60a' : (isMajor ? '#ffffff' : (p <= (currentPrice || 0) ? '#86efac' : '#fda4af'));
-        const prefix = isMega ? '👑' : (isMajor ? '🏛️' : '');
-        ctx.fillText(`${prefix}${pStr}`, sx + 3, y + 3);
+        ctx.font = isWholeDollar ? 'bold 9.5px "JetBrains Mono", monospace' : '8.5px "JetBrains Mono", monospace';
+        ctx.fillStyle = isWholeDollar ? '#ffffff' : (isHalfDollar ? '#cbd5e1' : '#94a3b8');
+        ctx.fillText(p.toFixed(2), sx + 5, y + 3.5);
 
-        const deltaStr = Math.abs(deltaDepth) >= 3 ? `(${deltaDepth > 0 ? '+' : ''}${deltaDepth})` : '';
-        ctx.font      = 'bold 8.5px "JetBrains Mono", monospace';
+        // Lot Bank (L) - Sebelah Kanan Lajur (Tepat di sebelah DOM)
         ctx.textAlign = 'right';
-        ctx.fillStyle = isMega ? '#ffd60a' : (isMajor ? '#fbbf24' : (isBid ? '#00e676' : '#ff5a80'));
-        ctx.fillText(`${Math.round(vol)}${deltaStr}`, sx + sw - 3, y + 3);
+        if (vol > 0) {
+          if (vol >= 80.0) {
+            ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+            ctx.fillStyle = '#ffd60a';
+            ctx.fillText(`👑 ${vol.toFixed(1)}L`, sx + sw - 4, y + 3.5);
+          } else if (vol >= 35.0) {
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText(`🏛️ ${vol.toFixed(1)}L`, sx + sw - 4, y + 3.5);
+          } else {
+            ctx.font = '8.5px "JetBrains Mono", monospace';
+            ctx.fillStyle = isAsk ? '#ff6b8b' : '#00e676';
+            ctx.fillText(`${vol.toFixed(1)}L`, sx + sw - 4, y + 3.5);
+          }
+        } else {
+          ctx.font = '8px "JetBrains Mono", monospace';
+          ctx.fillStyle = '#475569';
+          ctx.fillText('-', sx + sw - 6, y + 3.5);
+        }
       }
     }
 
-    // Discreet Whale Status Note: Never blocks the right price scale!
-    if (visibleWallCount === 0 && cobMinLot > 0) {
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.70)';
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(`(0 Jerung ≥${cobMinLot}L)`, sx + sw / 2, this.CHART_BOTTOM - 6);
-    }
-
+    // Always-on Live Current Price Tag
     if (currentPrice) {
       const cy = this.priceToY(currentPrice);
       if (cy > this.CHART_TOP && cy < this.CHART_BOTTOM) {
-        ctx.fillStyle = '#ffb703';
+        ctx.fillStyle = '#ffd60a';
         ctx.fillRect(sx + 1, cy - 9, sw - 2, 18);
 
         ctx.fillStyle    = '#000000';
         ctx.font         = 'bold 10px "JetBrains Mono", monospace';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(`⚡ ${currentPrice.toFixed(2)}`, sx + sw / 2, cy);
+        ctx.fillText(`⚡ $${currentPrice.toFixed(2)}`, sx + sw / 2, cy);
         ctx.textBaseline = 'alphabetic';
       }
     }
+
     ctx.restore();
   }
-
 
   /* ══════════════════════════════════════════════════════════════════
      WHALE INFLOW RADAR: DISCREET, STREAMLINED INSTITUTIONAL ALERT
