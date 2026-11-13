@@ -2914,6 +2914,14 @@ class BookmapRenderer {
       ctx.textAlign = 'right';
       ctx.fillText(cursorPrice.toFixed(2), this.CHART_LEFT - 4, this.mouseY + 3);
 
+      // Right Axis Price Pill for Cursor (Matches Footprint & Cluster)
+      ctx.fillStyle = '#0ea5e9';
+      ctx.fillRect(this.CHART_RIGHT + 1, this.mouseY - 8, this.COB_WIDTH - 2, 16);
+      ctx.fillStyle = '#04101e';
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`⌖ $${cursorPrice.toFixed(2)}`, this.CHART_RIGHT + this.COB_WIDTH / 2, this.mouseY + 3.5);
+
       // Inspect Resting Order Book Depth at Cursor Price
       if (!this.hoverTrade && orderBook) {
         const bVol = (orderBook.bids && orderBook.bids[snappedP]) || 0;
@@ -3021,6 +3029,37 @@ class BookmapRenderer {
     const bids = (orderBook && orderBook.bids) || {};
     const asks = (orderBook && orderBook.asks) || {};
     const oldestSnap = this._depthHistoryBuffer.length > 0 ? this._depthHistoryBuffer[0] : null;
+    const cyLive = currentPrice ? this.priceToY(currentPrice) : -999;
+
+    // 0. Base Continuous Vertical Right Price Scale (Standardized with Footprint & Cluster)
+    // Ensures vertical price scale is 100% visible at all times, independent of whale filters!
+    const priceStep = 0.50;
+    const startP = Math.floor(this.minPrice / priceStep) * priceStep;
+
+    ctx.save();
+    for (let p = startP; p <= this.maxPrice + priceStep; p = Math.round((p + priceStep) * 100) / 100) {
+      const y = this.priceToY(p);
+      if (y < this.CHART_TOP + 6 || y > this.CHART_BOTTOM - 6) continue;
+
+      const isWholeDollar = Math.abs(Math.round(p) - p) < 0.01;
+
+      // Small tick marks on right scale border
+      ctx.strokeStyle = isWholeDollar ? 'rgba(56, 189, 248, 0.45)' : 'rgba(71, 85, 105, 0.30)';
+      ctx.lineWidth = isWholeDollar ? 1.2 : 0.6;
+      ctx.beginPath();
+      ctx.moveTo(sx, y);
+      ctx.lineTo(sx + (isWholeDollar ? 6 : 3), y);
+      ctx.stroke();
+
+      // Right Price Scale Number (Whole dollars in crisp silver, half dollars in subtle slate)
+      if (Math.abs(y - cyLive) > 10) {
+        ctx.font = isWholeDollar ? 'bold 9.5px "JetBrains Mono", monospace' : '8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = isWholeDollar ? '#cbd5e1' : '#64748b';
+        ctx.fillText(p.toFixed(2), sx + 6, y + 3);
+      }
+    }
+    ctx.restore();
 
     let maxDepth = 1;
     for (const v of Object.values(bids)) maxDepth = Math.max(maxDepth, v);
@@ -3031,7 +3070,6 @@ class BookmapRenderer {
     const barStep = 0.10;
     const startBarP = Math.floor(this.minPrice / barStep) * barStep;
     const barH = Math.max(2.5, Math.abs(this.priceToY(0) - this.priceToY(barStep)) - 0.8);
-    const cyLive = currentPrice ? this.priceToY(currentPrice) : -999;
     let visibleWallCount = 0;
 
     for (let p = startBarP; p <= this.maxPrice + barStep; p = Math.round((p + barStep) * 100) / 100) {
@@ -3109,14 +3147,12 @@ class BookmapRenderer {
       }
     }
 
-    // Informative Empty State if no walls of this tier are inside the current zoom range
+    // Discreet Whale Status Note: Never blocks the right price scale!
     if (visibleWallCount === 0 && cobMinLot > 0) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.40)';
-      ctx.font = 'italic 8px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.70)';
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('TIADA DINDING', sx + sw / 2, this.height / 2 - 8);
-      ctx.fillText(`≥${cobMinLot}L DALAM SKRIN`, sx + sw / 2, this.height / 2 + 5);
-      ctx.fillText('(Skrol/Zoom Skrin)', sx + sw / 2, this.height / 2 + 18);
+      ctx.fillText(`(0 Jerung ≥${cobMinLot}L)`, sx + sw / 2, this.CHART_BOTTOM - 6);
     }
 
     if (currentPrice) {
