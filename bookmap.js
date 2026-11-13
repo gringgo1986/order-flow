@@ -2283,15 +2283,29 @@ class BookmapRenderer {
       const inView = (y >= this.CHART_TOP - 4 && y <= this.CHART_BOTTOM + 4);
 
       if (inView) {
-        // 1. ALWAYS draw full horizontal dashed SNR ray
-        ctx.setLineDash(lv.isHtf ? [8, 4] : [5, 4]);
-        ctx.strokeStyle = lv.col;
-        ctx.lineWidth = lv.isHtf ? 1.2 : 0.9;
+        // 1. High-Visibility Neon Luminous SNR Ray with Dark Contrast Halo
+        ctx.save();
+        // Dark contrast underlay so ray pierces clearly across dense heatmap bands
+        ctx.strokeStyle = 'rgba(5, 10, 20, 0.90)';
+        ctx.lineWidth = lv.isHtf ? 3.4 : 2.8;
+        ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(this.CHART_LEFT, y);
         ctx.lineTo(this.CHART_RIGHT, y);
         ctx.stroke();
-        ctx.setLineDash([]);
+
+        // Glowing Neon Foreground SNR Line
+        ctx.setLineDash(lv.isHtf ? [10, 4] : [6, 4]);
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = lv.isHtf ? 2.0 : 1.5;
+        ctx.shadowColor = lv.col;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(this.CHART_LEFT, y);
+        ctx.lineTo(this.CHART_RIGHT, y);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
 
         // 2. Consolidated & 100% collision-proof badge slotting
         const text = `${lv.labels.join(' • ')} $${lv.price.toFixed(2)}`;
