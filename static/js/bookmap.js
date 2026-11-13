@@ -345,8 +345,10 @@ class BookmapRenderer {
       if (!this.canvas || !this.canvas.parentElement) return;
       const rect = this.canvas.parentElement.getBoundingClientRect();
       const dpr  = window.devicePixelRatio || 1;
-      this.width  = Math.max(rect.width, 600);
-      this.height = Math.max(rect.height, 400);
+      const measuredW = rect.width || window.innerWidth || 360;
+      const measuredH = rect.height || 360;
+      this.width  = Math.max(Math.floor(measuredW), 260);
+      this.height = Math.max(Math.floor(measuredH), 200);
 
       this.canvas.width  = Math.floor(this.width * dpr);
       this.canvas.height = Math.floor(this.height * dpr);
@@ -357,6 +359,7 @@ class BookmapRenderer {
     };
 
     window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', () => setTimeout(handleResize, 120));
     setTimeout(handleResize, 50);
     setTimeout(handleResize, 350);
   }
@@ -563,10 +566,13 @@ class BookmapRenderer {
     }, { passive: false });
   }
 
-  /* ─── Layout Constants ─────────────────────────────────────────── */
-  get LEFT_AXIS_W() { return 54; }
-  get COB_WIDTH()   { return 108; }
-  get HIST_HEIGHT() { return 56; }
+  /* ─── Layout Constants (Mobile Responsive) ─────────────────────── */
+  get isMobileScreen() {
+    return Boolean(this.width && this.width < 560);
+  }
+  get LEFT_AXIS_W() { return this.isMobileScreen ? 38 : 54; }
+  get COB_WIDTH()   { return this.isMobileScreen ? 58 : 108; }
+  get HIST_HEIGHT() { return (this.height && this.height < 450) ? 42 : 56; }
   get TOP_PADDING() { return 0; }
   get CHART_TOP()   { return this.TOP_PADDING; }
   get CHART_BOTTOM(){ return this.height - this.HIST_HEIGHT; }
@@ -574,7 +580,10 @@ class BookmapRenderer {
   get CHART_RIGHT() { return this.width - this.COB_WIDTH; }
   get CHART_WIDTH() { return this.CHART_RIGHT - this.CHART_LEFT; }
   get CHART_HEIGHT(){ return this.CHART_BOTTOM - this.CHART_TOP; }
-  get NOW_X()       { return this.CHART_LEFT + Math.floor(this.CHART_WIDTH * 0.84); }
+  get NOW_X()       { 
+    const ratio = this.isMobileScreen ? 0.78 : 0.84;
+    return this.CHART_LEFT + Math.floor(this.CHART_WIDTH * ratio); 
+  }
   get HIST_TIME_W() { return this.NOW_X - this.CHART_LEFT; }
 
   /* ─── Coordinate Conversion ────────────────────────────────────── */
