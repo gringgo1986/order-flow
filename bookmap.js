@@ -2125,7 +2125,7 @@ class BookmapRenderer {
     const bannerH = 20;
     // Docked at Top-Right so it NEVER collides with Top-Left Radar Bookmap signals
     const bannerX = this.CHART_RIGHT - bannerW - 14;
-    const bannerY = this.CHART_TOP + 6;
+    const bannerY = (this.width && this.width < 1100) ? (this.CHART_TOP + 28) : (this.CHART_TOP + 6);
 
     ctx.fillStyle = isBull ? 'rgba(5, 30, 18, 0.94)' : 'rgba(38, 8, 16, 0.94)';
     ctx.fillRect(bannerX, bannerY, bannerW, bannerH);
