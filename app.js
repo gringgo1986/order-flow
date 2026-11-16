@@ -1439,6 +1439,14 @@ class App {
       this.footprintCanvas.style.display = 'block';
       this.footprintCanvas.style.left = '0';
       this.footprintCanvas.style.width = '100%';
+      // Mobile Optimization: Auto-collapse DOM on narrow screens (< 768px) so Footprint gets full 100% width
+      if (window.innerWidth < 768) {
+        const domSidebar = document.getElementById('domSidebar');
+        if (domSidebar && domSidebar.style.display !== 'none') {
+          domSidebar.style.display = 'none';
+          document.querySelectorAll('.btn-toggle-dom').forEach(b => b.classList.remove('active'));
+        }
+      }
       if (this.footprint) {
         this.footprint.setViewMode('bid_ask');
         this.footprint.centerVertical();
@@ -3331,16 +3339,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           }
           lastTapTime = now;
 
-          // Dispatch synthetic mousedown with full mouse properties (buttons: 1)
-          const mouseEvent = new MouseEvent('mousedown', {
-            bubbles: true,
-            cancelable: true,
-            clientX: t.clientX,
-            clientY: t.clientY,
-            button: 0,
-            buttons: 1
-          });
-          canvas.dispatchEvent(mouseEvent);
+          // Pure touch tracking without synthetic mousedown to avoid dual-drag jitter
 
         } else if (e.touches.length === 2) {
           isTouching = false;
@@ -3378,7 +3377,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             } else {
               const priceSpan = (mod.bmHalfSpan || 4.5) * 2;
               const chartH = Math.max(150, mod.CHART_HEIGHT || canvas.height);
-              const dPrice = (dy / chartH) * priceSpan;
+              const dPrice = (dy / chartH) * (priceSpan * 0.85);
               mod.priceOffset = Number((startPriceOffset + dPrice).toFixed(2));
 
               const histW = Math.max(200, mod.HIST_TIME_W || (canvas.width - 150));
@@ -3388,35 +3387,30 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
               mod.timeOffsetMs = Math.max(minForward, Math.min(maxBack, Math.round(startTimeOffset + dTime)));
             }
           } else {
-            // Footprint / ClusterDelta / Candlestick
+            // Footprint / ClusterDelta / Candlestick (Silky Smooth Damped Drag - Zero Event Collision)
             if (mod._dragMode === 'scale') {
-              const deltaScale = dy * 0.005;
+              const deltaScale = dy * 0.004;
               if (mod.viewMode === 'candlestick') {
-                mod.csVerticalScale = Math.max(0.4, Math.min(3.0, startZoom - deltaScale));
+                mod.csVerticalScale = Math.max(0.4, Math.min(3.5, startZoom - deltaScale));
               } else {
-                mod.verticalZoom = Math.max(0.4, Math.min(3.0, startZoom - deltaScale));
+                mod.verticalZoom = Math.max(0.4, Math.min(3.5, startZoom - deltaScale));
               }
             } else {
-              const priceSpan = (mod.maxPrice - mod.minPrice) || 20;
+              const priceSpan = Math.max(3.0, (mod.maxPrice - mod.minPrice) || 12.0);
               const chartH = Math.max(150, mod.height - 70);
-              const dPrice = (dy / chartH) * priceSpan;
+              const dPrice = (dy / chartH) * (priceSpan * 0.70);
               mod.priceOffset = Number((startPriceOffset + dPrice).toFixed(2));
 
-              const candleW = Math.max(8, mod.candleWidth || 20);
-              const dBars = Math.round(dx / candleW);
+              const candleW = Math.max(12, mod.candleWidth || 20);
+              const dBars = Math.round(dx / (candleW * 1.15));
               mod.barOffset = Math.max(0, startBarOffset + dBars);
             }
           }
 
-          const mouseEvent = new MouseEvent('mousemove', {
-            bubbles: true,
-            cancelable: true,
-            clientX: t.clientX,
-            clientY: t.clientY,
-            button: 0,
-            buttons: 1
-          });
-          canvas.dispatchEvent(mouseEvent);
+          // Directly trigger fast smooth frame render without dispatching synthetic mouse events that conflict
+          if (this.latestSnapshot) {
+            try { mod.render(this.latestSnapshot); } catch (e) {}
+          }
 
         } else if (e.touches.length === 2 && isPinching && mod) {
           // Pinch-to-zoom calculation
