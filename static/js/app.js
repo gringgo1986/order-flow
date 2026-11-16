@@ -761,7 +761,7 @@ class App {
         this.showToast(isShown ? '📐 Smart Auto Trendline (Support & Resistance) diaktifkan' : '📐 Auto Trendline disembunyikan');
         this.needsRedraw = true;
         if (this.latestSnapshot) {
-          if (this.bookmap && this.currentView === 'bookmap') this.bookmap.render();
+          if (this.bookmap && this.currentView === 'bookmap') this.bookmap.render(this.latestSnapshot || this.bookmap._latestSnapshot);
           if (this.footprint && this.currentView !== 'bookmap') this.footprint.render(this.latestSnapshot);
         }
       });
@@ -3231,7 +3231,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       setTimeout(() => {
         window.dispatchEvent(new Event('resize'));
         if (this.latestSnapshot) {
-          if (this.bookmap && this.currentView === 'bookmap') this.bookmap.render();
+          if (this.bookmap && this.currentView === 'bookmap') this.bookmap.render(this.latestSnapshot || this.bookmap._latestSnapshot);
           if (this.footprint && this.currentView !== 'bookmap') this.footprint.render(this.latestSnapshot);
         }
       }, 50);
