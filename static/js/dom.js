@@ -19,6 +19,8 @@ class DOMManager {
     this.priceOffset = 0.0;   // Dynamic scroll offset in price units ($)
     this.isUserScrolled = false;
     this.lastSnapshot = null;
+    this._prevVolMap = {};
+    this._recentDeltas = {};
     this._attachCenterBtn();
     this._initEvents();
   }
@@ -260,6 +262,24 @@ class DOMManager {
 
     const scale = Math.max(this.maxVolScale, maxObservedVol * 1.05);
     const nowMs = Date.now();
+
+    // Track Dynamic Institutional Pulling & Stacking Delta (+ / - Lot changes)
+    if (!this._prevVolMap) this._prevVolMap = {};
+    if (!this._recentDeltas) this._recentDeltas = {};
+    const curVolMap = {};
+    for (const [k, v] of Object.entries(asks || {})) curVolMap[`ask_${k}`] = parseFloat(v) || 0;
+    for (const [k, v] of Object.entries(bids || {})) curVolMap[`bid_${k}`] = parseFloat(v) || 0;
+
+    for (const [key, v] of Object.entries(curVolMap)) {
+      if (this._prevVolMap[key] !== undefined) {
+        const diff = Number((v - this._prevVolMap[key]).toFixed(1));
+        if (Math.abs(diff) >= 1.0) {
+          this._recentDeltas[key] = { delta: diff, time: nowMs };
+        }
+      }
+    }
+    this._prevVolMap = curVolMap;
+
     let html = '';
 
     // Check if real market price is scrolled out of bounds
@@ -293,6 +313,17 @@ class DOMManager {
       const isShark = vol >= 78.0;
       const isWall = vol >= 50.0;
       const barWidth = Math.min(100, (vol / scale) * 100);
+
+      const deltaKey = isAboveMarket ? `ask_${pStr}` : `bid_${pStr}`;
+      let deltaTag = '';
+      if (this._recentDeltas && this._recentDeltas[deltaKey] && (nowMs - this._recentDeltas[deltaKey].time < 3500)) {
+        const d = this._recentDeltas[deltaKey].delta;
+        if (d > 0) {
+          deltaTag = `<span style="color:#00e676; font-size:8px; font-weight:900; margin-left:3px; text-shadow:0 0 5px rgba(0,230,118,0.7);" title="Stacking: Bank tambah pesanan +${d.toFixed(1)}L">+${d.toFixed(0)}</span>`;
+        } else if (d < 0) {
+          deltaTag = `<span style="color:#ff3366; font-size:8px; font-weight:900; margin-left:3px; text-shadow:0 0 5px rgba(255,51,102,0.7);" title="Pulling: Bank tarik pesanan ${d.toFixed(1)}L">${d.toFixed(0)}</span>`;
+        }
+      }
 
       // Check if this row is the live market price
       const isMarketPriceRow = Math.abs(p - currentPrice) <= 0.05;
@@ -362,7 +393,7 @@ class DOMManager {
             <div class="dom-col price" style="${priceColor}">${badgePrefix}${pStr}</div>
             <div class="dom-col ask-vol" title="Kecairan Offer (Ask) @ $${pStr}: ${vol.toFixed(1)} Lots">
               <div class="dom-bar ask ${isShark ? 'wall-glow-ask' : (isWall ? 'wall-glow-ask' : '')}" style="width: ${barWidth.toFixed(1)}%; ${isShark ? 'background:#ff2a55;' : ''}"></div>
-              <span style="${isShark ? 'color:#fff; font-weight:900;' : (isWall ? 'color:#fff; font-weight:800;' : '')}">${vol > 0 ? vol.toFixed(1) : ''}</span>
+              <span style="${isShark ? 'color:#fff; font-weight:900;' : (isWall ? 'color:#fff; font-weight:800;' : '')}">${vol > 0 ? vol.toFixed(1) : ''}</span>${deltaTag}
             </div>
           </div>
         `;
@@ -372,7 +403,7 @@ class DOMManager {
           <div class="dom-row dom-bid-row" data-price="${pStr}" style="cursor:pointer; ${rowBgStyle}" title="⚡ Klik untuk pasang BUY LIMIT @ $${pStr}">
             <div class="dom-col bid-vol" title="Kecairan Demand (Bid) @ $${pStr}: ${vol.toFixed(1)} Lots">
               <div class="dom-bar bid ${isShark ? 'wall-glow-bid' : (isWall ? 'wall-glow-bid' : '')}" style="width: ${barWidth.toFixed(1)}%; ${isShark ? 'background:#00f59b;' : ''}"></div>
-              <span style="${isShark ? 'color:#fff; font-weight:900;' : (isWall ? 'color:#fff; font-weight:800;' : '')}">${vol > 0 ? vol.toFixed(1) : ''}</span>
+              <span style="${isShark ? 'color:#fff; font-weight:900;' : (isWall ? 'color:#fff; font-weight:800;' : '')}">${vol > 0 ? vol.toFixed(1) : ''}</span>${deltaTag}
             </div>
             <div class="dom-col price" style="${priceColor}">${badgePrefix}${pStr}</div>
             <div class="dom-col ask-vol" style="position:relative;" title="Volum Terlaksana Sesi @ $${pStr}: ${tradedVol.toFixed(1)}L">
