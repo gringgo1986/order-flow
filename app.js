@@ -419,6 +419,20 @@ class App {
       if (btn) btn.textContent = document.fullscreenElement ? '✕ Keluar' : '⛶ Penuh';
     });
 
+    // ClusterDelta Mode Selector (VOL, DELTA, VOLxDELTA, BIDxASK, IMB)
+    const selClusterMode = document.getElementById('selClusterMode');
+    if (selClusterMode) {
+      selClusterMode.addEventListener('change', (e) => {
+        if (this.footprint) {
+          this.footprint.cdCellMode = e.target.value;
+          if (this.latestSnapshot) {
+            try { this.footprint.render(this.latestSnapshot); } catch (err) {}
+          }
+          this.showToast(`📊 Mod Bata Kluster: ${e.target.selectedOptions[0].text}`);
+        }
+      });
+    }
+
     // ClusterDelta Jalur (20-50) Range Slider
     const sliderClusterJalur = document.getElementById('sliderClusterJalur');
     const lblClusterJalur = document.getElementById('lblClusterJalur');
@@ -1383,12 +1397,16 @@ class App {
     if (view === 'bookmap') {
       if (fpTools) fpTools.style.display = 'none';
       if (clusterWrap) clusterWrap.style.display = 'none';
+      const clusterModeWrap = document.getElementById('clusterModeWrap');
+      if (clusterModeWrap) clusterModeWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'inline-flex';
       if (whaleWrap) whaleWrap.style.display = 'inline-flex';
       if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'clusterdelta') {
       if (fpTools) fpTools.style.display = 'none';
       if (clusterWrap) clusterWrap.style.display = 'inline-flex';
+      const clusterModeWrap = document.getElementById('clusterModeWrap');
+      if (clusterModeWrap) clusterModeWrap.style.display = 'inline-flex';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
       if (whaleWrap) whaleWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'none';
