@@ -2876,11 +2876,18 @@ class FootprintRenderer {
       });
     });
 
-    // 4 Brick Mode Pills
+    // ClusterDelta Pro 5 Brick Mode Pills + Settings
     drawPill('Bata: VOL', this.cdCellMode === 'volume', '#fde047', () => { this.cdCellMode = 'volume'; });
     drawPill('Bata: DELTA', this.cdCellMode === 'delta', '#38bdf8', () => { this.cdCellMode = 'delta'; });
+    drawPill('Bata: VOLxDELTA', this.cdCellMode === 'vol_delta', '#a855f7', () => { this.cdCellMode = 'vol_delta'; });
     drawPill('Bata: BIDxASK', this.cdCellMode === 'bid_ask', '#4ade80', () => { this.cdCellMode = 'bid_ask'; });
-    drawPill('Bata: IMB PRO', this.cdCellMode === 'imbalance', '#c084fc', () => { this.cdCellMode = 'imbalance'; });
+    drawPill('Bata: IMB PRO', this.cdCellMode === 'imbalance', '#06b6d4', () => { this.cdCellMode = 'imbalance'; });
+    drawPill('⚙️ TEMA CLUSTER', this.cdClassicTheme !== false, '#f59e0b', () => {
+      this.cdClassicTheme = this.cdClassicTheme === false;
+      if (window.orderFlowApp && window.orderFlowApp.showToast) {
+        window.orderFlowApp.showToast(this.cdClassicTheme ? '🎨 Tema Rasmi ClusterDelta Pro Diaktifkan' : '🎨 Tema OLED Dark Neon Diaktifkan');
+      }
+    });
 
     pillX += 4;
     drawPill(`📈 Aliran POC: ${this.cdShowPocMigration !== false ? 'ON' : 'OFF'}`, this.cdShowPocMigration !== false, '#facc15', () => {
@@ -3238,14 +3245,20 @@ class FootprintRenderer {
 
       let pocPrice = null;
       let maxVol = -1;
+      let minDelta = Infinity;
+      let maxDelta = -Infinity;
       for (const cl of Object.values(grouped)) {
         if (cl.total > maxVol) {
           maxVol = cl.total;
           pocPrice = cl.price;
         }
+        if (cl.delta < minDelta) minDelta = cl.delta;
+        if (cl.delta > maxDelta) maxDelta = cl.delta;
         if (cl.total > globalMaxCellVol) globalMaxCellVol = cl.total;
         if (Math.abs(cl.delta) > globalMaxCellDelta) globalMaxCellDelta = Math.abs(cl.delta);
       }
+      if (minDelta === Infinity) minDelta = 0;
+      if (maxDelta === -Infinity) maxDelta = 0;
 
       if ((c.volume || 0) > maxCandleVol) maxCandleVol = c.volume;
       if (Math.abs(c.delta || 0) > maxCandleDeltaAbs) maxCandleDeltaAbs = Math.abs(c.delta);
@@ -3296,6 +3309,8 @@ class FootprintRenderer {
         grouped,
         pocPrice,
         maxVol,
+        minDelta,
+        maxDelta,
         trapSignal,
         stackedBuyZone,
         stackedSellZone,
@@ -3461,38 +3476,41 @@ class FootprintRenderer {
       const x = startX + i * colW;
       const isBull = c.close >= c.open;
 
-      // ── KOMPONEN 2: TOP ROW 1: Volumes (Pastel Soft Green #dcfce7) ──
+      // ── KOMPONEN 2: TOP ROW 1: Volumes (ClusterDelta Official RGB 204,255,204 / Max RGB 152,208,127) ──
       const r1Y = topControlH;
-      const volRatio = Math.min(1, (c.volume || 0) / maxCandleVol);
-      ctx.fillStyle = pc.isLatest ? '#bbf7d0' : '#dcfce7'; // Pastel Green Background
+      const volRatio = maxCandleVol > 0 ? ((c.volume || 0) / maxCandleVol) : 0;
+      const isMaxVolCandle = volRatio >= 0.88;
+      ctx.fillStyle = isMaxVolCandle ? 'rgb(152, 208, 127)' : (pc.isLatest ? '#bbf7d0' : 'rgb(204, 255, 204)');
       ctx.fillRect(x, r1Y, colW, 17);
-      ctx.strokeStyle = '#86efac';
+      ctx.strokeStyle = '#607d8b';
       ctx.lineWidth = 0.8;
       ctx.strokeRect(x, r1Y, colW, 17);
 
-      // Angka volum dalam warna gelap kontras tajam
-      ctx.fillStyle = '#14532d';
+      // Angka volum dalam font gelap kontras tajam (ClusterDelta Black)
+      ctx.fillStyle = '#000000';
       ctx.font = `bold ${hdrFontPx}px "JetBrains Mono", monospace`;
       ctx.textAlign = colW >= 26 ? 'right' : 'center';
       const volDisp = Math.round((c.volume || 0) * 10);
       const volDispStr = (colW < 26 && volDisp >= 1000) ? ((volDisp / 1000).toFixed(1) + 'k') : volDisp.toString();
       ctx.fillText(volDispStr, colW >= 26 ? (x + colW - 3) : (x + colW / 2), r1Y + 12);
 
-      // ── KOMPONEN 2: TOP ROW 2: Delta (Pastel Blue #e0f2fe / Pastel Red #fee2e2) ──
+      // ── KOMPONEN 2: TOP ROW 2: Delta (ClusterDelta Official RGB 204,255,255 / Delta+ Max RGB 152,208,224 / Delta- Max RGB 208,208,224) ──
       const r2Y = topControlH + 17;
       const dVal = Math.round((c.delta || 0) * 10);
+      const isExtremeDelta = maxCandleDeltaAbs > 0 && Math.abs(c.delta || 0) >= maxCandleDeltaAbs * 0.85;
+
       if (dVal >= 0) {
-        ctx.fillStyle = pc.isLatest ? '#bae6fd' : '#e0f2fe'; // Soft pastel cyan/blue
+        ctx.fillStyle = isExtremeDelta ? 'rgb(152, 208, 224)' : (pc.isLatest ? '#bae6fd' : 'rgb(204, 255, 255)');
         ctx.fillRect(x, r2Y, colW, 17);
-        ctx.strokeStyle = '#7dd3fc';
+        ctx.strokeStyle = '#607d8b';
         ctx.strokeRect(x, r2Y, colW, 17);
-        ctx.fillStyle = '#0369a1'; // Sharp dark blue text
+        ctx.fillStyle = '#000000'; // ClusterDelta Black for positive delta
       } else {
-        ctx.fillStyle = pc.isLatest ? '#fecaca' : '#fee2e2'; // Soft pastel pink/red
+        ctx.fillStyle = isExtremeDelta ? 'rgb(208, 208, 224)' : (pc.isLatest ? '#fecaca' : 'rgb(204, 255, 255)');
         ctx.fillRect(x, r2Y, colW, 17);
-        ctx.strokeStyle = '#fca5a5';
+        ctx.strokeStyle = '#607d8b';
         ctx.strokeRect(x, r2Y, colW, 17);
-        ctx.fillStyle = '#b91c1c'; // Sharp dark red text
+        ctx.fillStyle = '#dc2626'; // ClusterDelta Red for negative delta
       }
       ctx.font = `bold ${hdrFontPx}px "JetBrains Mono", monospace`;
       ctx.textAlign = colW >= 26 ? 'right' : 'center';
@@ -3595,8 +3613,87 @@ class FootprintRenderer {
           };
         }
 
+        // ── KELAS WARNA CLUSTERDELTA RASMI ──
+        const vRatioInCandle = pc.maxVol > 0 ? (cl.total / pc.maxVol) : 0;
+        const isMinDeltaCell = (cl.delta === pc.minDelta && pc.minDelta <= -1.0);
+        const isMaxDeltaCell = (cl.delta === pc.maxDelta && pc.maxDelta >= 1.0);
+
+        // Helper fungsi warna Volum 5-Peringkat
+        const getClusterVolColor = () => {
+          if (isPOC || vRatioInCandle >= 0.95) {
+            return { bg: 'rgb(128, 128, 255)', txt: '#000000', bold: true, isTop: true }; // Top Volume: Lavender Blue
+          } else if (vRatioInCandle >= 0.78) {
+            return { bg: 'rgb(255, 127, 0)', txt: '#000000', bold: true };                 // High -> Top: Oren Pekat
+          } else if (vRatioInCandle >= 0.55) {
+            return { bg: 'rgb(255, 153, 0)', txt: '#000000', bold: true };                 // High: Oren Terang
+          } else if (vRatioInCandle >= 0.22) {
+            return { bg: 'rgb(255, 250, 200)', txt: 'rgb(32, 32, 32)', bold: false };      // Normal: Krim Lembut
+          } else {
+            return { bg: '#fafad2', txt: 'rgb(51, 51, 51)', bold: false };                 // Low: LightGoldenrod
+          }
+        };
+
+        // Helper fungsi warna Delta (Min -> Neg -> Pos -> Max)
+        const getClusterDeltaColor = () => {
+          if (isMinDeltaCell) {
+            return { bg: '#dc2626', txt: '#ffffff', bold: true };                       // Min Delta: Merah Padu + Teks Putih Bold
+          } else if (isMaxDeltaCell) {
+            return { bg: '#16a34a', txt: '#000000', bold: true };                       // Max Delta: Lime Padu + Teks Hitam Bold
+          } else if (cl.delta < 0) {
+            return { bg: 'rgb(255, 250, 210)', txt: '#dc2626', bold: false };          // Negative Delta: Krim Kemerahan
+          } else {
+            return { bg: 'rgb(250, 255, 210)', txt: '#000000', bold: false };          // Positive Delta: Krim Kehijauan
+          }
+        };
+
         // Render brick based on selected ClusterDelta Sub-Mode (this.cdCellMode)
-        if (this.cdCellMode === 'bid_ask') {
+        if (this.cdCellMode === 'vol_delta') {
+          // ── MOD VOLxDELTA: DUAL SUB-COLUMNS (VOLUM DI KIRI | DELTA DI KANAN) ──
+          const halfW = Math.floor(colW / 2);
+          const volStyle = getClusterVolColor();
+          const deltaStyle = getClusterDeltaColor();
+
+          // Sub-kolum Kiri: Volum
+          ctx.fillStyle = isCurrentPriceRow ? '#475569' : volStyle.bg;
+          ctx.fillRect(x, boxY, halfW, boxH);
+
+          // Sub-kolum Kanan: Delta
+          ctx.fillStyle = isCurrentPriceRow ? '#334155' : deltaStyle.bg;
+          ctx.fillRect(x + halfW, boxY, colW - halfW, boxH);
+
+          // Garis pembahagi tengah menegak bertitik (:)
+          ctx.save();
+          ctx.setLineDash([2, 2]);
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(x + halfW, boxY);
+          ctx.lineTo(x + halfW, boxY + boxH);
+          ctx.stroke();
+          ctx.restore();
+
+          // Sempadan luar sel
+          ctx.strokeStyle = '#374151';
+          ctx.lineWidth = 0.7;
+          ctx.strokeRect(x, boxY, colW, boxH);
+
+          // Teks Volum (Kiri) & Teks Delta (Kanan)
+          if (boxH >= 7.8 && colW >= 24) {
+            const vStr = Math.max(1, Math.round(cl.total * 10)).toString();
+            const dVal = Math.round(cl.delta * 10);
+            const dStr = (dVal > 0 ? '+' : '') + dVal.toString();
+
+            const vFontPx = Math.max(5.8, cellFontPx - 1.2);
+            ctx.font = `${volStyle.bold || isPOC ? 'bold ' : ''}${vFontPx}px "JetBrains Mono", monospace`;
+            ctx.textAlign = 'center';
+            ctx.fillStyle = isCurrentPriceRow ? '#ffffff' : volStyle.txt;
+            ctx.fillText(vStr, x + halfW / 2, boxY + boxH / 2 + 3);
+
+            ctx.font = `${deltaStyle.bold ? 'bold ' : ''}${vFontPx}px "JetBrains Mono", monospace`;
+            ctx.fillStyle = isCurrentPriceRow ? '#ffffff' : deltaStyle.txt;
+            ctx.fillText(dStr, x + halfW + (colW - halfW) / 2, boxY + boxH / 2 + 3);
+          }
+        } else if (this.cdCellMode === 'bid_ask') {
           // Split Dual-Column Brick (Bid on Left, Ask on Right)
           const halfW = colW / 2;
           ctx.fillStyle = cl.isSellImb ? '#e11d48' : `rgba(244, 63, 94, ${0.22 + vNorm * 0.6})`;
@@ -3621,12 +3718,9 @@ class FootprintRenderer {
             ctx.fillText(aStr, x + halfW + halfW / 2, boxY + boxH / 2 + 2.8);
           }
         } else if (this.cdCellMode === 'delta') {
-          // Signed Delta Heatmap Brick
-          const bgCol = isCurrentPriceRow
-            ? '#475569'
-            : (cl.delta >= 0
-                ? `rgb(${Math.round(220 - dNorm * 165)}, ${Math.round(252 - dNorm * 45)}, ${Math.round(231 - dNorm * 130)})`
-                : `rgb(254, ${Math.round(226 - dNorm * 145)}, ${Math.round(226 - dNorm * 145)})`);
+          // ── CLUSTERDELTA DELTA SETTINGS (Min Red / Max Lime / Neg / Pos) ──
+          const deltaStyle = getClusterDeltaColor();
+          const bgCol = isCurrentPriceRow ? '#475569' : deltaStyle.bg;
           ctx.fillStyle = bgCol;
           ctx.fillRect(x, boxY, colW, boxH);
           ctx.strokeStyle = '#374151';
@@ -3635,7 +3729,7 @@ class FootprintRenderer {
 
           if (boxH >= 7.8) {
             const dispD = Math.round(cl.delta * 10);
-            ctx.fillStyle = isCurrentPriceRow ? '#ffffff' : (dispD >= 0 ? '#064e3b' : '#7f1d1d');
+            ctx.fillStyle = isCurrentPriceRow ? '#ffffff' : deltaStyle.txt;
             const dCellStr = (colW >= 28 && dispD > 0 ? '+' : '') + dispD.toString();
             let dynFontPx = cellFontPx;
             if (dCellStr.length >= 4) {
@@ -3643,37 +3737,33 @@ class FootprintRenderer {
             } else if (dCellStr.length >= 3) {
               dynFontPx = Math.max(6.6, cellFontPx - 1.0);
             }
-            ctx.font = `${isPOC || dNorm >= 0.5 ? 'bold ' : ''}${dynFontPx}px "JetBrains Mono", monospace`;
+            ctx.font = `${deltaStyle.bold || isPOC ? 'bold ' : ''}${dynFontPx}px "JetBrains Mono", monospace`;
             ctx.textAlign = 'center';
             ctx.fillText(dCellStr, x + colW / 2, boxY + boxH / 2 + 3);
           }
         } else {
-          // 'volume' (Classic ClusterDelta) or 'imbalance' (ClusterDelta Imbalance Pro)
-          let bgCol = '#fef3c7'; // Tier 1: Cream Yellow
-          let txtCol = '#111827';
-          const hasStrongImb = (cl.isBuyImb || cl.isSellImb) && cl.total >= globalMaxCellVol * 0.38;
+          // ── CLUSTERDELTA 5-TIER VOLUME & IMBALANCE MODES ──
+          let bgCol = '#fafad2';
+          let txtCol = '#000000';
+          let isBold = false;
+          const volStyle = getClusterVolColor();
 
           if (isCurrentPriceRow) {
             bgCol = '#475569';
             txtCol = '#ffffff';
+            isBold = true;
           } else if (this.cdCellMode === 'imbalance' && cl.isBuyImb) {
             bgCol = '#06b6d4'; // Neon Cyan Buy Imbalance
             txtCol = '#0f172a';
+            isBold = true;
           } else if (this.cdCellMode === 'imbalance' && cl.isSellImb) {
             bgCol = '#f43f5e'; // Vivid Crimson Sell Imbalance
             txtCol = '#ffffff';
-          } else if (vNorm >= 0.78 || hasStrongImb) {
-            bgCol = '#6366f1'; // Tier 5: ClusterDelta Royal Indigo/Purple
-            txtCol = '#ffffff';
-          } else if (vNorm >= 0.56) {
-            bgCol = '#f97316'; // Tier 4: Deep Orange
-            txtCol = '#111827';
-          } else if (vNorm >= 0.35) {
-            bgCol = '#fbbf24'; // Tier 3: Warm Amber
-            txtCol = '#111827';
-          } else if (vNorm >= 0.18) {
-            bgCol = '#fde68a'; // Tier 2: Soft Gold
-            txtCol = '#1f2937';
+            isBold = true;
+          } else {
+            bgCol = volStyle.bg;
+            txtCol = volStyle.txt;
+            isBold = volStyle.bold;
           }
 
           ctx.fillStyle = bgCol;
@@ -3702,14 +3792,16 @@ class FootprintRenderer {
           }
         }
 
-        // ── KOMPONEN 4: Highlight POC Oren Emas Berbingkai Tebal (#ea580c / #f59e0b) ──
+        // ── KOMPONEN 4: CLUSTERDELTA ICONIC POC DOUBLE BORDER (Black Solid + Inner Frame) ──
         if (isPOC) {
-          ctx.strokeStyle = '#f59e0b';
+          // Bingkai luar: Hitam padu ClusterDelta (#000000)
+          ctx.strokeStyle = '#000000';
           ctx.lineWidth = 2.4;
-          ctx.strokeRect(x + 1, boxY + 0.5, colW - 2, boxH - 1);
-          ctx.strokeStyle = '#ea580c';
-          ctx.lineWidth = 1.6;
-          ctx.strokeRect(x + 1.8, boxY + 1.2, colW - 3.6, boxH - 2.4);
+          ctx.strokeRect(x + 0.8, boxY + 0.5, colW - 1.6, boxH - 1);
+          // Bingkai dalam: Kelabu perak institusi RGB(160,160,160) atau Emas
+          ctx.strokeStyle = 'rgb(160, 160, 160)';
+          ctx.lineWidth = 1.4;
+          ctx.strokeRect(x + 1.8, boxY + 1.5, colW - 3.6, boxH - 3);
         } else if (isWickAbsorption) {
           // Feature 2B: Golden Institutional Absorption Shield Frame (Passive Limit Defense)
           ctx.save();
