@@ -280,6 +280,15 @@ class FootprintRenderer {
       const rect = this.canvas.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
+      // Mobile Toolbar button clicks
+      if (this.mobileHitboxes && this.mobileHitboxes.length > 0) {
+        for (const hb of this.mobileHitboxes) {
+          if (cx >= hb.x && cx <= hb.x + hb.w && cy >= hb.y && cy <= hb.y + hb.h) {
+            hb.action();
+            return;
+          }
+        }
+      }
       if (window.app && window.app.drawingMode) {
         if (window.app._handleCanvasClickForDrawing(cx, cy, this.canvas)) return;
       }
@@ -768,8 +777,10 @@ class FootprintRenderer {
       return;
     }
 
-    // Filter to dynamic visible candles with horizontal pan support (barOffset)
-    const candleCount = Math.max(6, Math.min(22, this.fpVisibleBars || 10));
+    // Responsive visible candle count for mobile screens (4-6 bars fit comfortably)
+    const isMobile = Boolean(this.width && this.width < 600);
+    const defaultBars = isMobile ? 5 : (this.fpVisibleBars || 10);
+    const candleCount = Math.max(isMobile ? 3 : 6, Math.min(22, defaultBars));
     const candles = this._sliceCandlesWithOffset(rawCandles, candleCount);
     if (!candles || candles.length === 0) return;
 
@@ -845,13 +856,14 @@ class FootprintRenderer {
       this.width = Math.max(this.canvas.clientWidth || 360, 260);
       this.height = Math.max(this.canvas.clientHeight || 260, 180);
     }
-    const leftMargin = 120; // Safe zone reserved for Left SNR Level Badges
-    const rightMargin = 85;
-    const spacing = 18;
+    const isMobileScreen = Boolean(this.width && this.width < 600);
+    const leftMargin = isMobileScreen ? 55 : 120; // Compact 55px safe zone for clean mobile SNR badges
+    const rightMargin = isMobileScreen ? 55 : 85;
+    const spacing = isMobileScreen ? 8 : 18;
     this.candleSpacing = spacing;
-    const usableW = Math.max(260, this.width - rightMargin - leftMargin);
+    const usableW = Math.max(isMobileScreen ? 160 : 260, this.width - rightMargin - leftMargin);
     const dynamicW = Math.floor(usableW / Math.max(1, candles.length)) - spacing;
-    this.candleWidth = Math.max(90, Math.min(150, dynamicW));
+    this.candleWidth = isMobileScreen ? Math.max(62, Math.min(88, dynamicW)) : Math.max(90, Math.min(150, dynamicW));
 
     // Right-anchored: Latest live candle sits firmly on the right side of the chart
     const rightAnchorX = this.width - rightMargin - this.candleWidth - 8;
@@ -899,6 +911,11 @@ class FootprintRenderer {
 
     // 2.8. Top Footprint Control Strip HUD
     this._drawFootprintTopHUD(ctx, snapshot);
+
+    // 2.9. Mobile Floating Touch Quick Toolbar (🎯 Pusat, ➕ Zoom, ➖ Zoom)
+    if (this.width < 768) {
+      this._drawMobileToolbar(ctx);
+    }
 
     // 3. Hover Tooltip
     this._handleHoverTooltip();
@@ -6054,6 +6071,88 @@ class FootprintRenderer {
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeTxt, bx + 5, by + 7);
     }
+  }
+
+
+  /* ─── Mobile Floating Touch Quick Toolbar (🎯 Pusat, ➕ Zoom, ➖ Zoom) ────── */
+  _drawMobileToolbar(ctx) {
+    if (!this.width || this.width >= 768) return;
+    ctx.save();
+    this.mobileHitboxes = [];
+
+    const barW = 190;
+    const barH = 30;
+    const bx = Math.floor((this.width - barW) / 2);
+    const by = this.height - barH - 8;
+
+    // Glowing background capsule
+    ctx.fillStyle = 'rgba(10, 16, 30, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(bx, by, barW, barH, 15) : ctx.rect(bx, by, barW, barH);
+    ctx.fill();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // 1. Button 🎯 PUSAT
+    const btn1W = 75;
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 10px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🎯 PUSAT', bx + btn1W / 2 + 5, by + barH / 2);
+
+    this.mobileHitboxes.push({
+      x: bx, y: by, w: btn1W + 5, h: barH,
+      action: () => {
+        this.centerVertical();
+        this.barOffset = 0;
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          window.orderFlowApp.showToast('🎯 Footprint Dipusatkan Semula');
+        }
+      }
+    });
+
+    // Separator line
+    ctx.strokeStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.moveTo(bx + btn1W + 10, by + 4);
+    ctx.lineTo(bx + btn1W + 10, by + barH - 4);
+    ctx.stroke();
+
+    // 2. Button ➕ ZOOM
+    const btn2X = bx + btn1W + 12;
+    const btn2W = 45;
+    ctx.fillStyle = '#00e676';
+    ctx.fillText('➕', btn2X + btn2W / 2, by + barH / 2);
+
+    this.mobileHitboxes.push({
+      x: btn2X, y: by, w: btn2W, h: barH,
+      action: () => {
+        this.zoomIn();
+      }
+    });
+
+    // Separator line
+    ctx.beginPath();
+    ctx.moveTo(btn2X + btn2W, by + 4);
+    ctx.lineTo(btn2X + btn2W, by + barH - 4);
+    ctx.stroke();
+
+    // 3. Button ➖ ZOOM
+    const btn3X = btn2X + btn2W + 2;
+    const btn3W = 45;
+    ctx.fillStyle = '#ff6b8b';
+    ctx.fillText('➖', btn3X + btn3W / 2, by + barH / 2);
+
+    this.mobileHitboxes.push({
+      x: btn3X, y: by, w: btn3W, h: barH,
+      action: () => {
+        this.zoomOut();
+      }
+    });
+
+    ctx.restore();
   }
 
 }
