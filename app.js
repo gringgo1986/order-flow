@@ -3321,6 +3321,27 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
               mod._dragStartOffset = startPriceOffset;
               mod._dragStartBarOffset = startBarOffset;
               mod._dragStartZoom = startZoom;
+
+              // Komponen 10: Touch Navigation Toolbar Panel & Draggable Blue Slider
+              const navStripH = 30;
+              if (touchStartY >= mod.height - navStripH) {
+                if (mod.navHitboxes && mod.navHitboxes.length > 0) {
+                  for (const hb of mod.navHitboxes) {
+                    if (touchStartX >= hb.x && touchStartX <= hb.x + hb.w) {
+                      if (hb.onClick) hb.onClick(touchStartX, touchStartY);
+                      if (this.latestSnapshot) { try { mod.render(this.latestSnapshot); } catch (err) {} }
+                      return;
+                    }
+                  }
+                }
+                if (mod._navTrack) {
+                  mod._dragMode = 'nav_slider';
+                  if (mod._updateNavSliderFromCx) mod._updateNavSliderFromCx(touchStartX);
+                  if (this.latestSnapshot) { try { mod.render(this.latestSnapshot); } catch (err) {} }
+                  return;
+                }
+              }
+
               const rightBoundary = mod.viewMode === 'clusterdelta' ? (mod.width - 70) : (mod.width - 75);
               mod._dragMode = (touchStartX >= rightBoundary) ? 'scale' : 'pan';
             }
@@ -3388,7 +3409,9 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             }
           } else {
             // Footprint / ClusterDelta / Candlestick (Silky Smooth Damped Drag - Zero Event Collision)
-            if (mod._dragMode === 'scale') {
+            if (mod._dragMode === 'nav_slider') {
+              if (mod._updateNavSliderFromCx) mod._updateNavSliderFromCx(curX);
+            } else if (mod._dragMode === 'scale') {
               const deltaScale = dy * 0.004;
               if (mod.viewMode === 'candlestick') {
                 mod.csVerticalScale = Math.max(0.4, Math.min(3.5, startZoom - deltaScale));
