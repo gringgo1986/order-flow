@@ -44,6 +44,10 @@ class FootprintRenderer {
     this.cdVisibleCols = 30; // Adjustable between 20 and 50 jalur
     this.cdMaxRows = 30;     // Adjustable between 20 and 50 baris
     this.cdToolbarHitboxes = [];
+    this.navHitboxes = [];           // Komponen 10: Navigation toolbar interactive hitboxes
+    this._navTrack = null;           // Komponen 10: Timeline sparkline navigation track
+    this._navThumb = null;           // Komponen 10: Draggable blue viewport slider window
+    this.authHitbox = null;          // Komponen 6: Authorizer verified pro badge hitbox
     this._cdConfirmedSignalsCache = new Map(); // Permanent cache: c.time -> signal data (Prevents flickering & repainting)
 
     // Pro Candlestick Chart Sub-Settings
@@ -126,6 +130,208 @@ class FootprintRenderer {
     this._setupInteractiveControls();
   }
 
+
+  /**
+   * Komponen 10: Real-time calculation of barOffset from Draggable Blue Viewport Window position
+   */
+  _updateNavSliderFromCx(cx) {
+    if (!this._navTrack || !this._navThumb) return;
+    const trk = this._navTrack;
+    const th = this._navThumb;
+    const availW = Math.max(10, trk.w - th.w);
+    const thumbCenter = cx - trk.x - th.w / 2;
+    const ratioFromLeft = Math.max(0, Math.min(1, thumbCenter / availW));
+    const totalCandles = Math.max(1, (this.allCandles && this.allCandles.length) || 30);
+    const visibleCount = this.viewMode === 'clusterdelta' ? (this.cdVisibleCols || 30) : (this.candleWidth ? Math.floor(this.width / this.candleWidth) : 10);
+    const maxOffset = Math.max(0, totalCandles - visibleCount);
+    // When slider is at far right (ratio = 1), barOffset = 0 (live candles)
+    // When slider is at far left (ratio = 0), barOffset = maxOffset (oldest candles)
+    this.barOffset = Math.round((1.0 - ratioFromLeft) * maxOffset);
+  }
+
+  /**
+   * Komponen 10: Navigation Toolbar Panel with Draggable Blue Slider Window,
+   * Komponen 5: Calendar Icon (📅),
+   * Komponen 9: Workspace Resize Icon (⤢),
+   * and Pan Controls (◀ / ▶) with Mini Cumulative Delta (CVD) Sparkline
+   */
+  _drawNavigationToolbar(ctx, chartW, rightPanelW, bottomStripH, processedCandles, totalCandlesCount) {
+    const stripY = this.height - bottomStripH;
+    const totalW = this.width;
+    this.navHitboxes = [];
+
+    // Panel Background - ClusterDelta Deep Charcoal Slate
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(0, stripY, totalW, bottomStripH);
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, stripY, totalW, bottomStripH);
+
+    const btnH = bottomStripH - 4;
+    const btnY = stripY + 2;
+
+    // ── KOMPONEN 5: Ikon Kalendar (📅) di Sudut Bawah-Kiri ──
+    const calW = 28;
+    const calX = 4;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(calX, btnY, calW, btnH);
+    ctx.strokeStyle = '#334155';
+    ctx.strokeRect(calX, btnY, calW, btnH);
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📅', calX + calW / 2, btnY + btnH / 2);
+
+    this.navHitboxes.push({
+      x: calX, y: btnY, w: calW, h: btnH,
+      onClick: () => {
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          window.orderFlowApp.showToast('📅 Memuatkan arkib sejarah lilin & data orderflow...');
+        }
+      }
+    });
+
+    // ── Butang Pan Kiri ◀ (Undur Sejarah Bar) ──
+    const btnLeftW = 24;
+    const btnLeftX = calX + calW + 4;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(btnLeftX, btnY, btnLeftW, btnH);
+    ctx.strokeStyle = '#334155';
+    ctx.strokeRect(btnLeftX, btnY, btnLeftW, btnH);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('◀', btnLeftX + btnLeftW / 2, btnY + btnH / 2);
+
+    this.navHitboxes.push({
+      x: btnLeftX, y: btnY, w: btnLeftW, h: btnH,
+      onClick: () => {
+        this.panHorizontal(-1);
+      }
+    });
+
+    // ── KOMPONEN 9: Resize Icon (⤢) di Sudut Bawah-Kanan ──
+    const resizeW = 26;
+    const resizeX = totalW - resizeW - 4;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(resizeX, btnY, resizeW, btnH);
+    ctx.strokeStyle = '#334155';
+    ctx.strokeRect(resizeX, btnY, resizeW, btnH);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⤢', resizeX + resizeW / 2, btnY + btnH / 2);
+
+    this.navHitboxes.push({
+      x: resizeX, y: btnY, w: resizeW, h: btnH,
+      onClick: () => {
+        this.centerVertical();
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          window.orderFlowApp.showToast('🎯 Pandangan Skala & Harga Direset Semula');
+        }
+      }
+    });
+
+    // ── Butang Pan Kanan ▶ (Maju ke Terkini / Live) ──
+    const btnRightW = 24;
+    const btnRightX = resizeX - btnRightW - 4;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(btnRightX, btnY, btnRightW, btnH);
+    ctx.strokeStyle = '#334155';
+    ctx.strokeRect(btnRightX, btnY, btnRightW, btnH);
+    ctx.fillStyle = (this.barOffset > 0) ? '#4ade80' : '#64748b';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('▶', btnRightX + btnRightW / 2, btnY + btnH / 2);
+
+    this.navHitboxes.push({
+      x: btnRightX, y: btnY, w: btnRightW, h: btnH,
+      onClick: () => {
+        this.barOffset = 0; // Snap terus ke lilin terkini
+      }
+    });
+
+    // ── KOMPONEN 10: Trek Garis Masa & Mini Cumulative Delta (CVD) Sparkline ──
+    const trackX1 = btnLeftX + btnLeftW + 6;
+    const trackX2 = btnRightX - 6;
+    const trackW = Math.max(40, trackX2 - trackX1);
+    const trackY = btnY;
+    const trackH = btnH;
+
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(trackX1, trackY, trackW, trackH);
+    ctx.strokeStyle = '#334155';
+    ctx.strokeRect(trackX1, trackY, trackW, trackH);
+
+    // Garis tengah sifar (Zero line)
+    const midTrackY = trackY + trackH / 2;
+    ctx.save();
+    ctx.setLineDash([2, 2]);
+    ctx.strokeStyle = '#1e3a5f';
+    ctx.beginPath();
+    ctx.moveTo(trackX1, midTrackY);
+    ctx.lineTo(trackX2, midTrackY);
+    ctx.stroke();
+    ctx.restore();
+
+    // Mini CVD Trend Line dalam trek
+    if (processedCandles && processedCandles.length > 1) {
+      let runningCvd = 0;
+      const pts = [];
+      let minC = 0, maxC = 0;
+      for (let i = 0; i < processedCandles.length; i++) {
+        const d = (processedCandles[i].raw ? processedCandles[i].raw.delta : processedCandles[i].delta) || 0;
+        runningCvd += d;
+        if (runningCvd < minC) minC = runningCvd;
+        if (runningCvd > maxC) maxC = runningCvd;
+        pts.push(runningCvd);
+      }
+      const rangeC = Math.max(1, maxC - minC);
+      ctx.strokeStyle = runningCvd >= 0 ? '#10b981' : '#f43f5e';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        const px = trackX1 + (i / Math.max(1, pts.length - 1)) * trackW;
+        const py = (trackY + trackH - 3) - ((pts[i] - minC) / rangeC) * (trackH - 6);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+
+    // ── KOMPONEN 10: JENDELA GELANGSAR BIRU BOLEH DITARIK (DRAGGABLE BLUE SLIDER WINDOW) ──
+    const totalCandles = Math.max(1, totalCandlesCount || 30);
+    const visibleCount = processedCandles ? processedCandles.length : 20;
+    const maxOffset = Math.max(0, totalCandles - visibleCount);
+
+    const thumbRatio = Math.max(0.10, Math.min(0.85, visibleCount / totalCandles));
+    const thumbW = Math.max(34, Math.min(trackW * 0.85, trackW * thumbRatio));
+    const availW = Math.max(1, trackW - thumbW);
+
+    const offsetRatio = maxOffset > 0 ? Math.max(0, Math.min(1, (this.barOffset || 0) / maxOffset)) : 0;
+    const thumbX = trackX1 + (1.0 - offsetRatio) * availW;
+
+    this._navTrack = { x: trackX1, y: trackY, w: trackW, h: trackH };
+    this._navThumb = { x: thumbX, y: trackY, w: thumbW, h: trackH, maxOffset };
+
+    ctx.save();
+    // Kotak biru lutsinar ClusterDelta
+    ctx.fillStyle = 'rgba(37, 99, 235, 0.48)';
+    ctx.fillRect(thumbX, trackY, thumbW, trackH);
+    ctx.strokeStyle = '#60a5fa';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(thumbX + 0.5, trackY + 0.5, thumbW - 1, trackH - 1);
+
+    // Pemegang (grip lines) putih halus di tengah jendela biru
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(thumbX + thumbW / 2 - 3, trackY + trackH / 2 - 5, 1.5, 10);
+    ctx.fillRect(thumbX + thumbW / 2 + 2, trackY + trackH / 2 - 5, 1.5, 10);
+    ctx.restore();
+  }
+
   _setupResize() {
     const resize = () => {
       if (!this.canvas || !this.canvas.parentElement) return;
@@ -158,6 +364,39 @@ class FootprintRenderer {
       // Ignore drag if clicking on top interactive header strip
       if (cy <= 32) {
         return;
+      }
+
+      // Check Komponen 10: Bottom Navigation Toolbar Panel Hit & Drag
+      const navStripH = 30;
+      const navStripY = this.height - navStripH;
+      if (cy >= navStripY) {
+        if (this.navHitboxes && this.navHitboxes.length > 0) {
+          for (const hb of this.navHitboxes) {
+            if (cx >= hb.x && cx <= hb.x + hb.w && cy >= hb.y && cy <= hb.y + hb.h) {
+              if (hb.onClick) hb.onClick(cx, cy);
+              return;
+            }
+          }
+        }
+        if (this._navTrack) {
+          const trk = this._navTrack;
+          if (cx >= trk.x && cx <= trk.x + trk.w) {
+            this._isDragging = true;
+            this._dragMode = 'nav_slider';
+            this.canvas.style.cursor = 'ew-resize';
+            this._updateNavSliderFromCx(cx);
+            return;
+          }
+        }
+      }
+
+      // Check Komponen 6: Authorizer Pro Badge Hitbox
+      if (this.authHitbox) {
+        const ah = this.authHitbox;
+        if (cx >= ah.x && cx <= ah.x + ah.w && cy >= ah.y && cy <= ah.y + ah.h) {
+          if (ah.onClick) ah.onClick();
+          return;
+        }
       }
 
       this._isDragging = true;
@@ -214,6 +453,10 @@ class FootprintRenderer {
       };
 
       if (this._isDragging) {
+        if (this._dragMode === 'nav_slider') {
+          this._updateNavSliderFromCx(this.mousePos.x);
+          return;
+        }
         const dx = this.mousePos.x - this._dragStartX;
         const dy = this.mousePos.y - this._dragStartY;
         if (this._dragMode === 'scale') {
@@ -267,6 +510,30 @@ class FootprintRenderer {
         }
       }
 
+      // Komponen 10 & 6 Hover Cursors
+      const navStripH = 30;
+      if (this.mousePos.y >= this.height - navStripH) {
+        if (this.navHitboxes && this.navHitboxes.some(h => this.mousePos.x >= h.x && this.mousePos.x <= h.x + h.w)) {
+          this.canvas.style.cursor = 'pointer';
+          return;
+        }
+        if (this._navThumb && this.mousePos.x >= this._navThumb.x && this.mousePos.x <= this._navThumb.x + this._navThumb.w) {
+          this.canvas.style.cursor = 'ew-resize';
+          return;
+        }
+        if (this._navTrack && this.mousePos.x >= this._navTrack.x && this.mousePos.x <= this._navTrack.x + this._navTrack.w) {
+          this.canvas.style.cursor = 'pointer';
+          return;
+        }
+      }
+      if (this.authHitbox) {
+        const ah = this.authHitbox;
+        if (this.mousePos.x >= ah.x && this.mousePos.x <= ah.x + ah.w && this.mousePos.y >= ah.y && this.mousePos.y <= ah.y + ah.h) {
+          this.canvas.style.cursor = 'pointer';
+          return;
+        }
+      }
+
       const rightScaleBoundary = this.viewMode === 'clusterdelta' ? (this.width - 70) : (this.width - 75);
       if (this.mousePos.y > 30 && this.mousePos.x >= rightScaleBoundary) {
         this.canvas.style.cursor = 'ns-resize';
@@ -281,6 +548,23 @@ class FootprintRenderer {
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
       // Mobile Toolbar button clicks
+      // Komponen 10: Navigation toolbar clicks
+      if (this.navHitboxes && this.navHitboxes.length > 0 && cy >= this.height - 32) {
+        for (const hb of this.navHitboxes) {
+          if (cx >= hb.x && cx <= hb.x + hb.w && cy >= hb.y && cy <= hb.y + hb.h) {
+            if (hb.onClick) hb.onClick(cx, cy);
+            return;
+          }
+        }
+      }
+      // Komponen 6: Authorizer clicks
+      if (this.authHitbox) {
+        const ah = this.authHitbox;
+        if (cx >= ah.x && cx <= ah.x + ah.w && cy >= ah.y && cy <= ah.y + ah.h) {
+          if (ah.onClick) ah.onClick();
+          return;
+        }
+      }
       if (this.mobileHitboxes && this.mobileHitboxes.length > 0) {
         for (const hb of this.mobileHitboxes) {
           if (cx >= hb.x && cx <= hb.x + hb.w && cy >= hb.y && cy <= hb.y + hb.h) {
@@ -3177,42 +3461,39 @@ class FootprintRenderer {
       const x = startX + i * colW;
       const isBull = c.close >= c.open;
 
-      // --- TOP ROW 1 (y: topControlH + 0..17): Total Candle Volume (Dark Emerald Glow) ---
+      // ── KOMPONEN 2: TOP ROW 1: Volumes (Pastel Soft Green #dcfce7) ──
       const r1Y = topControlH;
       const volRatio = Math.min(1, (c.volume || 0) / maxCandleVol);
-      ctx.fillStyle = pc.isLatest
-        ? 'rgba(74, 222, 128, 0.28)'
-        : `rgba(16, 185, 129, ${0.08 + volRatio * 0.35})`;
+      ctx.fillStyle = pc.isLatest ? '#bbf7d0' : '#dcfce7'; // Pastel Green Background
       ctx.fillRect(x, r1Y, colW, 17);
-
-      // Bottom progress line inside Volume cell
-      ctx.fillStyle = pc.isLatest ? '#4ade80' : 'rgba(74, 222, 128, 0.45)';
-      ctx.fillRect(x + 1, r1Y + 14.5, (colW - 2) * volRatio, 2.0);
-      ctx.strokeStyle = '#1e293b';
+      ctx.strokeStyle = '#86efac';
       ctx.lineWidth = 0.8;
       ctx.strokeRect(x, r1Y, colW, 17);
 
-      ctx.fillStyle = pc.isLatest ? '#4ade80' : '#86efac';
+      // Angka volum dalam warna gelap kontras tajam
+      ctx.fillStyle = '#14532d';
       ctx.font = `bold ${hdrFontPx}px "JetBrains Mono", monospace`;
       ctx.textAlign = colW >= 26 ? 'right' : 'center';
       const volDisp = Math.round((c.volume || 0) * 10);
       const volDispStr = (colW < 26 && volDisp >= 1000) ? ((volDisp / 1000).toFixed(1) + 'k') : volDisp.toString();
       ctx.fillText(volDispStr, colW >= 26 ? (x + colW - 3) : (x + colW / 2), r1Y + 12);
 
-      // --- TOP ROW 2 (y: topControlH + 17..34): Net Candle Delta (Neon Cyan / Pink Cell) ---
+      // ── KOMPONEN 2: TOP ROW 2: Delta (Pastel Blue #e0f2fe / Pastel Red #fee2e2) ──
       const r2Y = topControlH + 17;
       const dVal = Math.round((c.delta || 0) * 10);
-      const dRatio = Math.min(1, Math.abs(c.delta || 0) / maxCandleDeltaAbs);
       if (dVal >= 0) {
-        ctx.fillStyle = `rgba(14, 165, 233, ${0.10 + dRatio * 0.38})`;
+        ctx.fillStyle = pc.isLatest ? '#bae6fd' : '#e0f2fe'; // Soft pastel cyan/blue
+        ctx.fillRect(x, r2Y, colW, 17);
+        ctx.strokeStyle = '#7dd3fc';
+        ctx.strokeRect(x, r2Y, colW, 17);
+        ctx.fillStyle = '#0369a1'; // Sharp dark blue text
       } else {
-        ctx.fillStyle = `rgba(244, 63, 94, ${0.10 + dRatio * 0.38})`;
+        ctx.fillStyle = pc.isLatest ? '#fecaca' : '#fee2e2'; // Soft pastel pink/red
+        ctx.fillRect(x, r2Y, colW, 17);
+        ctx.strokeStyle = '#fca5a5';
+        ctx.strokeRect(x, r2Y, colW, 17);
+        ctx.fillStyle = '#b91c1c'; // Sharp dark red text
       }
-      ctx.fillRect(x, r2Y, colW, 17);
-      ctx.strokeStyle = '#1e293b';
-      ctx.strokeRect(x, r2Y, colW, 17);
-
-      ctx.fillStyle = dVal >= 0 ? '#38bdf8' : '#fb7185';
       ctx.font = `bold ${hdrFontPx}px "JetBrains Mono", monospace`;
       ctx.textAlign = colW >= 26 ? 'right' : 'center';
       let dStr = (dVal > 0 ? '+' : '') + dVal.toString();
@@ -3287,7 +3568,7 @@ class FootprintRenderer {
         );
 
         if (isPOC) {
-          pocPoints.push({ x: x + colW / 2, y: boxY + boxH / 2, price: p });
+          pocPoints.push({ x: x + colW / 2, y: boxY + boxH / 2, price: p, candleIdx: i });
         }
 
         // Hover detection
@@ -3421,14 +3702,14 @@ class FootprintRenderer {
           }
         }
 
-        // ClusterDelta Iconic 2px Solid Black Rectangular POC Frame ([ 203 ])
+        // ── KOMPONEN 4: Highlight POC Oren Emas Berbingkai Tebal (#ea580c / #f59e0b) ──
         if (isPOC) {
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2.6;
-          ctx.strokeRect(x + 1.5, boxY + 1, colW - 3, boxH - 2);
-          ctx.strokeStyle = '#000000';
-          ctx.lineWidth = 1.8;
-          ctx.strokeRect(x + 2, boxY + 1.5, colW - 4, boxH - 3);
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 2.4;
+          ctx.strokeRect(x + 1, boxY + 0.5, colW - 2, boxH - 1);
+          ctx.strokeStyle = '#ea580c';
+          ctx.lineWidth = 1.6;
+          ctx.strokeRect(x + 1.8, boxY + 1.2, colW - 3.6, boxH - 2.4);
         } else if (isWickAbsorption) {
           // Feature 2B: Golden Institutional Absorption Shield Frame (Passive Limit Defense)
           ctx.save();
@@ -3784,6 +4065,46 @@ class FootprintRenderer {
         ctx.stroke();
       }
       ctx.restore();
+
+      // ── KOMPONEN 11: EXTENDED NAKED POC RAYS (LAVENDER / PURPLE UNREACHED AUCTION BANDS) ──
+      ctx.save();
+      for (let k = 0; k < pocPoints.length - 1; k++) {
+        const pt = pocPoints[k];
+        let isTested = false;
+        // Semak sama ada lilin selepas ini menyentuh paras POC ini
+        for (let m = pt.candleIdx + 1; m < processedCandles.length; m++) {
+          const cAfter = processedCandles[m].raw;
+          if (cAfter.low <= pt.price && cAfter.high >= pt.price) {
+            isTested = true;
+            break;
+          }
+        }
+        if (!isTested) {
+          const rayY = priceToRowY(pt.price + step);
+          const rayH = Math.max(7.5, rowH);
+          if (rayY >= topHeaderH && rayY <= topHeaderH + chartH - rayH) {
+            // Jalur Ungu / Lavender Mendatar (Komponen 11)
+            ctx.fillStyle = 'rgba(168, 85, 247, 0.40)';
+            ctx.fillRect(pt.x, rayY + 1, chartW - pt.x, rayH - 2);
+            ctx.strokeStyle = '#a855f7';
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(pt.x, rayY + 0.5, chartW - pt.x, rayH - 1);
+
+            // Badge Teks Lavender Gelang Institusi di Hujung Kanan
+            ctx.fillStyle = 'rgba(88, 28, 135, 0.92)';
+            const bWidth = 84;
+            ctx.fillRect(chartW - bWidth - 2, rayY + 1, bWidth, rayH - 2);
+            ctx.strokeStyle = '#c084fc';
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(chartW - bWidth - 2, rayY + 1, bWidth, rayH - 2);
+            ctx.fillStyle = '#f3e8ff';
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`⚡nPOC $${pt.price.toFixed(2)}`, chartW - bWidth / 2 - 2, rayY + rayH / 2 + 3);
+          }
+        }
+      }
+      ctx.restore();
     }
 
     // 11. Draw Institutional Higher Timeframe SNR (1D, H4, H1, M30, M15) & Benchmarks (VWAP, dPOC)
@@ -3905,27 +4226,40 @@ class FootprintRenderer {
       }
     });
 
+    // ── KOMPONEN 6: AUTHORIZER PRO BADGE (✓) DI SUDUT ATAS-KANAN ──
+    const authBoxX = panelX + rightPanelW - 32;
+    const authBoxY = topControlH + 8;
+    ctx.beginPath();
+    ctx.arc(authBoxX + 11, authBoxY + 11, 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#065f46';
+    ctx.fill();
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('✓', authBoxX + 11, authBoxY + 12);
+
+    this.authHitbox = {
+      x: authBoxX, y: authBoxY, w: 24, h: 24,
+      onClick: () => {
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          window.orderFlowApp.showToast('✅ STATUS PENGESAHAN: AKAUN INSTITUSI PRO DIAUTHENTIKASIKAN');
+        }
+      }
+    };
+
     if (volColW > 0) {
       // Full session totals
-      ctx.beginPath();
-      ctx.arc(panelX + 22, topControlH + 24, 9, 0, Math.PI * 2);
-      ctx.fillStyle = '#064e3b';
-      ctx.fill();
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = 1.8;
-      ctx.stroke();
-      ctx.fillStyle = '#4ade80';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('✓', panelX + 22, topControlH + 28);
-
       ctx.fillStyle = '#38bdf8';
       ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(`SESI CVD: ${(snapshot.cvd || 0) >= 0 ? '+' : ''}${(snapshot.cvd || 0).toFixed(0)}L`, panelX + 38, topControlH + 20);
+      ctx.fillText(`SESI CVD: ${(snapshot.cvd || 0) >= 0 ? '+' : ''}${(snapshot.cvd || 0).toFixed(0)}L`, panelX + 10, topControlH + 20);
       ctx.fillStyle = '#94a3b8';
       ctx.font = 'bold 9px "JetBrains Mono", monospace';
-      ctx.fillText(`BLOK: $${step.toFixed(2)}`, panelX + 38, topControlH + 34);
+      ctx.fillText(`BLOK: $${step.toFixed(2)}`, panelX + 10, topControlH + 34);
 
       // Sub-column headers at y: topControlH + 50 .. topHeaderH
       const hdrSubY = topControlH + 50;
@@ -4098,66 +4432,9 @@ class FootprintRenderer {
       ctx.restore();
     }
 
-    // 14. Bottom 26px Cumulative Delta Sparkline & Area Strip
-    const stripY = this.height - bottomStripH;
-    ctx.fillStyle = '#14171c';
-    ctx.fillRect(0, stripY, this.width, bottomStripH);
-    ctx.strokeStyle = '#374151';
-    ctx.strokeRect(0, stripY, this.width, bottomStripH);
-
-    const midStripY = stripY + bottomStripH / 2;
-    ctx.save();
-    ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = '#15803d';
-    ctx.beginPath();
-    ctx.moveTo(8, midStripY);
-    ctx.lineTo(chartW - 8, midStripY);
-    ctx.stroke();
-    ctx.restore();
-
-    if (processedCandles.length > 1) {
-      let runningCvd = 0;
-      const pts = [];
-      let minC = 0, maxC = 0;
-      for (let i = 0; i < processedCandles.length; i++) {
-        runningCvd += (processedCandles[i].raw.delta || 0);
-        if (runningCvd < minC) minC = runningCvd;
-        if (runningCvd > maxC) maxC = runningCvd;
-        pts.push({
-          x: startX + i * colW + colW / 2,
-          v: runningCvd
-        });
-      }
-      const rangeC = Math.max(1, maxC - minC);
-      ctx.strokeStyle = '#22c55e';
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      for (let i = 0; i < pts.length; i++) {
-        const py = (stripY + bottomStripH - 4) - ((pts[i].v - minC) / rangeC) * (bottomStripH - 8);
-        if (i === 0) ctx.moveTo(pts[i].x, py);
-        else ctx.lineTo(pts[i].x, py);
-      }
-      ctx.stroke();
-
-      // Draw mini nodes on CVD curve
-      for (let i = 0; i < pts.length; i++) {
-        const py = (stripY + bottomStripH - 4) - ((pts[i].v - minC) / rangeC) * (bottomStripH - 8);
-        ctx.fillStyle = pts[i].v >= 0 ? '#4ade80' : '#f43f5e';
-        ctx.beginPath();
-        ctx.arc(pts[i].x, py, 2.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Right-bottom ClusterDelta Pro status badge - OLED Dark Neon
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(chartW, stripY, rightPanelW, bottomStripH);
-    ctx.strokeStyle = '#1e293b';
-    ctx.strokeRect(chartW, stripY, rightPanelW, bottomStripH);
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`⚡ CLUSTERDELTA PRO • ${this.cdCellMode.toUpperCase()}`, chartW + rightPanelW / 2, stripY + 16.5);
+    // ── KOMPONEN 10: BOTTOM NAVIGATION TOOLBAR PANEL WITH DRAGGABLE BLUE SLIDER WINDOW ──
+    const totalCandles = Math.max(1, (this.allCandles && this.allCandles.length) || (rawCandles && rawCandles.length) || 30);
+    this._drawNavigationToolbar(ctx, chartW, rightPanelW, bottomStripH, processedCandles, totalCandles);
 
     ctx.restore();
   }
