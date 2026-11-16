@@ -48,7 +48,8 @@ class FootprintRenderer {
     this._navTrack = null;           // Komponen 10: Timeline sparkline navigation track
     this._navThumb = null;           // Komponen 10: Draggable blue viewport slider window
     this.authHitbox = null;          // Komponen 6: Authorizer verified pro badge hitbox
-    this._cdConfirmedSignalsCache = new Map(); // Permanent cache: c.time -> signal data (Prevents flickering & repainting)
+    this._cdConfirmedSignalsCache = new Map(); // Permanent cache: c.time -> signal data (Zero Repaint)
+    this._cdConfirmedPatternsCache = new Map(); // Permanent cache: c.time -> { trapSignal, climaxSignal } (Zero Flickering) // Permanent cache: c.time -> signal data (Prevents flickering & repainting)
 
     // Pro Candlestick Chart Sub-Settings
     this.csZenMode = false; // Zen Candle Mode: Pristine view without clutter
@@ -1965,8 +1966,8 @@ class FootprintRenderer {
     const footerHRef = isUltraNarrowBadge ? 40 : (this.candleWidth < 95 ? 52 : 64);
     const footerSafeY = (this.height || 600) - footerHRef - 4;
 
-    // ── Lower Wick Setup (Absorption Low & Bullish Delta Div) ──
-    if (this.showWickAbsorption !== false || this.showCandleDeltaDiv !== false) {
+    // ── Lower Wick Setup (Zero Flickering: Confirmed on Bar Close) ──
+    if ((this.showWickAbsorption !== false || this.showCandleDeltaDiv !== false) && !isCurrentPriceRow) {
       if (hasWickAbsorptionLow || isDeltaDivBullish) {
         let btmBadge = '';
         if (hasWickAbsorptionLow && isDeltaDivBullish) {
@@ -1994,8 +1995,8 @@ class FootprintRenderer {
         }
       }
 
-      // ── Upper Wick Setup (Absorption High & Bearish Delta Div) ──
-      if (hasWickAbsorptionHigh || isDeltaDivBearish) {
+      // ── Upper Wick Setup (Zero Flickering: Confirmed on Bar Close) ──
+      if ((hasWickAbsorptionHigh || isDeltaDivBearish) && !isCurrentPriceRow) {
         let topBadge = '';
         if (hasWickAbsorptionHigh && isDeltaDivBearish) {
           topBadge = `🛡️ ABSORP + Δ DIV [+${(rawCandle.delta || 0).toFixed(1)}]`;
@@ -3263,31 +3264,47 @@ class FootprintRenderer {
       if ((c.volume || 0) > maxCandleVol) maxCandleVol = c.volume;
       if (Math.abs(c.delta || 0) > maxCandleDeltaAbs) maxCandleDeltaAbs = Math.abs(c.delta);
 
-      // Detect Trapped POC / Absorption (POC in upper wick of bearish candle or lower wick of bullish candle)
+      // ── BAR-CLOSE CONFIRMATION (ZERO FLICKERING / ZERO REPAINT) ──
+      // Syarat isyarat (Trap & Climax) HANYA dikunci dan dilukis secara kekal selepas lilin ditutup!
       const isBull = c.close >= c.open;
       const bodyHigh = Math.max(c.open, c.close);
       const bodyLow = Math.min(c.open, c.close);
+      const isClosedBar = (idx < candles.length - 1);
       let trapSignal = null;
-      if (pocPrice !== null) {
-        if (!isBull && pocPrice >= bodyHigh && (c.high - bodyHigh) >= step * 0.8) {
-          trapSignal = '🪤 TRAP BUY';
-        } else if (isBull && pocPrice <= bodyLow && (bodyLow - c.low) >= step * 0.8) {
-          trapSignal = '🪤 TRAP SELL';
-        }
-      }
-
-      // Feature: Delta Climax & Exhaustion Absorption Callouts
       let climaxSignal = null;
-      const cDelta = c.delta || 0;
-      const cVol = Math.max(1, c.volume || 1);
-      const wickTop = c.high - Math.max(c.open, c.close);
-      const wickBot = Math.min(c.open, c.close) - c.low;
-      const cRange = Math.max(0.1, c.high - c.low);
 
-      if (cDelta > 8.0 && (cDelta / cVol >= 0.38) && (wickTop / cRange >= 0.38)) {
-        climaxSignal = { type: 'BUY_CLIMAX', label: '⚡ BUY CLIMAX', col: '#00f0ff' };
-      } else if (cDelta < -8.0 && (Math.abs(cDelta) / cVol >= 0.38) && (wickBot / cRange >= 0.38)) {
-        climaxSignal = { type: 'SELL_CLIMAX', label: '⚡ SELL CLIMAX', col: '#f43f5e' };
+      if (isClosedBar) {
+        // Ambil daripada cache kekal jika lilin lampau sudah disahkan
+        if (this._cdConfirmedPatternsCache && this._cdConfirmedPatternsCache.has(c.time)) {
+          const cached = this._cdConfirmedPatternsCache.get(c.time);
+          trapSignal = cached.trapSignal;
+          climaxSignal = cached.climaxSignal;
+        } else {
+          // Kira sekali sahaja pada saat lilin ditutup dan simpan beku selamanya
+          if (pocPrice !== null) {
+            if (!isBull && pocPrice >= bodyHigh && (c.high - bodyHigh) >= step * 0.8) {
+              trapSignal = '🪤 TRAP BUY';
+            } else if (isBull && pocPrice <= bodyLow && (bodyLow - c.low) >= step * 0.8) {
+              trapSignal = '🪤 TRAP SELL';
+            }
+          }
+
+          const cDelta = c.delta || 0;
+          const cVol = Math.max(1, c.volume || 1);
+          const wickTop = c.high - Math.max(c.open, c.close);
+          const wickBot = Math.min(c.open, c.close) - c.low;
+          const cRange = Math.max(0.1, c.high - c.low);
+
+          if (cDelta > 8.0 && (cDelta / cVol >= 0.38) && (wickTop / cRange >= 0.38)) {
+            climaxSignal = { type: 'BUY_CLIMAX', label: '⚡ BUY CLIMAX', col: '#00f0ff' };
+          } else if (cDelta < -8.0 && (Math.abs(cDelta) / cVol >= 0.38) && (wickBot / cRange >= 0.38)) {
+            climaxSignal = { type: 'SELL_CLIMAX', label: '⚡ SELL CLIMAX', col: '#f43f5e' };
+          }
+
+          if (this._cdConfirmedPatternsCache) {
+            this._cdConfirmedPatternsCache.set(c.time, { trapSignal, climaxSignal });
+          }
+        }
       }
 
       // Detect Unfinished Auction at extremes of closed candles
@@ -3518,10 +3535,11 @@ class FootprintRenderer {
       if (colW < 26 && Math.abs(dVal) >= 1000) dStr = (dVal / 1000).toFixed(1) + 'k';
       ctx.fillText(dStr, colW >= 26 ? (x + colW - 3) : (x + colW / 2), r2Y + 12);
 
-      // --- TOP ROW 3 (y: topControlH + 34..50): Delta % & Divergence Detector ---
+      // --- TOP ROW 3 (y: topControlH + 34..50): Delta % & Divergence Detector (Zero Flickering) ---
       const r3Y = topControlH + 34;
       const deltaPct = (c.volume || 0) > 0 ? Math.round(((c.delta || 0) / c.volume) * 100) : 0;
-      const isDivergent = (isBull && c.delta < -1.5) || (!isBull && c.delta > 1.5);
+      // Hanya sahkan divergence jika lilin telah ditutup (mengelakkan kelipan pada live bar)
+      const isDivergent = !pc.isLatest && ((isBull && c.delta < -1.5) || (!isBull && c.delta > 1.5));
       ctx.fillStyle = isDivergent ? 'rgba(251, 191, 36, 0.22)' : '#101a2c';
       ctx.fillRect(x, r3Y, colW, 16);
       ctx.strokeStyle = isDivergent ? '#facc15' : '#1e293b';
@@ -4096,7 +4114,7 @@ class FootprintRenderer {
         }
         ctx.restore();
 
-      } else if (pc.trapSignal) {
+      } else if (pc.trapSignal && !pc.isLatest) {
         const isTrapBuy = pc.trapSignal.includes('BUY');
         const badgeY = isTrapBuy ? Math.max(topHeaderH + 12, yHigh - 6) : Math.min(topHeaderH + chartH - 6, yLow + 12);
         ctx.fillStyle = isTrapBuy ? '#dc2626' : '#16a34a';
