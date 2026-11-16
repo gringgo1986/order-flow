@@ -968,30 +968,30 @@ class FootprintRenderer {
     if (!sessions) return;
     ctx.save();
     const levels = [
-      // 1D (Daily) Major Levels
-      { price: sessions.pdh,         label: '🏛️ 1D HIGH (PDH)', col: '#fde047', isMajor: true },
-      { price: sessions.pdl,         label: '🏛️ 1D LOW (PDL)',  col: '#fde047', isMajor: true },
-      { price: sessions.daily_open,  label: '⚡ 1D OPEN',       col: '#38bdf8', isMajor: true },
+      // 1D (Daily) Major Levels (Clean Institutional Labels)
+      { price: sessions.pdh,         label: '1D HIGH',  col: '#fde047', isMajor: true },
+      { price: sessions.pdl,         label: '1D LOW',   col: '#fde047', isMajor: true },
+      { price: sessions.daily_open,  label: '1D OPEN',  col: '#38bdf8', isMajor: true },
 
       // Higher Timeframe SNR H8, H4, H1, M30, M15
-      { price: sessions.h8_res || sessions.h8_high, label: '🏛️ H8 RES', col: '#e11d48', isMajor: true },
-      { price: sessions.h8_sup || sessions.h8_low,  label: '🏛️ H8 SUP', col: '#059669', isMajor: true },
-      { price: sessions.h4_res || sessions.h4_high, label: '🏰 H4 RES', col: '#ec4899', isMajor: true },
-      { price: sessions.h4_sup || sessions.h4_low,  label: '🏰 H4 SUP', col: '#10b981', isMajor: true },
-      { price: sessions.h1_res || sessions.h1_high, label: '⏱️ H1 RES', col: '#f97316', isMajor: true },
-      { price: sessions.h1_sup || sessions.h1_low,  label: '⏱️ H1 SUP', col: '#06b6d4', isMajor: true },
-      { price: sessions.m30_res || sessions.m30_high, label: '⏳ M30 RES', col: '#a855f7', isMajor: false },
-      { price: sessions.m30_sup || sessions.m30_low,  label: '⏳ M30 SUP', col: '#3b82f6', isMajor: false },
-      { price: sessions.m15_res || sessions.m15_high, label: '⚡ M15 RES', col: '#fbbf24', isMajor: false },
-      { price: sessions.m15_sup || sessions.m15_low,  label: '⚡ M15 SUP', col: '#2dd4bf', isMajor: false },
+      { price: sessions.h8_res || sessions.h8_high, label: 'H8 RES', col: '#e11d48', isMajor: true },
+      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SUP', col: '#059669', isMajor: true },
+      { price: sessions.h4_res || sessions.h4_high, label: 'H4 RES', col: '#ec4899', isMajor: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SUP', col: '#10b981', isMajor: true },
+      { price: sessions.h1_res || sessions.h1_high, label: 'H1 RES', col: '#f97316', isMajor: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SUP', col: '#06b6d4', isMajor: true },
+      { price: sessions.m30_res || sessions.m30_high, label: 'M30 RES', col: '#a855f7', isMajor: false },
+      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SUP', col: '#3b82f6', isMajor: false },
+      { price: sessions.m15_res || sessions.m15_high, label: 'M15 RES', col: '#fbbf24', isMajor: false },
+      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SUP', col: '#2dd4bf', isMajor: false },
 
       // Session Extremes
-      { price: sessions.asian_high,  label: '🌏 ASIAN HIGH',    col: '#f59e0b', isMajor: false },
-      { price: sessions.asian_low,   label: '🌏 ASIAN LOW',     col: '#f59e0b', isMajor: false },
-      { price: sessions.london_high, label: '🇬🇧 LONDON HIGH',   col: '#06b6d4', isMajor: false },
-      { price: sessions.london_low,  label: '🇬🇧 LONDON LOW',    col: '#06b6d4', isMajor: false },
-      { price: sessions.ny_high,     label: '🗽 NY HIGH',       col: '#c084fc', isMajor: false },
-      { price: sessions.ny_low,      label: '🗽 NY LOW',        col: '#c084fc', isMajor: false }
+      { price: sessions.asian_high,  label: 'ASIA HIGH', col: '#f59e0b', isMajor: false },
+      { price: sessions.asian_low,   label: 'ASIA LOW',  col: '#f59e0b', bg: '#f59e0b', isMajor: false },
+      { price: sessions.london_high, label: 'LDN HIGH',  col: '#06b6d4', isMajor: false },
+      { price: sessions.london_low,  label: 'LDN LOW',   col: '#06b6d4', isMajor: false },
+      { price: sessions.ny_high,     label: 'NY HIGH',   col: '#c084fc', isMajor: false },
+      { price: sessions.ny_low,      label: 'NY LOW',    col: '#c084fc', isMajor: false }
     ];
 
     // Consolidate nearby SNR levels within $0.40 to prevent badge piling
@@ -1430,17 +1430,27 @@ class FootprintRenderer {
 
           const isCompact = halfW < 45;
 
-          // Bid Text (Left) - Golden Yellow for Imbalance, light pink for standard
+          // Bid Text (Left) - Golden Yellow Neon for Imbalance, light pink for standard (Sierra Chart Pro)
           ctx.textAlign = 'center';
-          ctx.fillStyle = isSellImbalance ? '#ff3366' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
-          const bidRatioStr = (boxHeight >= 18 && cl.sellRatio && !isCompact) ? `↘${cl.sellRatio}x ` : (isSellImbalance ? '↘ ' : '');
+          ctx.fillStyle = isSellImbalance ? '#ffd60a' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
+          if (isSellImbalance) {
+            ctx.font = `900 ${dynFont + 0.5}px "JetBrains Mono", monospace`;
+          } else {
+            ctx.font = `bold ${dynFont}px "JetBrains Mono", monospace`;
+          }
+          const bidRatioStr = (boxHeight >= 18 && cl.sellRatio && !isCompact) ? `↘${cl.sellRatio}x ` : (isSellImbalance ? '⚡ ' : '');
           const bidValStr = (isCompact || cl.bid >= 100) ? Math.round(cl.bid).toString() : cl.bid.toFixed(1);
           const bidStr = bidRatioStr + bidValStr;
           ctx.fillText(bidStr, x + halfW / 2, textY);
 
-          // Ask Text (Right) - Golden Yellow for Imbalance, light green for standard
-          ctx.fillStyle = isBuyImbalance ? '#00e676' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
-          const askRatioStr = (boxHeight >= 18 && cl.buyRatio && !isCompact) ? ` ↗${cl.buyRatio}x` : (isBuyImbalance ? ' ↗' : '');
+          // Ask Text (Right) - Golden Yellow Neon for Imbalance, light green for standard (Sierra Chart Pro)
+          ctx.fillStyle = isBuyImbalance ? '#ffd60a' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
+          if (isBuyImbalance) {
+            ctx.font = `900 ${dynFont + 0.5}px "JetBrains Mono", monospace`;
+          } else {
+            ctx.font = `bold ${dynFont}px "JetBrains Mono", monospace`;
+          }
+          const askRatioStr = (boxHeight >= 18 && cl.buyRatio && !isCompact) ? ` ↗${cl.buyRatio}x` : (isBuyImbalance ? ' ⚡' : '');
           const askValStr = (isCompact || cl.ask >= 100) ? Math.round(cl.ask).toString() : cl.ask.toFixed(1);
           const askStr = askValStr + askRatioStr;
           ctx.fillText(askStr, x + halfW + halfW / 2, textY);
