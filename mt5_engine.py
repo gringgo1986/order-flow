@@ -1930,28 +1930,31 @@ class OrderFlowEngine:
         min_p = min(prices)
         cur_cvd = self.cvd
 
-        # Bearish Divergence near recent highs (Strict Supply Filter)
+        # Bearish Divergence near recent highs (Strict Supply Filter with Hold Timer)
         if price >= max_p - 0.20 and cur_cvd < max(cvds) - 12.0:
-            is_valid, zone_desc = self._is_near_institutional_level(price, "SELL")
-            if is_valid:
-                self.detected_divergence = {
-                    "type": "bearish",
-                    "title": "CVD BEARISH DIVERGENCE",
-                    "desc": f"Penyerapan jualan institusi di zon Supply {zone_desc}",
-                    "price": price,
-                    "timestamp": now_ms
-                }
-        # Bullish Divergence near recent lows (Strict Demand Filter)
+            # Cegah kelipan: jangan tulis ganti jika divergence yang sama baru dihantar kurang daripada 10 saat
+            if not self.detected_divergence or (now_ms - self.detected_divergence.get("timestamp", 0) > 10000):
+                is_valid, zone_desc = self._is_near_institutional_level(price, "SELL")
+                if is_valid:
+                    self.detected_divergence = {
+                        "type": "bearish",
+                        "title": "CVD BEARISH DIVERGENCE",
+                        "desc": f"Penyerapan jualan institusi di zon Supply {zone_desc}",
+                        "price": price,
+                        "timestamp": now_ms
+                    }
+        # Bullish Divergence near recent lows (Strict Demand Filter with Hold Timer)
         elif price <= min_p + 0.20 and cur_cvd > min(cvds) + 12.0:
-            is_valid, zone_desc = self._is_near_institutional_level(price, "BUY")
-            if is_valid:
-                self.detected_divergence = {
-                    "type": "bullish",
-                    "title": "CVD BULLISH DIVERGENCE",
-                    "desc": f"Penyerapan belian institusi di zon Demand {zone_desc}",
-                    "price": price,
-                    "timestamp": now_ms
-                }
+            if not self.detected_divergence or (now_ms - self.detected_divergence.get("timestamp", 0) > 10000):
+                is_valid, zone_desc = self._is_near_institutional_level(price, "BUY")
+                if is_valid:
+                    self.detected_divergence = {
+                        "type": "bullish",
+                        "title": "CVD BULLISH DIVERGENCE",
+                        "desc": f"Penyerapan belian institusi di zon Demand {zone_desc}",
+                        "price": price,
+                        "timestamp": now_ms
+                    }
 
     def _evaluate_trapped_traders(self, now_ms: int):
         """
