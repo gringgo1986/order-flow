@@ -697,6 +697,13 @@ class BookmapRenderer {
     if (!this.width || !this.height) return;
     const ctx = this.ctx;
 
+    // Robust Fail-Safe Snapshot Guard (never allow undefined/null to break render)
+    if (snapshot && typeof snapshot === 'object' && (snapshot.last_price || snapshot.bid || snapshot.order_book)) {
+      this._latestSnapshot = snapshot;
+    } else {
+      snapshot = this._latestSnapshot || snapshot || {};
+    }
+
     // Adaptive Server Clock Skew Synchronization
     if (snapshot && snapshot.server_time_ms && typeof snapshot.server_time_ms === 'number') {
       const skew = snapshot.server_time_ms - Date.now();
@@ -707,7 +714,13 @@ class BookmapRenderer {
       }
     }
     const now = Date.now() + (this._serverTimeOffset || 0);
-    this._latestSnapshot = snapshot;
+
+    // Track latest verified price across all frames
+    if (snapshot.last_price && Number.isFinite(snapshot.last_price)) {
+      this.lastKnownPrice = snapshot.last_price;
+    } else if (snapshot.bid && Number.isFinite(snapshot.bid)) {
+      this.lastKnownPrice = snapshot.bid;
+    }
 
     // Maintain persistent merged order_book and 4-second rolling buffer
     if (snapshot.order_book) {
@@ -742,8 +755,15 @@ class BookmapRenderer {
     }
 
     /* ── Professional Bookmap Pro Stable Deadzone Tracking (Zero Jitter / Zero Kembang-Kecut) ── */
-    const currentPrice = snapshot.last_price || snapshot.bid || (this.minPrice + this.maxPrice) / 2;
+    const currentPrice = this.lastKnownPrice || snapshot.last_price || snapshot.bid || ((Number.isFinite(this.minPrice) && Number.isFinite(this.maxPrice)) ? (this.minPrice + this.maxPrice) / 2 : 3880.0);
+    this.lastKnownPrice = currentPrice;
     const halfSpan = Math.max(2.5, this.bmHalfSpan || 4.5);
+
+    // Ensure minPrice and maxPrice are valid finite numbers at all times
+    if (!Number.isFinite(this.minPrice) || !Number.isFinite(this.maxPrice) || this.minPrice <= 0 || this.maxPrice <= this.minPrice) {
+      this.minPrice = currentPrice - halfSpan;
+      this.maxPrice = currentPrice + halfSpan;
+    }
 
     if (this._isDragging) {
       const centerP = currentPrice + (this.priceOffset || 0);
@@ -853,94 +873,104 @@ class BookmapRenderer {
       : (snapshot.trades || []);
 
     /* ── 4. Chart Gridlines & "NOW" Time Line Separator ── */
-    this._drawGrid(ctx, now);
+    try { this._drawGrid(ctx, now); } catch (e) { console.warn('[BM Grid]', e); }
 
     /* ── 5. Bottom Stacked Volume Histogram + Live CVD Curve Overlay ── */
-    this._drawHistogram(ctx, effectiveTrades, now);
+    try { this._drawHistogram(ctx, effectiveTrades, now); } catch (e) { console.warn('[BM Histogram]', e); }
 
     /* ── 6. Best Bid & Best Ask Spread Channel + Stepped Price Line ── */
-    this._drawSteppedPriceLine(ctx, effectiveTrades, now, currentPrice, snapshot.spread);
+    try { this._drawSteppedPriceLine(ctx, effectiveTrades, now, currentPrice, snapshot.spread); } catch (e) { console.warn('[BM Price Line]', e); }
 
     /* ── 7. Bookmap Split 3D Spherical Bubbles + Whale Callout Labels ── */
-    this._drawSplitBubbles(ctx, effectiveTrades, now);
+    try { this._drawSplitBubbles(ctx, effectiveTrades, now); } catch (e) { console.warn('[BM Bubbles]', e); }
 
     /* ── 8. Buyer & Seller Volume Zones ── */
     if (this.showVolumeZones) {
-      this._drawVolumeZones(ctx, effectiveTrades, currentPrice);
+      try { this._drawVolumeZones(ctx, effectiveTrades, currentPrice); } catch (e) { console.warn('[BM Volume Zones]', e); }
     }
 
     /* ── 8B. Session VWAP & StdDev Bands ── */
     if (this.showVWAP && snapshot.vwap && snapshot.vwap.value > 0) {
-      this._drawVWAP(ctx, snapshot.vwap);
+      try { this._drawVWAP(ctx, snapshot.vwap); } catch (e) { console.warn('[BM VWAP]', e); }
     }
 
     /* ── 8C. Active Positions & Visual SL / TP on Chart ── */
     if (this.showPositions && snapshot.positions && snapshot.positions.length > 0) {
-      this._drawPositionsOnChart(ctx, snapshot.positions, currentPrice);
+      try { this._drawPositionsOnChart(ctx, snapshot.positions, currentPrice); } catch (e) { console.warn('[BM Positions]', e); }
     }
 
     /* ── 8D. CVD Divergence Alert Banner ── */
     if (snapshot.divergence) {
-      this._drawDivergenceAlert(ctx, snapshot.divergence);
+      try { this._drawDivergenceAlert(ctx, snapshot.divergence); } catch (e) { console.warn('[BM Divergence]', e); }
     }
 
     /* ── 8E. Trapped Traders (Buyers / Sellers) Badges ── */
     if (snapshot.trapped_traders && snapshot.trapped_traders.length > 0) {
-      this._drawTrappedTraders(ctx, snapshot.trapped_traders);
+      try { this._drawTrappedTraders(ctx, snapshot.trapped_traders); } catch (e) { console.warn('[BM Trapped]', e); }
     }
 
     /* ── 8F. Prop-Firm Asian / London / NY Session High-Low, PDH/PDL & Sweep Markers ── */
     if (this.showSessionLevels && snapshot.sessions) {
-      this._drawSessionLevels(ctx, snapshot.sessions);
+      try { this._drawSessionLevels(ctx, snapshot.sessions); } catch (e) { console.warn('[BM Sessions]', e); }
     }
 
     /* ── 8G. Composite Session Volume Profile (SVP: dPOC, VAH/VAL 70%, LVN) ── */
     if (this.showSVP && snapshot.session_vp) {
-      this._drawSessionVolumeProfile(ctx, snapshot.session_vp);
+      try { this._drawSessionVolumeProfile(ctx, snapshot.session_vp); } catch (e) { console.warn('[BM SVP]', e); }
     }
 
     /* ── 8H. Real-Time Institutional Iceberg & Absorption Detector ── */
     if (this.showIcebergs && snapshot.icebergs && snapshot.icebergs.length > 0) {
-      this._drawIcebergOrders(ctx, snapshot.icebergs);
+      try { this._drawIcebergOrders(ctx, snapshot.icebergs); } catch (e) { console.warn('[BM Icebergs]', e); }
     }
 
     /* ── 8H2. DDBTC 4 Sifat SNR Valid Auto-Marking Zones ── */
     if (snapshot.snr_valid_zones && snapshot.snr_valid_zones.length > 0) {
-      this._drawSnrValidZones(ctx, snapshot.snr_valid_zones);
+      try { this._drawSnrValidZones(ctx, snapshot.snr_valid_zones); } catch (e) { console.warn('[BM SNR Valid Zones]', e); }
     }
 
     /* ── 8I. Real-Time Institutional Order Flow Buy/Sell Signals (Strict Location-First) ── */
     if (this.bmShowSignals !== false) {
-      this._drawOrderFlowSignals(ctx, snapshot, now, currentPrice);
+      try { this._drawOrderFlowSignals(ctx, snapshot, now, currentPrice); } catch (e) { console.warn('[BM Signals]', e); }
     }
 
     /* ── 8J. Real-Time Sudden Whale Placement Radar & Sonar Alert System ── */
     if (this.whaleRadarEnabled !== false) {
-      this._detectSuddenWhalePlacements(snapshot, now);
-      this._drawWhaleRadarPings(ctx, now);
-      this._drawWhaleRadarBanner(ctx, now);
+      try {
+        this._detectSuddenWhalePlacements(snapshot, now);
+        this._drawWhaleRadarPings(ctx, now);
+        this._drawWhaleRadarBanner(ctx, now);
+      } catch (e) { console.warn('[BM Whale Radar]', e); }
     }
 
     /* ── 9. Current Price Crosshair & Interactive Cursor Depth Inspector ── */
-    this._drawCurrentPriceLine(ctx, currentPrice, snapshot.order_book, now);
+    try { this._drawCurrentPriceLine(ctx, currentPrice, snapshot.order_book, now); } catch (e) { console.warn('[BM Crosshair]', e); }
 
-    /* ── 10. Left Price Scale & Ticks ── */
-    this._drawPriceAxis(ctx);
+    /* ── 10. Left Price Scale & Ticks (GUARANTEED FAIL-SAFE ISOLATION) ── */
+    try {
+      this._drawPriceAxis(ctx);
+    } catch (e) {
+      console.error('[Bookmap Left Axis Fatal Error]', e);
+    }
 
-    /* ── 11. Right High-Resolution COB (Current Order Book + Pulling/Stacking) ── */
-    this._drawCOB(ctx, this._persistentOrderBook || snapshot.order_book, currentPrice, snapshot.bid, snapshot.ask);
+    /* ── 11. Right High-Resolution COB (Current Order Book + Pulling/Stacking) (GUARANTEED FAIL-SAFE ISOLATION) ── */
+    try {
+      this._drawCOB(ctx, this._persistentOrderBook || snapshot.order_book, currentPrice, snapshot.bid, snapshot.ask);
+    } catch (e) {
+      console.error('[Bookmap Right COB Fatal Error]', e);
+    }
 
     /* ── 12. Interactive Manual Drawing Tools Overlay (Ray & Trend) ── */
-    this._drawManualDrawings(ctx);
+    try { this._drawManualDrawings(ctx); } catch (e) {}
 
     /* ── 12B. World-Class Order Flow Measurement Ruler Tool ── */
-    this._drawOrderFlowRuler(ctx);
+    try { this._drawOrderFlowRuler(ctx); } catch (e) {}
 
     /* ── 13. Interactive Top Bookmap Pro HUD Header ── */
-    this._drawTopHUD(ctx, snapshot);
+    try { this._drawTopHUD(ctx, snapshot); } catch (e) {}
 
     /* ── 13. Interactive Tooltip ── */
-    this._renderTooltip();
+    try { this._renderTooltip(); } catch (e) {}
   }
 
   /* ─── Grid Lines, Time Markers & "NOW" Line Divider ────────────── */
@@ -2636,7 +2666,8 @@ class BookmapRenderer {
       const isBuy = sig.dir === 'BUY';
 
       // Update win/loss status in real-time with Auto-BE (Break-Even) protection & 1000p Ladder (TP1-TP20)
-      if (sig.status === 'ACTIVE' || sig.status.startsWith('TP')) {
+      const sigStatusStr = typeof sig.status === 'string' ? sig.status : 'ACTIVE';
+      if (sigStatusStr === 'ACTIVE' || sigStatusStr.startsWith('TP')) {
         const entryP = sig.price;
         const gainPips = isBuy ? (p - entryP) * 10 : (entryP - p) * 10;
 
@@ -2655,9 +2686,9 @@ class BookmapRenderer {
         }
 
         // 3. Exit reversals
-        if (sig.isBEActive && gainPips <= 0.0 && !sig.status.startsWith('TP')) {
+        if (sig.isBEActive && gainPips <= 0.0 && (!sigStatusStr || !sigStatusStr.startsWith('TP'))) {
           sig.status = 'BE_HIT';
-        } else if (!sig.isBEActive && gainPips <= -50.0 && !sig.status.startsWith('TP')) {
+        } else if (!sig.isBEActive && gainPips <= -50.0 && (!sigStatusStr || !sigStatusStr.startsWith('TP'))) {
           sig.status = 'SL_HIT';
         }
       }
@@ -2793,7 +2824,7 @@ class BookmapRenderer {
           // Bulky Badge ONLY for active signals or signals in the last 60s
           let statusBadge = '';
           if (sig.status && sig.status.startsWith('TP')) {
-            const tierNum = sig.status.replace('TP', '').replace('_HIT', '');
+            const tierNum = sigStatusStr.replace('TP', '').replace('_HIT', '');
             const pipsNum = parseInt(tierNum, 10) * 50;
             statusBadge = ` 🎯 TP${tierNum} HIT (+${pipsNum}p)`;
           } else if (sig.status === 'BE_HIT') {
@@ -2964,16 +2995,18 @@ class BookmapRenderer {
     }
   }
 
-  /* ─── Left Price Scale Axis ───────────────────────────────────── */
+  /* ─── Left Price Scale Axis (Rock-Solid Fail-Safe) ───────────────────────────────────── */
   _drawPriceAxis(ctx) {
     ctx.save();
     const step = 0.50;
-    const startP = Math.floor(this.minPrice / step) * step;
+    const minP = Number.isFinite(this.minPrice) ? this.minPrice : (this.lastKnownPrice || 3880) - 4.5;
+    const maxP = Number.isFinite(this.maxPrice) ? this.maxPrice : (this.lastKnownPrice || 3880) + 4.5;
+    const startP = Math.floor(minP / step) * step;
 
     ctx.font      = '9px "JetBrains Mono", monospace';
     ctx.textAlign = 'right';
 
-    for (let p = startP; p <= this.maxPrice + step; p += step) {
+    for (let p = startP; p <= maxP + step; p = Math.round((p + step) * 100) / 100) {
       const y = this.priceToY(p);
       if (y < this.CHART_TOP + 4 || y > this.CHART_BOTTOM - 4) continue;
 
@@ -3024,24 +3057,28 @@ class BookmapRenderer {
 
     const bids = (orderBook && orderBook.bids) || {};
     const asks = (orderBook && orderBook.asks) || {};
-    const cyLive = currentPrice ? this.priceToY(currentPrice) : -999;
+    const effectivePrice = currentPrice || this.lastKnownPrice;
+    const cyLive = (effectivePrice && Number.isFinite(effectivePrice)) ? this.priceToY(effectivePrice) : -999;
 
     let maxDepth = 40;
     for (const v of Object.values(bids)) maxDepth = Math.max(maxDepth, parseFloat(v) || 0);
     for (const v of Object.values(asks)) maxDepth = Math.max(maxDepth, parseFloat(v) || 0);
     maxDepth = Math.max(maxDepth, 45);
 
+    const minP = Number.isFinite(this.minPrice) ? this.minPrice : (effectivePrice || 3880) - 4.5;
+    const maxP = Number.isFinite(this.maxPrice) ? this.maxPrice : (effectivePrice || 3880) + 4.5;
+
     // Dynamic price step based on visible chart zoom
-    const pxPer10 = Math.abs(this.priceToY(0) - this.priceToY(0.10));
+    const pxPer10 = Math.abs(this.priceToY(minP) - this.priceToY(minP + 0.10));
     let ladderStep = 0.50;
     if (pxPer10 >= 12) ladderStep = 0.10;
     else if (pxPer10 * 2 >= 13) ladderStep = 0.20;
     else if (pxPer10 * 5 >= 13) ladderStep = 0.50;
     else ladderStep = 1.00;
 
-    const startP = Math.floor(this.minPrice / ladderStep) * ladderStep;
+    const startP = Math.floor(minP / ladderStep) * ladderStep;
 
-    for (let p = startP; p <= this.maxPrice + ladderStep; p = Math.round((p + ladderStep) * 100) / 100) {
+    for (let p = startP; p <= maxP + ladderStep; p = Math.round((p + ladderStep) * 100) / 100) {
       const y = this.priceToY(p);
       if (y < this.CHART_TOP + hdrH + 4 || y > this.CHART_BOTTOM - 6) continue;
 
