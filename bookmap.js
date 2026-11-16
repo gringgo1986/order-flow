@@ -2247,36 +2247,36 @@ class BookmapRenderer {
     ctx.save();
 
     const rawLevels = [
-      // 1D (Daily) Levels - Major Institutional S/R
-      { price: sessions.pdh,         label: '🏛️ 1D HIGH (PDH)', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.pdl,         label: '🏛️ 1D LOW (PDL)',  col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.daily_open,  label: '⚡ 1D OPEN',       col: '#38bdf8', bg: 'rgba(56, 189, 248, 0.26)', isHtf: true },
+      // 1D (Daily) Levels - Major Institutional S/R (Clean Institutional Labels)
+      { price: sessions.pdh,         label: '1D HIGH',  col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.pdl,         label: '1D LOW',   col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.daily_open,  label: '1D OPEN',  col: '#38bdf8', bg: 'rgba(56, 189, 248, 0.26)', isHtf: true },
 
       // H8 & H4 Swing Levels
-      { price: sessions.h8_res || sessions.h8_high, label: '🏛️ H8 RES', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.26)', isHtf: true },
-      { price: sessions.h8_sup || sessions.h8_low,  label: '🏛️ H8 SUP', col: '#059669', bg: 'rgba(5, 150, 105, 0.26)', isHtf: true },
-      { price: sessions.h4_res || sessions.h4_high, label: '🏰 H4 RES', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
-      { price: sessions.h4_sup || sessions.h4_low,  label: '🏰 H4 SUP', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
+      { price: sessions.h8_res || sessions.h8_high, label: 'H8 RES', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.26)', isHtf: true },
+      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SUP', col: '#059669', bg: 'rgba(5, 150, 105, 0.26)', isHtf: true },
+      { price: sessions.h4_res || sessions.h4_high, label: 'H4 RES', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SUP', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
 
       // H1 Swing Levels
-      { price: sessions.h1_res || sessions.h1_high, label: '⏱️ H1 RES', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
-      { price: sessions.h1_sup || sessions.h1_low,  label: '⏱️ H1 SUP', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
+      { price: sessions.h1_res || sessions.h1_high, label: 'H1 RES', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SUP', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
 
       // M30 Swing Levels
-      { price: sessions.m30_res || sessions.m30_high, label: '⏳ M30 RES', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
-      { price: sessions.m30_sup || sessions.m30_low,  label: '⏳ M30 SUP', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
+      { price: sessions.m30_res || sessions.m30_high, label: 'M30 RES', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
+      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SUP', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
 
       // M15 Swing Levels
-      { price: sessions.m15_res || sessions.m15_high, label: '⚡ M15 RES', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
-      { price: sessions.m15_sup || sessions.m15_low,  label: '⚡ M15 SUP', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true },
+      { price: sessions.m15_res || sessions.m15_high, label: 'M15 RES', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
+      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SUP', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true },
 
       // Session Extremes
-      { price: sessions.asian_high,  label: '🌏 ASIAN HIGH',    col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
-      { price: sessions.asian_low,   label: '🌏 ASIAN LOW',     col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
-      { price: sessions.london_high, label: '🇬🇧 LONDON HIGH',   col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
-      { price: sessions.london_low,  label: '🇬🇧 LONDON LOW',    col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
-      { price: sessions.ny_high,     label: '🗽 NY HIGH',       col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false },
-      { price: sessions.ny_low,      label: '🗽 NY LOW',        col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false }
+      { price: sessions.asian_high,  label: 'ASIA HIGH', col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
+      { price: sessions.asian_low,   label: 'ASIA LOW',  col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
+      { price: sessions.london_high, label: 'LDN HIGH',  col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
+      { price: sessions.london_low,  label: 'LDN LOW',   col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
+      { price: sessions.ny_high,     label: 'NY HIGH',   col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false },
+      { price: sessions.ny_low,      label: 'NY LOW',    col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false }
     ];
 
     // Consolidate levels sharing the same price (or within $0.15) to prevent overlapping badges & duplicate lines!
