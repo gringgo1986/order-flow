@@ -2368,7 +2368,7 @@ class App {
       if (topB && topB.b >= 5.0) {
         html += `
           <div class="insight-card alert-buy">
-            <span class="insight-text">🟢 <b>ZON RAMAI BUYER:</b> Tumpuan belian tertinggi pada <b>$${topB.p}</b> (+${topB.b.toFixed(1)} Lots). Paras sokongan aktif.</span>
+            <span class="insight-text">🟢 <b>ZON BUYER:</b> Demand Padat @ <b>$${topB.p}</b> (+${topB.b.toFixed(1)}L). Sokongan Institusi.</span>
             <span class="insight-time">Demand</span>
           </div>
         `;
@@ -2376,7 +2376,7 @@ class App {
       if (topS && topS.s >= 5.0) {
         html += `
           <div class="insight-card alert-sell">
-            <span class="insight-text">🔴 <b>ZON RAMAI SELLER:</b> Tumpuan jualan tertinggi pada <b>$${topS.p}</b> (-${topS.s.toFixed(1)} Lots). Paras rintangan aktif.</span>
+            <span class="insight-text">🔴 <b>ZON SELLER:</b> Supply Padat @ <b>$${topS.p}</b> (-${topS.s.toFixed(1)}L). Rintangan Institusi.</span>
             <span class="insight-time">Supply</span>
           </div>
         `;
@@ -3972,8 +3972,15 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
 
     let netPips = 0;
     this.signalsList.forEach(s => {
-      if (s.status === 'WIN' || s.status === 'LOSS') netPips += (s.resultPips || 0);
-      else if (s.status === 'ACTIVE') netPips += (s.floatingPips || 0);
+      if (s.status && s.status.startsWith('WIN')) {
+        netPips += (typeof s.resultPips === 'number' && !isNaN(s.resultPips) ? s.resultPips : 50.0);
+      } else if (s.status === 'LOSS') {
+        netPips += (typeof s.resultPips === 'number' && !isNaN(s.resultPips) ? s.resultPips : -50.0);
+      } else if (s.status === 'BE') {
+        netPips += 0.0;
+      } else if (s.status === 'ACTIVE') {
+        netPips += (s.floatingPips || 0.0);
+      }
     });
 
     const badgeStr = `${wins}W / ${losses}L`;
