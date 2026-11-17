@@ -615,17 +615,18 @@ class BookmapRenderer {
 
   /* ─── Bookmap Multi-Palette High-Definition Thermal Color Engine ── */
   getThermalColor(vol) {
-    let minCut = 3.0;
+    // Institutional Clean Heatmap: Filter minor noise (< 18L) to create deep dark void contrast
+    let minCut = 18.0;
     if (this.bmWallFilterOnly) {
-      minCut = 28.0;
+      minCut = 35.0;
     } else if (this.bmContrastMode === 'HIGH') {
-      minCut = 32.0; // High contrast: only institutional walls
+      minCut = 40.0; // Ultra Clean: Only major institutional walls
     } else if (this.bmContrastMode === 'MED') {
-      minCut = 6.0;  // Enhanced contrast: displays continuous historical liquidity while highlighting major walls
+      minCut = 20.0; // Balanced: Clear walls, zero noise stripes
     } else if (this.bmContrastMode === 'LOW') {
-      minCut = 3.0;  // Low contrast: all subtle resting depth
+      minCut = 12.0;
     } else if (this.bmContrastMode === 'AUTO') {
-      minCut = this._autoMinCut || 12.0;
+      minCut = this._autoMinCut || 18.0;
     }
 
     if (vol < minCut) return null;
@@ -652,16 +653,14 @@ class BookmapRenderer {
         [105.0, 225,  29,  72, 0.98]  // Ruby Red Institutional Wall
       ];
     } else {
-      // Classic Bookmap Global+ 7.5 High-Contrast Thermal Spectrum (Zebra-Free Smooth Calibration)
+      // Classic Bookmap Global+ High-Contrast Clean Spectrum (Zero Barcode / Pure Dark Void)
       stops = [
-        [3.0,    6,  18,  38, 0.22],  // Calm Obsidian Navy (Ambient 10-16L)
-        [17.0,   9,  42,  82, 0.40],  // Deep Ocean Blue
-        [26.0,   0, 119, 182, 0.62],  // Steel Blue Shoulder
-        [36.0,   0, 195, 235, 0.76],  // Cyan Shelf ($0.50 barrier)
-        [52.0, 255, 205,  15, 0.88],  // Radiant Gold ($1.00 barrier)
-        [72.0, 255, 115,   0, 0.94],  // Fiery Orange Major Wall
-        [92.0, 229,   9,  36, 0.97],  // Vivid Crimson Institutional Wall
-        [115.0, 255, 245, 215, 0.98]  // Warm Gold-White Super Wall
+        [18.0,  12,  28,  55, 0.30],  // Subtle Deep Navy (Only visible when > 18L)
+        [32.0,   0, 140, 200, 0.58],  // Steel Blue / Cyan Liquidity Shelf
+        [50.0,   0, 210, 245, 0.75],  // Bright Aqua Shelf
+        [70.0, 255, 195,  15, 0.88],  // Radiant Gold Major Wall
+        [90.0, 255,  95,   0, 0.95],  // Fiery Orange Jerung Wall
+        [120.0, 245,  25,  40, 0.98]  // Vivid Crimson Mega Shark Wall
       ];
     }
 
@@ -1867,7 +1866,7 @@ class BookmapRenderer {
     const bandThickness = Math.max(8, Math.min(16, Math.abs(this.priceToY(0) - this.priceToY(step)) * 0.75));
 
     // ZON RAMAI BUYER (Compact right-aligned pill before NOW_X)
-    if (topBuy && topBuy.buy >= 8.0) {
+    if (topBuy && topBuy.buy >= 80.0) {
       const buyY = this.priceToY(topBuy.price);
       if (buyY >= this.CHART_TOP + 14 && buyY <= this.CHART_BOTTOM - 14) {
         if (currentPrice && Math.abs(currentPrice - topBuy.price) < 0.20) {
@@ -1910,7 +1909,7 @@ class BookmapRenderer {
     }
 
     // ZON RAMAI SELLER (Compact right-aligned pill before NOW_X, only if separated from Buy Zone)
-    if (topSell && topSell.sell >= 8.0 && (!topBuy || Math.abs(topSell.price - topBuy.price) >= 0.50)) {
+    if (topSell && topSell.sell >= 80.0 && (!topBuy || Math.abs(topSell.price - topBuy.price) >= 0.50)) {
       const sellY = this.priceToY(topSell.price);
       if (sellY >= this.CHART_TOP + 14 && sellY <= this.CHART_BOTTOM - 14) {
         if (currentPrice && Math.abs(currentPrice - topSell.price) < 0.20) {
@@ -2279,20 +2278,28 @@ class BookmapRenderer {
       { price: sessions.ny_low,      label: 'NY LOW',    col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false }
     ];
 
-    // Consolidate levels sharing the same price (or within $0.15) to prevent overlapping badges & duplicate lines!
+    // Smart SNR Consolidation: De-clutter 18 stacked lines into Core Institutional Anchors
+    const currentPrice = this._currentPrice || (this._latestSnapshot && (this._latestSnapshot.last_price || this._latestSnapshot.bid)) || 0;
+    
+    // 1. Always keep 1D (Daily) Anchors
+    const coreLevels = rawLevels.filter(r => ['1D OPEN', '1D HIGH', '1D LOW'].includes(r.label));
+    
+    // 2. Select ONLY the Nearest 1 Major Resistance above current price
+    const resLevels = rawLevels.filter(r => r.price > currentPrice && r.label.includes('RES') || r.label.includes('HIGH'));
+    resLevels.sort((a, b) => a.price - b.price); // Ascending: closest above
+    if (resLevels.length > 0) coreLevels.push(resLevels[0]);
+
+    // 3. Select ONLY the Nearest 1 Major Support below current price
+    const supLevels = rawLevels.filter(r => r.price < currentPrice && r.label.includes('SUP') || r.label.includes('LOW'));
+    supLevels.sort((a, b) => b.price - a.price); // Descending: closest below
+    if (supLevels.length > 0) coreLevels.push(supLevels[0]);
+
     const levels = [];
-    for (const raw of rawLevels) {
+    for (const raw of coreLevels) {
       if (!raw.price || raw.price <= 0) continue;
-      const matched = levels.find(l => Math.abs(l.price - raw.price) < 0.15);
+      const matched = levels.find(l => Math.abs(l.price - raw.price) < 0.35);
       if (matched) {
-        if (!matched.labels.includes(raw.label)) {
-          matched.labels.push(raw.label);
-        }
-        if (raw.isHtf) {
-          matched.isHtf = true;
-          matched.col = raw.col;
-          matched.bg = raw.bg;
-        }
+        if (!matched.labels.includes(raw.label)) matched.labels.push(raw.label);
       } else {
         levels.push({
           price: raw.price,
@@ -3676,45 +3683,57 @@ class BookmapRenderer {
 
   _drawSnrValidZones(ctx, snrZones) {
     if (!snrZones || snrZones.length === 0) return;
-    for (const z of snrZones) {
+    const curP = this._currentPrice || 0;
+
+    // Filter to only the single closest RES and SUP zone to avoid clutter
+    const resZones = snrZones.filter(z => z.type === 'RESISTANCE' && z.zone_low >= curP - 0.5);
+    resZones.sort((a, b) => a.zone_low - b.zone_low);
+    const supZones = snrZones.filter(z => z.type !== 'RESISTANCE' && z.zone_high <= curP + 0.5);
+    supZones.sort((a, b) => b.zone_high - a.zone_high);
+
+    const activeZones = [];
+    if (resZones.length > 0) activeZones.push(resZones[0]);
+    if (supZones.length > 0) activeZones.push(supZones[0]);
+
+    for (const z of activeZones) {
       const yTop = this.priceToY(z.zone_high);
       const yBot = this.priceToY(z.zone_low);
       if (yBot < this.CHART_TOP || yTop > this.CHART_BOTTOM) continue;
 
       const isRes = z.type === 'RESISTANCE';
       const col = isRes ? '#f43f5e' : '#00e676';
-      const bgCol = isRes ? 'rgba(244, 63, 94, 0.12)' : 'rgba(0, 230, 118, 0.12)';
-      const h = Math.max(8, Math.abs(yBot - yTop));
+      const bgCol = isRes ? 'rgba(244, 63, 94, 0.06)' : 'rgba(0, 230, 118, 0.06)';
+      const h = Math.max(6, Math.abs(yBot - yTop));
       const y = Math.min(yTop, yBot);
 
-      // Shaded Zone Box
+      // Subtle Shaded Zone Box
       ctx.fillStyle = bgCol;
       ctx.fillRect(this.CHART_LEFT, y, this.CHART_WIDTH, h);
 
-      // Dashed Outline
+      // Delicate Dotted Outline
       ctx.save();
-      ctx.setLineDash([4, 4]);
+      ctx.setLineDash([3, 4]);
       ctx.strokeStyle = col;
-      ctx.lineWidth = 1.1;
+      ctx.lineWidth = 1.0;
       ctx.strokeRect(this.CHART_LEFT, y, this.CHART_WIDTH, h);
       ctx.restore();
 
-      // Left Docked Label
-      const badgeTxt = isRes ? `🏆 SNR VALID RES (2MV) $${z.zone_high.toFixed(2)}` : `🏆 SNR VALID SUP (2MV) $${z.zone_low.toFixed(2)}`;
+      // Clean, Sleek Left Badge (Zero redundant 2MV clutter)
+      const badgeTxt = isRes ? `SMR RES $${z.zone_high.toFixed(2)}` : `SMR SUP $${z.zone_low.toFixed(2)}`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      const bw = ctx.measureText(badgeTxt).width + 12;
+      const bw = ctx.measureText(badgeTxt).width + 10;
       const bx = this.CHART_LEFT + 8;
-      const by = y + h / 2 - 8;
+      const by = y + h / 2 - 7;
 
-      ctx.fillStyle = isRes ? 'rgba(38, 8, 16, 0.95)' : 'rgba(4, 30, 16, 0.95)';
-      ctx.fillRect(bx, by, bw, 16);
+      ctx.fillStyle = 'rgba(6, 12, 22, 0.90)';
+      ctx.fillRect(bx, by, bw, 14);
       ctx.strokeStyle = col;
       ctx.lineWidth = 1;
-      ctx.strokeRect(bx, by, bw, 16);
+      ctx.strokeRect(bx, by, bw, 14);
       ctx.fillStyle = col;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(badgeTxt, bx + 6, by + 8);
+      ctx.fillText(badgeTxt, bx + 5, by + 7);
     }
   }
 
