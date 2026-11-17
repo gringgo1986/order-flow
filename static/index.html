@@ -14,7 +14,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Gringgo Orderflow - Bookmap & Order Flow Trading Terminal</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=45.0">
+  <link rel="stylesheet" href="/static/css/style.css?v=46.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -351,14 +351,16 @@
       </div>
     </section>
 
-    <!-- Right Sidebar: Full-Height Institutional DOM Ladder (Top-to-Bottom) -->
-    <aside class="trading-sidebar">
+    <!-- Right Sidebar: Full-Height Institutional DOM Ladder (Top-to-Bottom, Slim & Resizable) -->
+    <aside class="trading-sidebar" id="tradingSidebar" style="position:relative;">
+      <!-- Left Edge Resizer Handle -->
+      <div id="domDragHandle" title="Tarik ke kiri atau kanan untuk ubah lebar tangga DOM"></div>
       <div class="dom-panel" style="height: 100%; border-bottom: none; display: flex; flex-direction: column;">
-        <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
-          <span>Depth of Market (DOM)</span>
-          <div style="display:flex; align-items:center; gap:5px;">
-            <button id="btnDomCenter" class="tool-btn" style="padding:1px 6px; font-size:9px; color:#facc15; border-color:#facc15;" title="Jajarkan semula tangga DOM ke harga semasa">🎯 Pusat</button>
-            <span style="color:var(--gold-accent); font-size:9.5px; font-weight:700;" title="Tangga Kecairan Institusi Penuh">📊 32 PARAS</span>
+        <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; padding: 0 8px;">
+          <span style="font-size:10px; font-weight:800; letter-spacing:0.4px;">DEPTH OF MARKET</span>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button id="btnDomCenter" class="tool-btn" style="padding:1px 5px; font-size:8.5px; color:#facc15; border-color:#facc15;" title="Jajarkan semula tangga DOM ke harga semasa">🎯 Pusat</button>
+            <span style="color:var(--gold-accent); font-size:9px; font-weight:700;" title="Tangga Kecairan Institusi Penuh">32 PARAS</span>
           </div>
         </div>
         <div class="dom-table-header">
@@ -371,54 +373,54 @@
         </div>
 
         <!-- Live Institutional Book Imbalance Summary Footer -->
-        <div class="dom-summary-footer" id="domSummaryFooter" style="padding: 6px 10px; background: #080c14; border-top: 1px solid #1e293b; font-family: var(--font-mono); font-size: 10px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-weight:700;">
-            <span id="domBidSum" style="color:#00e676;">BID: 0L (50%)</span>
-            <span id="domImbBiasText" style="color:#ffb703; font-size:9.5px;">⚖️ SEIMBANG</span>
-            <span id="domAskSum" style="color:#ff3366;">ASK: 0L (50%)</span>
+        <div class="dom-summary-footer" id="domSummaryFooter" style="padding: 4px 6px; background: #080c14; border-top: 1px solid #1e293b; font-family: var(--font-mono); font-size: 9.5px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; font-weight:700;">
+            <span id="domBidSum" style="color:#00e676; font-size:9px;">BID: 0L (50%)</span>
+            <span id="domImbBiasText" style="color:#ffb703; font-size:8.5px;">⚖️ SEIMBANG</span>
+            <span id="domAskSum" style="color:#ff3366; font-size:9px;">ASK: 0L (50%)</span>
           </div>
-          <div style="width:100%; height:6px; background:rgba(255, 51, 102, 0.35); border-radius:3px; overflow:hidden; display:flex;">
+          <div style="width:100%; height:5px; background:rgba(255, 51, 102, 0.35); border-radius:3px; overflow:hidden; display:flex;">
             <div id="domImbBidBar" style="width:50%; height:100%; background:linear-gradient(90deg, #00b4d8, #00e676); transition:width 0.2s ease;"></div>
           </div>
         </div>
 
         <!-- Feature 3 & 4: Prop-Firm Auto-Lot Sizing & 1-Click Fast Execution Cockpit -->
-        <div class="dom-execution-bar" style="padding: 6px 8px; background: #070a12; border-top: 1px solid #1a2538; font-family: var(--font-mono); font-size: 10px;">
+        <div class="dom-execution-bar" style="padding: 5px 6px; background: #070a12; border-top: 1px solid #1a2538; font-family: var(--font-mono); font-size: 9.5px;">
           <!-- Prop-Firm Auto-Lot Risk Presets -->
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-            <div style="display:flex; align-items:center; gap:3px;">
-              <span style="color:#94a3b8; font-size:9px; font-weight:700;">RISIKO:</span>
-              <button class="tool-btn" id="btnOpenLotCalc" style="padding:1px 5px; font-size:9px; color:#ffd60a; border-color:#ffd60a; font-weight:700; cursor:pointer;" title="Kalkulator Saiz Lot Pintar mengikut Had Kerugian Dolar">🧮 Lot</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <div style="display:flex; align-items:center; gap:2px;">
+              <span style="color:#94a3b8; font-size:8.5px; font-weight:700;">RISIKO:</span>
+              <button class="tool-btn" id="btnOpenLotCalc" style="padding:1px 4px; font-size:8.5px; color:#ffd60a; border-color:#ffd60a; font-weight:700; cursor:pointer;" title="Kalkulator Saiz Lot Pintar mengikut Had Kerugian Dolar">🧮 Lot</button>
             </div>
-            <div style="display:flex; gap:3px;">
-              <button class="tool-btn risk-preset-btn active" data-risk="0.5" style="padding:1px 5px; font-size:9px;" title="Risiko 0.5% Ekuiti">0.5%</button>
-              <button class="tool-btn risk-preset-btn" data-risk="1.0" style="padding:1px 5px; font-size:9px;" title="Risiko 1.0% Ekuiti (Standard Prop-Firm)">1.0%</button>
-              <button class="tool-btn risk-preset-btn" data-risk="2.0" style="padding:1px 5px; font-size:9px;" title="Risiko 2.0% Ekuiti">2.0%</button>
+            <div style="display:flex; gap:2px;">
+              <button class="tool-btn risk-preset-btn active" data-risk="0.5" style="padding:1px 4px; font-size:8.5px;" title="Risiko 0.5% Ekuiti">0.5%</button>
+              <button class="tool-btn risk-preset-btn" data-risk="1.0" style="padding:1px 4px; font-size:8.5px;" title="Risiko 1.0% Ekuiti (Standard Prop-Firm)">1.0%</button>
+              <button class="tool-btn risk-preset-btn" data-risk="2.0" style="padding:1px 4px; font-size:8.5px;" title="Risiko 2.0% Ekuiti">2.0%</button>
             </div>
             <div style="display:flex; align-items:center; gap:2px;">
-              <span style="color:#94a3b8; font-size:9px;">Lot:</span>
-              <input type="number" id="inputFastLot" value="0.05" step="0.01" min="0.01" max="10" style="width:44px; background:#111b2d; border:1px solid #273e60; color:#ffd60a; font-family:var(--font-mono); font-weight:800; font-size:10px; text-align:center; border-radius:3px; padding:1px 0;">
+              <span style="color:#94a3b8; font-size:8.5px;">Lot:</span>
+              <input type="number" id="inputFastLot" value="0.05" step="0.01" min="0.01" max="10" style="width:38px; background:#111b2d; border:1px solid #273e60; color:#ffd60a; font-family:var(--font-mono); font-weight:800; font-size:9.5px; text-align:center; border-radius:3px; padding:1px 0;">
             </div>
           </div>
           <!-- 1-Click Fast Execution Buttons -->
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; margin-bottom:4px;">
-            <button class="tool-btn" id="btnFastBuy" style="background:rgba(0,230,118,0.18); border:1px solid #00e676; color:#00e676; font-weight:800; font-size:11px; padding:4px 0; border-radius:3px;" title="Beli Pasaran Serta-Merta (Kekunci Hotkey [B])">⚡ BUY [B]</button>
-            <button class="tool-btn" id="btnFastSell" style="background:rgba(255,51,102,0.18); border:1px solid #ff3366; color:#ff3366; font-weight:800; font-size:11px; padding:4px 0; border-radius:3px;" title="Jual Pasaran Serta-Merta (Kekunci Hotkey [S])">⚡ SELL [S]</button>
+            <button class="tool-btn" id="btnFastBuy" style="background:rgba(0,230,118,0.18); border:1px solid #00e676; color:#00e676; font-weight:800; font-size:10px; padding:3px 0; border-radius:3px;" title="Beli Pasaran Serta-Merta (Kekunci Hotkey [B])">⚡ BUY [B]</button>
+            <button class="tool-btn" id="btnFastSell" style="background:rgba(255,51,102,0.18); border:1px solid #ff3366; color:#ff3366; font-weight:800; font-size:10px; padding:3px 0; border-radius:3px;" title="Jual Pasaran Serta-Merta (Kekunci Hotkey [S])">⚡ SELL [S]</button>
           </div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
-            <button class="tool-btn" id="btnFastBE" style="background:#111b2d; border:1px solid #38bdf8; color:#38bdf8; font-weight:700; font-size:9.5px; padding:2px 0;" title="Kunci Breakeven Semua Posisi (Kekunci Hotkey [Space])">🎯 BE [Space]</button>
-            <button class="tool-btn" id="btnFastCloseAll" style="background:#1b1218; border:1px solid #f43f5e; color:#fb7185; font-weight:700; font-size:9.5px; padding:2px 0;" title="Tutup Semua Posisi Aktif (Kekunci Hotkey [X])">❌ TUTUP [X]</button>
+            <button class="tool-btn" id="btnFastBE" style="background:#111b2d; border:1px solid #38bdf8; color:#38bdf8; font-weight:700; font-size:9px; padding:2px 0;" title="Kunci Breakeven Semua Posisi (Kekunci Hotkey [Space])">🎯 BE [Space]</button>
+            <button class="tool-btn" id="btnFastCloseAll" style="background:#1b1218; border:1px solid #f43f5e; color:#fb7185; font-weight:700; font-size:9px; padding:2px 0;" title="Tutup Semua Posisi Aktif (Kekunci Hotkey [X])">❌ TUTUP [X]</button>
           </div>
 
           <!-- Real-Time Session P&L & Performance Strip -->
-          <div id="sessionStatsStrip" style="margin-top:5px; padding:3px 6px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:4px; display:flex; justify-content:space-between; align-items:center; font-size:9px; font-family:var(--font-mono);">
-            <div style="display:flex; align-items:center; gap:4px;">
+          <div id="sessionStatsStrip" style="margin-top:4px; padding:2px 4px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:4px; display:flex; justify-content:space-between; align-items:center; font-size:8.5px; font-family:var(--font-mono);">
+            <div style="display:flex; align-items:center; gap:3px;">
               <span style="color:#94a3b8;">SESI:</span>
               <b id="txtSessionPnl" style="color:#22c55e;">+$0.00</b>
             </div>
-            <div style="display:flex; align-items:center; gap:4px;">
+            <div style="display:flex; align-items:center; gap:3px;">
               <span id="txtSessionWinRate" style="color:#fbbf24;">WR: 0% (0/0)</span>
-              <button id="btnResetSessionStats" style="background:none; border:none; color:#64748b; cursor:pointer; font-size:9px; padding:0 2px;" title="Set Semula Statistik Sesi Hari Ini">⟲</button>
+              <button id="btnResetSessionStats" style="background:none; border:none; color:#64748b; cursor:pointer; font-size:8.5px; padding:0 1px;" title="Set Semula Statistik Sesi Hari Ini">⟲</button>
             </div>
           </div>
         </div>
@@ -979,10 +981,10 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/static/js/bookmap.js?v=45.0"></script>
-  <script src="/static/js/footprint.js?v=45.0"></script>
-  <script src="/static/js/dom.js?v=45.0"></script>
-  <script src="/static/js/app.js?v=45.0"></script>
+  <script src="/static/js/bookmap.js?v=46.0"></script>
+  <script src="/static/js/footprint.js?v=46.0"></script>
+  <script src="/static/js/dom.js?v=46.0"></script>
+  <script src="/static/js/app.js?v=46.0"></script>
   <!-- Admin SaaS & User Management Modal (Customer Control Center) -->
   <div id="adminModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); z-index:99999; align-items:center; justify-content:center; padding:15px;">
     <div style="background:#090e1a; border:1px solid #f59e0b; border-radius:12px; width:100%; max-width:860px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 16px 48px rgba(0,0,0,0.9), 0 0 24px rgba(245,158,11,0.25); overflow:hidden; font-family:var(--font-sans);">
