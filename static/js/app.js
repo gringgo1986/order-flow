@@ -441,7 +441,10 @@ class App {
     if (sliderClusterJalur) {
       sliderClusterJalur.addEventListener('input', (e) => {
         const jalur = Math.max(20, Math.min(50, parseInt(e.target.value, 10) || 30));
-        if (lblClusterJalur) lblClusterJalur.textContent = String(jalur);
+        if (lblClusterJalur) {
+          const modeTag = jalur <= 24 ? 'Mikro' : (jalur <= 35 ? 'Std' : 'Makro');
+          lblClusterJalur.textContent = `${jalur} (${modeTag})`;
+        }
         if (this.footprint && this.footprint.setJalurCount) {
           this.footprint.setJalurCount(jalur);
         }
