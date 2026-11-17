@@ -1824,3 +1824,9 @@ header.app-header {
     font-weight: 700 !important;
   }
 }
+
+/* Prevent browser text translation extensions from popping up on canvas/charts */
+canvas, .chart-canvas, #tradingCanvas, #bookmapCanvas, #footprintCanvas, .dom-ladder-container {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
