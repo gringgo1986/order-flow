@@ -64,6 +64,7 @@ class App {
     this._setupLotCalculator();
     this._initSignalsTracker();
     this._setupDockResize();
+    this._setupDomResize();
 
     // Battery Saver Visibility Listener
     document.addEventListener('visibilitychange', () => {
@@ -3251,6 +3252,13 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             btn.style.opacity = isCollapsed ? '0.6' : '1.0';
           }
         });
+        if (!isCollapsed) {
+          const savedW = localStorage.getItem('gringgo_dom_width') || '255';
+          workspace.style.gridTemplateColumns = `1fr ${parseInt(savedW, 10)}px`;
+        } else {
+          workspace.style.gridTemplateColumns = '1fr 0px';
+        }
+        window.dispatchEvent(new Event('resize'));
         this.showToast(isCollapsed ? '📈 Mod Skrin Penuh: Carta 100% Lebar' : '📊 Tangga DOM Dibuka');
       }
 
@@ -4300,6 +4308,76 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
         setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
       });
     }
+  }
+
+  _setupDomResize() {
+    const handle = document.getElementById('domDragHandle');
+    const ws = document.querySelector('.main-workspace');
+    if (!handle || !ws) return;
+
+    // 1. Restore saved width if exists
+    const savedWidth = localStorage.getItem('gringgo_dom_width');
+    if (savedWidth && ws && !ws.classList.contains('dom-collapsed') && window.innerWidth > 900) {
+      const w = parseInt(savedWidth, 10);
+      if (w >= 180 && w <= Math.round(window.innerWidth * 0.5)) {
+        ws.style.gridTemplateColumns = `1fr ${w}px`;
+      }
+    }
+
+    // 2. Drag Handle Support (Mouse & Touch)
+    let isDragging = false;
+    let startX = 0;
+    let startWidth = 255;
+
+    const onPointerDown = (e) => {
+      if (window.innerWidth <= 900) return; // On mobile, sidebar is slideout
+      if (ws.classList.contains('dom-collapsed')) {
+        ws.classList.remove('dom-collapsed');
+      }
+      isDragging = true;
+      startX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+      const sidebar = document.querySelector('.trading-sidebar');
+      const rect = sidebar ? sidebar.getBoundingClientRect() : null;
+      startWidth = rect ? rect.width : 255;
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ew-resize';
+      handle.classList.add('active');
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) return;
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+      const delta = startX - clientX; // Dragging left increases width, right decreases width
+      let newW = startWidth + delta;
+      const minW = 190;
+      const maxW = Math.round(window.innerWidth * 0.45);
+      if (newW < minW) newW = minW;
+      if (newW > maxW) newW = maxW;
+
+      ws.style.gridTemplateColumns = `1fr ${newW}px`;
+    };
+
+    const onPointerUp = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      handle.classList.remove('active');
+      const sidebar = document.querySelector('.trading-sidebar');
+      const rect = sidebar ? sidebar.getBoundingClientRect() : null;
+      if (rect) {
+        localStorage.setItem('gringgo_dom_width', Math.round(rect.width));
+      }
+      window.dispatchEvent(new Event('resize'));
+    };
+
+    handle.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+
+    handle.addEventListener('touchstart', onPointerDown, { passive: true });
+    window.addEventListener('touchmove', onPointerMove, { passive: true });
+    window.addEventListener('touchend', onPointerUp);
   }
 
   exportSignalsToCSV() {
