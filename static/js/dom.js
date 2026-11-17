@@ -778,7 +778,7 @@ class DOMManager {
 
               <div class="dom-bar-traded ask-side" style="width:${tradedW}%;"></div>
 
-              <span class="dom-wall-tag" title="${isShark ? 'Dinding Limit Pasif Jerung (≥78 Lots Menunggu)' : (isWall ? 'Dinding Limit Pasif Institusi (≥50 Lots)' : '')}" style="${isShark ? 'color:#ff2a55; font-weight:900;' : ''}">${vol >= 95 ? '👑MEGA' : (isShark ? '🧱JERUNG' : (isWall ? '🧱WALL' : (tradedVol > 0 ? tradedVol.toFixed(0) + 'v' : '')))}</span>
+              <span class="dom-wall-tag" title="${isShark ? 'Large Passive Activity (≥78L Limit Aktif | Keyakinan Tinggi)' : (isWall ? 'Dinding Limit Pasif Institusi (≥50 Lots)' : '')}" style="${isShark ? 'color:#ff2a55; font-weight:900;' : ''}">${vol >= 95 ? '📊EXTREME' : (isShark ? '📊LARGE' : (isWall ? '🧱WALL' : (tradedVol > 0 ? tradedVol.toFixed(0) + 'v' : '')))}</span>
 
             </div>
 
@@ -818,7 +818,7 @@ class DOMManager {
 
               <div class="dom-bar-traded bid-side" style="width:${tradedW}%;"></div>
 
-              <span class="dom-wall-tag" title="${isShark ? 'Dinding Limit Pasif Jerung (≥78 Lots Menunggu)' : (isWall ? 'Dinding Limit Pasif Institusi (≥50 Lots)' : '')}" style="${isShark ? 'color:#00f59b; font-weight:900;' : ''}">${vol >= 95 ? '👑MEGA' : (isShark ? '🧱JERUNG' : (isWall ? '🧱WALL' : (tradedVol > 0 ? tradedVol.toFixed(0) + 'v' : '')))}</span>
+              <span class="dom-wall-tag" title="${isShark ? 'Large Passive Activity (≥78L Limit Aktif | Keyakinan Tinggi)' : (isWall ? 'Dinding Limit Pasif Institusi (≥50 Lots)' : '')}" style="${isShark ? 'color:#00f59b; font-weight:900;' : ''}">${vol >= 95 ? '📊EXTREME' : (isShark ? '📊LARGE' : (isWall ? '🧱WALL' : (tradedVol > 0 ? tradedVol.toFixed(0) + 'v' : '')))}</span>
 
             </div>
 
