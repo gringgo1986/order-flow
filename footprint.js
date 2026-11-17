@@ -4291,7 +4291,7 @@ class FootprintRenderer {
     }
 
     // Draw the horizontal lines & tags (Smart SNR Consolidation: only core anchors get left badges)
-    const curP = livePrice || 0;
+    const curP = lastPrice || 0;
     const resLevels = cdLevels.filter(lv => lv.price > curP && (lv.code.includes('RES') || lv.code.includes('HIGH'))).sort((a,b) => a.price - b.price);
     const supLevels = cdLevels.filter(lv => lv.price < curP && (lv.code.includes('SUP') || lv.code.includes('LOW'))).sort((a,b) => b.price - a.price);
 
@@ -4552,22 +4552,24 @@ class FootprintRenderer {
         }
       }
 
-      // Column 3: Price Axis Column with Live Price Pill, SNR Highlight & POC Highlight
+      // Column 3: Price Axis Column next to DOM (Always displays Price + Golden Live Price Pill like Bookmap)
       let matchedSnr = null;
       if (this.cdShowSNR && cdLevels && cdLevels.length > 0) {
         matchedSnr = cdLevels.find(lv => Math.abs(lv.price - p) < step * 0.55);
       }
 
-      ctx.fillStyle = isLivePriceRow ? '#065f46' : (matchedSnr ? matchedSnr.bg : (isCompPOC ? '#78350f' : '#0f172a'));
-      ctx.fillRect(panelX + volColW + deltaColW, rowY, priceColW, rowH);
-      ctx.strokeStyle = isLivePriceRow ? '#4ade80' : (matchedSnr ? matchedSnr.col : '#1e293b');
-      ctx.strokeRect(panelX + volColW + deltaColW, rowY, priceColW, rowH);
+      const pColX = panelX + volColW + deltaColW;
+      ctx.fillStyle = isLivePriceRow ? '#ffd60a' : (matchedSnr ? matchedSnr.bg : (isCompPOC ? '#78350f' : '#0b1322'));
+      ctx.fillRect(pColX, rowY, priceColW, rowH);
+      ctx.strokeStyle = isLivePriceRow ? '#fde047' : (matchedSnr ? matchedSnr.col : '#1e293b');
+      ctx.lineWidth = isLivePriceRow ? 1.4 : 0.8;
+      ctx.strokeRect(pColX, rowY, priceColW, rowH);
 
       if (rowH >= 7.8) {
-        ctx.fillStyle = isLivePriceRow ? '#ffffff' : (matchedSnr ? '#ffffff' : (isCompPOC ? '#fef08a' : '#cbd5e1'));
-        ctx.font = `bold ${Math.min(10, Math.max(7.2, Math.floor(rowH - 1.2)))}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = isLivePriceRow ? '#000000' : (matchedSnr ? '#fde047' : (isCompPOC ? '#fef08a' : '#e2e8f0'));
+        ctx.font = `bold ${Math.min(10, Math.max(7.5, Math.floor(rowH - 1.0)))}px "JetBrains Mono", monospace`;
         ctx.textAlign = 'right';
-        const dispPrice = matchedSnr ? `${matchedSnr.code}` : p.toFixed(2);
+        const dispPrice = isLivePriceRow ? `⚡${lastPrice.toFixed(2)}` : p.toFixed(2);
         ctx.fillText(dispPrice, panelX + rightPanelW - 4, rowY + rowH / 2 + 3);
       }
     }
