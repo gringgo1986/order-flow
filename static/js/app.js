@@ -3444,7 +3444,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
               mod.priceOffset = Number((startPriceOffset + dPrice).toFixed(2));
 
               const histW = Math.max(200, mod.HIST_TIME_W || (canvas.width - 150));
-              const dTime = (dx / histW) * (mod.timeWindowMs || 60000);
+              const dTime = (dx / histW) * (mod.timeWindowMs || 60000) * 1.6;
               const maxBack = (mod.timeWindowMs || 60000) * 5;
               const minForward = -Math.round((mod.timeWindowMs || 60000) * 0.35);
               mod.timeOffsetMs = Math.max(minForward, Math.min(maxBack, Math.round(startTimeOffset + dTime)));
@@ -3467,7 +3467,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
               mod.priceOffset = Number((startPriceOffset + dPrice).toFixed(2));
 
               const candleW = Math.max(12, mod.candleWidth || 20);
-              const dBars = Math.round(dx / (candleW * 1.15));
+              const dBars = Math.round(dx / (candleW * 0.70));
               mod.barOffset = Math.max(0, startBarOffset + dBars);
             }
           }
