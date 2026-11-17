@@ -65,6 +65,7 @@ class App {
     this._initSignalsTracker();
     this._setupDockResize();
     this._setupDomResize();
+    this._setupMobileModuleDock();
 
     // Battery Saver Visibility Listener
     document.addEventListener('visibilitychange', () => {
@@ -1431,6 +1432,13 @@ class App {
     this.currentView = view;
     this.needsRedraw = true;
     this._updateContextToolbar(view);
+
+    // Synchronize all view switcher buttons (Top header, Mobile Bottom Dock, Floating Island)
+    document.querySelectorAll('.view-switchers .nav-btn, .mobile-module-dock .mob-module-tab, .mobile-quick-switcher .mqs-btn').forEach(b => {
+      if (b.dataset.view) {
+        b.classList.toggle('active', b.dataset.view === view);
+      }
+    });
     const tvContainer = document.getElementById('tvCandleChart');
     if (tvContainer && view !== 'candlestick') tvContainer.style.display = 'none';
     if (view === 'bookmap') {
@@ -3304,6 +3312,10 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       let startCandleW = 10;
       let initialPinchDist = 0;
       let lastTapTime = 0;
+      let twoFingerStartX = 0;
+      let twoFingerStartY = 0;
+      let twoFingerCurX = 0;
+      let twoFingerCurY = 0;
 
       const getPinchDistance = (t1, t2) => {
         const dx = t1.clientX - t2.clientX;
@@ -3392,6 +3404,10 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           isTouching = false;
           isPinching = true;
           initialPinchDist = getPinchDistance(e.touches[0], e.touches[1]);
+          twoFingerStartX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          twoFingerStartY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          twoFingerCurX = twoFingerStartX;
+          twoFingerCurY = twoFingerStartY;
           if (mod) {
             if (type === 'bookmap') {
               startSpan = mod.bmHalfSpan || 4.5;
@@ -3462,6 +3478,8 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           }
 
         } else if (e.touches.length === 2 && isPinching && mod) {
+          twoFingerCurX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          twoFingerCurY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
           // Pinch-to-zoom calculation
           const currentDist = getPinchDistance(e.touches[0], e.touches[1]);
           if (initialPinchDist > 5) {
@@ -3486,6 +3504,20 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       // 3. TOUCH END / CANCEL: Terminate dragging state safely
       const onTouchEnd = (e) => {
         if (e.cancelable) e.preventDefault();
+
+        // 2-Finger Horizontal Swipe Module Swap Detection
+        if (isPinching) {
+          const deltaX = twoFingerCurX - twoFingerStartX;
+          const deltaY = twoFingerCurY - twoFingerStartY;
+          if (Math.abs(deltaX) > 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+            if (deltaX < 0) {
+              this.cycleViewMode(1); // Swipe left -> Next module
+            } else {
+              this.cycleViewMode(-1); // Swipe right -> Previous module
+            }
+          }
+        }
+
         isTouching = false;
         isPinching = false;
 
@@ -4378,6 +4410,80 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     handle.addEventListener('touchstart', onPointerDown, { passive: true });
     window.addEventListener('touchmove', onPointerMove, { passive: true });
     window.addEventListener('touchend', onPointerUp);
+  }
+
+  cycleViewMode(dir = 1) {
+    const views = ['bookmap', 'clusterdelta', 'footprint', 'split'];
+    let idx = views.indexOf(this.currentView);
+    if (idx === -1) idx = 0;
+    let nextIdx = (idx + dir + views.length) % views.length;
+    const nextView = views[nextIdx];
+    this.setView(nextView);
+    if (navigator.vibrate) {
+      try { navigator.vibrate(28); } catch (err) {}
+    }
+    const viewNames = {
+      'bookmap': '📈 BOOKMAP [1]',
+      'clusterdelta': '📊 CLUSTERDELTA [2]',
+      'footprint': '👣 FOOTPRINT [3]',
+      'split': '🔀 SPLIT [4]'
+    };
+    this.showToast(`🔄 Modul Bertukar: ${viewNames[nextView] || nextView}`);
+  }
+
+  _setupMobileModuleDock() {
+    const dock = document.getElementById('mobileModuleDock');
+    if (dock) {
+      dock.querySelectorAll('.mob-module-tab[data-view]').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+          e.preventDefault();
+          const view = tab.dataset.view;
+          this.setView(view);
+          if (navigator.vibrate) {
+            try { navigator.vibrate(25); } catch (err) {}
+          }
+          const viewNames = {
+            'bookmap': '📈 BOOKMAP [1]',
+            'clusterdelta': '📊 CLUSTERDELTA [2]',
+            'footprint': '👣 FOOTPRINT [3]',
+            'split': '🔀 SPLIT [4]'
+          };
+          this.showToast(`✨ Buka Modul: ${viewNames[view] || view}`);
+        });
+      });
+
+      const domTab = document.getElementById('mobTabDom');
+      if (domTab) {
+        domTab.addEventListener('click', (e) => {
+          e.preventDefault();
+          const ws = document.querySelector('.main-workspace');
+          if (!ws) return;
+          const isForcedOpen = ws.classList.toggle('dom-forced-open');
+          ws.classList.toggle('dom-collapsed', !isForcedOpen);
+          domTab.classList.toggle('active-dom', isForcedOpen);
+          const fabTxt = document.getElementById('mobileDomFabText');
+          if (fabTxt) fabTxt.textContent = isForcedOpen ? '✕ CARTA' : '📊 DOM';
+          this.showToast(isForcedOpen ? '📊 Tangga DOM Dibuka' : '📈 Mod Carta Penuh');
+          if (navigator.vibrate) {
+            try { navigator.vibrate(28); } catch (err) {}
+          }
+        });
+      }
+    }
+
+    // Floating Quick Switcher Island
+    const island = document.getElementById('mobileQuickSwitcher');
+    if (island) {
+      island.querySelectorAll('.mqs-btn[data-view]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.setView(btn.dataset.view);
+          if (navigator.vibrate) {
+            try { navigator.vibrate(25); } catch (err) {}
+          }
+        });
+      });
+    }
   }
 
   exportSignalsToCSV() {
