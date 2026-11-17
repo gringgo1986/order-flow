@@ -1865,8 +1865,11 @@ class BookmapRenderer {
     // to prevent duplicate overlapping histograms and duplicate POC lines.
     const bandThickness = Math.max(8, Math.min(16, Math.abs(this.priceToY(0) - this.priceToY(step)) * 0.75));
 
-    // ZON RAMAI BUYER (Compact right-aligned pill before NOW_X)
-    if (topBuy && topBuy.buy >= 80.0) {
+    // ZON RAMAI BUYER (2-Condition Confirmed: Volume >=80L + Buying Dominance + Price Holding/Bouncing Above Zone)
+    const isBuyZoneConfirmed = topBuy && topBuy.buy >= 80.0 &&
+                               (topBuy.buy > topBuy.sell * 1.20) &&
+                               (!currentPrice || currentPrice >= topBuy.price - 0.10);
+    if (isBuyZoneConfirmed) {
       const buyY = this.priceToY(topBuy.price);
       if (buyY >= this.CHART_TOP + 14 && buyY <= this.CHART_BOTTOM - 14) {
         if (currentPrice && Math.abs(currentPrice - topBuy.price) < 0.20) {
@@ -1886,10 +1889,9 @@ class BookmapRenderer {
 
         ctx.setLineDash([]);
         if (!this.bmZenMode) {
-          const label = `▲ BUY ZONE +${topBuy.buy.toFixed(1)}L`;
+          const label = `▲ BUY ZONE [SAH] +${topBuy.buy.toFixed(0)}L`;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const txtW = ctx.measureText(label).width + 8;
-          // Place inside projection zone on right of NOW_X so bubbles are completely unobstructed
           const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 12);
           const resolvedBuyY = this._resolveNonOverlappingY(buyY, 14, 22);
           const badgeY = resolvedBuyY - 7;
@@ -1908,8 +1910,12 @@ class BookmapRenderer {
       }
     }
 
-    // ZON RAMAI SELLER (Compact right-aligned pill before NOW_X, only if separated from Buy Zone)
-    if (topSell && topSell.sell >= 80.0 && (!topBuy || Math.abs(topSell.price - topBuy.price) >= 0.50)) {
+    // ZON RAMAI SELLER (2-Condition Confirmed: Volume >=80L + Selling Dominance + Price Holding/Rejecting Below Zone)
+    const isSellZoneConfirmed = topSell && topSell.sell >= 80.0 &&
+                                (topSell.sell > topSell.buy * 1.20) &&
+                                (!currentPrice || currentPrice <= topSell.price + 0.10) &&
+                                (!topBuy || Math.abs(topSell.price - topBuy.price) >= 0.50);
+    if (isSellZoneConfirmed) {
       const sellY = this.priceToY(topSell.price);
       if (sellY >= this.CHART_TOP + 14 && sellY <= this.CHART_BOTTOM - 14) {
         if (currentPrice && Math.abs(currentPrice - topSell.price) < 0.20) {
@@ -1929,7 +1935,7 @@ class BookmapRenderer {
 
         ctx.setLineDash([]);
         if (!this.bmZenMode) {
-          const label = `▼ SELL ZONE -${topSell.sell.toFixed(1)}L`;
+          const label = `▼ SELL ZONE [SAH] -${topSell.sell.toFixed(0)}L`;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const txtW = ctx.measureText(label).width + 8;
           // Place inside projection zone on right of NOW_X so bubbles are completely unobstructed
@@ -2667,9 +2673,10 @@ class BookmapRenderer {
     // Backend mt5_engine.py is the single authoritative source of truth for Bookmap signals.
     // Client-side duplicate signal loop has been disabled to prevent duplicate signals.
 
-    // 4. Render Confirmed Signals & Forward Trajectory Lines on Bookmap Canvas
+    // 4. Render ONLY the Single Latest Active Unified Confluence Signal on Bookmap Canvas (Zero Clutter)
     ctx.save();
-    for (const sig of this._bmSignalsHistory) {
+    const latestActiveList = this._bmSignalsHistory.filter(s => s.status === 'ACTIVE' || (now - s.time < 45000)).slice(-1);
+    for (const sig of latestActiveList) {
       const isBuy = sig.dir === 'BUY';
 
       // Update win/loss status in real-time with Auto-BE (Break-Even) protection & 1000p Ladder (TP1-TP20)
