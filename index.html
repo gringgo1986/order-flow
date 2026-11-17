@@ -14,7 +14,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Gringgo Orderflow - Bookmap & Order Flow Trading Terminal</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=53.0">
+  <link rel="stylesheet" href="/static/css/style.css?v=54.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -202,8 +202,21 @@
               <button class="tool-btn active" id="btnToggleAutoTrendline" style="text-align:left; justify-content:flex-start; border-color:#c084fc; color:#c084fc; font-weight:700; cursor:pointer;" title="Papar / Sembunyi Smart Auto Trendline (Rintangan & Sokongan Saluran Dinamik)">📐 Auto Trendline Dinamik</button>
               <button class="tool-btn active" id="btnToggleZones" style="text-align:left; justify-content:flex-start;" title="Papar / Sembunyi Tanda Zon Ramai Buyer & Seller">🎯 Zon Buyer & Seller</button>
               <button class="tool-btn active" id="btnToggleSVP" style="text-align:left; justify-content:flex-start; border-color:#38bdf8; color:#38bdf8; font-weight:700;" title="Papar / Sembunyi Composite Session Volume Profile (dPOC, VAH, VAL & LVN)">📊 Session Profile (SVP)</button>
-              <button class="tool-btn active" id="btnToggleIcebergs" style="text-align:left; justify-content:flex-start; border-color:#00f0ff; color:#00f0ff; font-weight:700;" title="Papar / Sembunyi Pengesan Pesanan Iceberg & Absorption Institusi">🧊 Iceberg & Absorption</button>
-              <button class="tool-btn active" id="btnToggleSessionLevels" style="text-align:left; justify-content:flex-start; border-color:#f59e0b; color:#fbbf24; font-weight:700;" title="Papar / Sembunyi Garisan SNR HTF (1D, H4, H1, M30, M15) & Sesi Pasar">🎯 Garisan SNR (1D/H4/H1/M30/M15)</button>
+              <button class="tool-btn active" id="btnToggleIcebergs" style="text-align:left; justify-content:flex-start; border-color:#00f0ff; color:#00f0ff; font-weight:700;" title="Papar / Sembunyi Pengesan Potential Iceberg & Absorption">🧊 Potential Iceberg & Absorption</button>
+              <button class="tool-btn active" id="btnToggleSessionLevels" style="text-align:left; justify-content:flex-start; border-color:#f59e0b; color:#fbbf24; font-weight:700;" title="Papar / Sembunyi Garisan Supply & Demand / SNR">🎯 Supply & Demand / SNR Utama</button>
+              <!-- Section C: Individual Timeframe S&D / SNR Toggles -->
+              <div style="padding:4px 4px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:4px; margin:2px 0;">
+                <div style="font-size:8px; color:#94a3b8; font-weight:700; margin-bottom:3px; font-family:var(--font-mono);">PILIH TIMEFRAME S&D / SNR:</div>
+                <div style="display:flex; flex-wrap:wrap; gap:3px;">
+                  <button type="button" class="tool-btn snr-tf-toggle active" data-snr-tf="M15" onclick="window.toggleSnrTf && window.toggleSnrTf('M15', this)" style="padding:1px 5px; font-size:8.5px; border-color:#fbbf24; color:#fbbf24;">M15</button>
+                  <button type="button" class="tool-btn snr-tf-toggle" data-snr-tf="M30" onclick="window.toggleSnrTf && window.toggleSnrTf('M30', this)" style="padding:1px 5px; font-size:8.5px; opacity:0.45;">M30</button>
+                  <button type="button" class="tool-btn snr-tf-toggle active" data-snr-tf="H1" onclick="window.toggleSnrTf && window.toggleSnrTf('H1', this)" style="padding:1px 5px; font-size:8.5px; border-color:#f97316; color:#f97316;">H1</button>
+                  <button type="button" class="tool-btn snr-tf-toggle" data-snr-tf="H4" onclick="window.toggleSnrTf && window.toggleSnrTf('H4', this)" style="padding:1px 5px; font-size:8.5px; opacity:0.45;">H4</button>
+                  <button type="button" class="tool-btn snr-tf-toggle active" data-snr-tf="D1" onclick="window.toggleSnrTf && window.toggleSnrTf('D1', this)" style="padding:1px 5px; font-size:8.5px; border-color:#fde047; color:#fde047;">PDH/PDL</button>
+                  <button type="button" class="tool-btn snr-tf-toggle" data-snr-tf="W1" onclick="window.toggleSnrTf && window.toggleSnrTf('W1', this)" style="padding:1px 5px; font-size:8.5px; opacity:0.45;">PWH/PWL</button>
+                  <button type="button" class="tool-btn snr-tf-toggle active" data-snr-tf="SESSION" onclick="window.toggleSnrTf && window.toggleSnrTf('SESSION', this)" style="padding:1px 5px; font-size:8.5px; border-color:#38bdf8; color:#38bdf8;">Asian/Sesi</button>
+                </div>
+              </div>
               <button class="tool-btn active" id="btnToggleNewsShield" style="text-align:left; justify-content:flex-start; border-color:#10b981; color:#34d399; font-weight:700;" title="Penapis Berita Merah USD & Pelindung Kejutan Volatiliti">🛡️ Pelindung Berita USD</button>
             </div>
           </div>
@@ -265,14 +278,14 @@
             <span id="lblClusterJalur" style="font-family:var(--font-mono); font-size:9.5px; color:#fde047; font-weight:800; min-width:16px; text-align:right;">30</span>
           </div>
 
-          <!-- Whale Tier Category Selector (Context-Aware: Bookmap Only - Explicitly Aggressive Market Orders) -->
-          <div id="bookmapWhaleCategoryWrap" style="display:inline-flex; align-items:center; gap:3px; margin-right:3px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.28); border-radius:4px; padding:1px 5px;" title="Tapisan Buih Transaksi Pasaran Agresif (Berbeza daripada Dinding Limit Pasif di Heatmap/DOM)">
-            <span class="tool-tag" style="font-size:9.5px; color:#38bdf8; font-weight:700;">🐋 Rempuhan:</span>
+          <!-- Section E: Large Activity Filter (Evidence-Based Inference) -->
+          <div id="bookmapWhaleCategoryWrap" style="display:inline-flex; align-items:center; gap:3px; margin-right:3px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.28); border-radius:4px; padding:1px 5px;" title="Penapis Aktiviti Saiz Besar (Large Activity) beserta Tahap Keyakinan & Bukti">
+            <span class="tool-tag" style="font-size:9.5px; color:#38bdf8; font-weight:700;">📊 Aktiviti:</span>
             <select id="selWhaleCategory" style="background:#091424; color:#f8fafc; border:1px solid #334155; border-radius:3px; font-size:9.5px; font-family:var(--font-mono); padding:1px 4px; cursor:pointer; outline:none;">
-              <option value="noise" selected>🫧 Semua Transaksi (&lt;10L)</option>
-              <option value="normal">🐋 Agresif Whale (≥12L)</option>
-              <option value="major">🏛️ Agresif Inst (≥35L)</option>
-              <option value="mega">👑 Mega Agresif (≥80L)</option>
+              <option value="noise" selected>🫧 Semua Aktiviti (&lt;10L)</option>
+              <option value="normal">📊 Large Activity (≥12L)</option>
+              <option value="major">📊 High Activity (≥35L)</option>
+              <option value="mega">📊 Extreme Activity (≥80L)</option>
               <option value="off">🚫 Sembunyi Buih</option>
             </select>
           </div>
@@ -988,10 +1001,10 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/static/js/bookmap.js?v=53.0"></script>
-  <script src="/static/js/footprint.js?v=53.0"></script>
-  <script src="/static/js/dom.js?v=53.0"></script>
-  <script src="/static/js/app.js?v=53.0"></script>
+  <script src="/static/js/bookmap.js?v=54.0"></script>
+  <script src="/static/js/footprint.js?v=54.0"></script>
+  <script src="/static/js/dom.js?v=54.0"></script>
+  <script src="/static/js/app.js?v=54.0"></script>
   <!-- Admin SaaS & User Management Modal (Customer Control Center) -->
   <div id="adminModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); z-index:99999; align-items:center; justify-content:center; padding:15px;">
     <div style="background:#090e1a; border:1px solid #f59e0b; border-radius:12px; width:100%; max-width:860px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 16px 48px rgba(0,0,0,0.9), 0 0 24px rgba(245,158,11,0.25); overflow:hidden; font-family:var(--font-sans);">
@@ -1132,7 +1145,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=53.0').then(reg => {
+        navigator.serviceWorker.register('/sw.js?v=54.0').then(reg => {
           console.log('[PWA] Service Worker aktif:', reg.scope);
           // Check for immediate update
           reg.update();
