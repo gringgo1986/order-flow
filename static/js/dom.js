@@ -427,13 +427,13 @@ class DOMManager {
       const deltaColor = cvd >= 0 ? '#00e676' : '#ff3366';
       html += `
         <div class="dom-row current-price dom-center-spread" style="background:rgba(255,214,10,0.18); border-top:1px solid #ffd60a; border-bottom:1px solid #ffd60a;">
-          <div class="dom-col" style="justify-content:flex-start; padding-left:6px; color:#00e676; font-weight:800; font-size:10px;">
+          <div class="dom-col" style="justify-content:flex-start; padding-left:4px; color:#00e676; font-weight:800; font-size:9.5px;">
             BID ${(snapshot.bid || currentPrice).toFixed(2)}
           </div>
-          <div class="dom-col price" style="color:#ffd60a; font-weight:900; font-size:11.5px; letter-spacing:0.3px;">
-            ⚡ ${currentPrice.toFixed(2)} <span style="color:${deltaColor}; font-size:9px; margin-left:3px;">(${spread.toFixed(2)})</span>
+          <div class="dom-col price" style="color:#ffd60a; font-weight:900; font-size:10.5px; letter-spacing:0.2px;">
+            ⚡ ${currentPrice.toFixed(2)} <span style="color:${deltaColor}; font-size:8.5px; margin-left:2px;">(${spread.toFixed(2)})</span>
           </div>
-          <div class="dom-col" style="justify-content:flex-end; padding-right:6px; color:#ff3366; font-weight:800; font-size:10px;">
+          <div class="dom-col" style="justify-content:flex-end; padding-right:4px; color:#ff3366; font-weight:800; font-size:9.5px;">
             ASK ${(snapshot.ask || currentPrice).toFixed(2)}
           </div>
         </div>
