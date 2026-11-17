@@ -672,7 +672,10 @@ class FootprintRenderer {
     const sl = document.getElementById('sliderClusterJalur');
     const lb = document.getElementById('lblClusterJalur');
     if (sl && parseInt(sl.value, 10) !== clamped) sl.value = String(clamped);
-    if (lb) lb.textContent = String(clamped);
+    if (lb) {
+      const modeTag = clamped <= 24 ? 'Mikro' : (clamped <= 35 ? 'Std' : 'Makro');
+      lb.textContent = `${clamped} (${modeTag})`;
+    }
     return clamped;
   }
 
@@ -3645,36 +3648,44 @@ class FootprintRenderer {
           };
         }
 
-        // ── KELAS WARNA CLUSTERDELTA RASMI ──
+        // ── KELAS WARNA KONSISTEN (HYBRID SESSION + CANDLE NORMALIZATION) ──
         const vRatioInCandle = pc.maxVol > 0 ? (cl.total / pc.maxVol) : 0;
-        const isMinDeltaCell = (cl.delta === pc.minDelta && pc.minDelta <= -1.0);
-        const isMaxDeltaCell = (cl.delta === pc.maxDelta && pc.maxDelta >= 1.0);
+        // Gabungkan nisbah lilin (55%) dan nisbah global sesi (45%) supaya warna Oren/Ungu sentiasa bermaksud volum besar sebenar
+        const vConsistentScore = (vRatioInCandle * 0.55) + (vNorm * 0.45);
+        const isMinDeltaCell = (cl.delta === pc.minDelta && pc.minDelta <= -1.2 && dNorm >= 0.18);
+        const isMaxDeltaCell = (cl.delta === pc.maxDelta && pc.maxDelta >= 1.2 && dNorm >= 0.18);
 
-        // Helper fungsi warna Volum 5-Peringkat
+        // 1. Warna Volum 5-Peringkat Konsisten (Krim = Rendah -> Oren = Tinggi -> Ungu = Puncak POC)
         const getClusterVolColor = () => {
-          if (isPOC || vRatioInCandle >= 0.95) {
-            return { bg: 'rgb(128, 128, 255)', txt: '#000000', bold: true, isTop: true }; // Top Volume: Lavender Blue
-          } else if (vRatioInCandle >= 0.78) {
-            return { bg: 'rgb(255, 127, 0)', txt: '#000000', bold: true };                 // High -> Top: Oren Pekat
-          } else if (vRatioInCandle >= 0.55) {
-            return { bg: 'rgb(255, 153, 0)', txt: '#000000', bold: true };                 // High: Oren Terang
-          } else if (vRatioInCandle >= 0.22) {
-            return { bg: 'rgb(255, 250, 200)', txt: 'rgb(32, 32, 32)', bold: false };      // Normal: Krim Lembut
+          if ((isPOC && vNorm >= 0.22) || vConsistentScore >= 0.82) {
+            return { bg: 'rgb(128, 128, 255)', txt: '#000000', bold: true, isTop: true }; // Ungu: POC / Volum Puncak Sebenar
+          } else if (vConsistentScore >= 0.62) {
+            return { bg: 'rgb(255, 127, 0)', txt: '#000000', bold: true };                 // Oren Pekat: Volum Sangat Tinggi
+          } else if (vConsistentScore >= 0.40) {
+            return { bg: 'rgb(255, 165, 30)', txt: '#000000', bold: true };                // Oren Terang: Volum Tinggi
+          } else if (vConsistentScore >= 0.18) {
+            return { bg: 'rgb(255, 248, 195)', txt: 'rgb(30, 30, 30)', bold: false };      // Kuning Krim: Volum Sederhana
           } else {
-            return { bg: '#fafad2', txt: 'rgb(51, 51, 51)', bold: false };                 // Low: LightGoldenrod
+            return { bg: '#fafad2', txt: 'rgb(60, 60, 60)', bold: false };                 // Krim Pucat: Volum Rendah
           }
         };
 
-        // Helper fungsi warna Delta (Min -> Neg -> Pos -> Max)
+        // 2. Warna Delta Konsisten (Merah = Tekanan Jualan Negatif, Hijau = Tekanan Belian Positif)
         const getClusterDeltaColor = () => {
           if (isMinDeltaCell) {
-            return { bg: '#dc2626', txt: '#ffffff', bold: true };                       // Min Delta: Merah Padu + Teks Putih Bold
+            return { bg: '#dc2626', txt: '#ffffff', bold: true };          // Merah Padu: Jualan Ekstrem (Min Delta)
           } else if (isMaxDeltaCell) {
-            return { bg: '#16a34a', txt: '#000000', bold: true };                       // Max Delta: Lime Padu + Teks Hitam Bold
+            return { bg: '#16a34a', txt: '#ffffff', bold: true };          // Hijau Padu: Belian Ekstrem (Max Delta)
+          } else if (cl.delta <= -1.5) {
+            return { bg: '#fecaca', txt: '#991b1b', bold: true };          // Merah Muda Pekat: Tekanan Jual Kuat
           } else if (cl.delta < 0) {
-            return { bg: 'rgb(255, 250, 210)', txt: '#dc2626', bold: false };          // Negative Delta: Krim Kemerahan
+            return { bg: '#fee2e2', txt: '#b91c1c', bold: false };         // Merah Lembut: Tekanan Jual Biasa
+          } else if (cl.delta >= 1.5) {
+            return { bg: '#bbf7d0', txt: '#14532d', bold: true };          // Hijau Muda Pekat: Tekanan Beli Kuat
+          } else if (cl.delta > 0) {
+            return { bg: '#dcfce7', txt: '#15803d', bold: false };         // Hijau Lembut: Tekanan Beli Biasa
           } else {
-            return { bg: 'rgb(250, 255, 210)', txt: '#000000', bold: false };          // Positive Delta: Krim Kehijauan
+            return { bg: '#f1f5f9', txt: '#475569', bold: false };         // Kelabu Cerah: Delta Sifar / Seimbang
           }
         };
 
@@ -4393,12 +4404,17 @@ class FootprintRenderer {
     if (volColW > 0) {
       // Full session totals
       ctx.fillStyle = '#38bdf8';
-      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(`SESI CVD: ${(snapshot.cvd || 0) >= 0 ? '+' : ''}${(snapshot.cvd || 0).toFixed(0)}L`, panelX + 10, topControlH + 20);
-      ctx.fillStyle = '#94a3b8';
       ctx.font = 'bold 9px "JetBrains Mono", monospace';
-      ctx.fillText(`BLOK: $${step.toFixed(2)}`, panelX + 10, topControlH + 34);
+      ctx.textAlign = 'left';
+      ctx.fillText(`SESI CVD: ${(snapshot.cvd || 0) >= 0 ? '+' : ''}${(snapshot.cvd || 0).toFixed(0)}L`, panelX + 8, topControlH + 15);
+      ctx.fillStyle = '#fde047';
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      const zoomModeLbl = maxCols <= 24 ? 'Mikro' : (maxCols <= 35 ? 'Std' : 'Makro');
+      ctx.fillText(`SKALA: ${maxCols} Bar (${zoomModeLbl}) • $${step.toFixed(2)}`, panelX + 8, topControlH + 29);
+      // Built-in Color Meaning Legend
+      ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText('🟪POC 🟧VolTinggi 🟩+Beli 🟥-Jual', panelX + 8, topControlH + 43);
 
       // Sub-column headers at y: topControlH + 50 .. topHeaderH
       const hdrSubY = topControlH + 50;
