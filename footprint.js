@@ -1269,8 +1269,8 @@ class FootprintRenderer {
   _drawSessionLevels(ctx, sessions, candles = [], lastPrice = 0) {
     if (!sessions) return;
     ctx.save();
-    const levels = [
-      // 1D (Daily) Major Levels (Clean Institutional Labels)
+    const rawLevels = [
+      // 1D (Daily) Major Levels (Clean Institutional Anchors)
       { price: sessions.pdh,         label: '1D HIGH',  col: '#fde047', isMajor: true },
       { price: sessions.pdl,         label: '1D LOW',   col: '#fde047', isMajor: true },
       { price: sessions.daily_open,  label: '1D OPEN',  col: '#38bdf8', isMajor: true },
@@ -1289,21 +1289,33 @@ class FootprintRenderer {
 
       // Session Extremes
       { price: sessions.asian_high,  label: 'ASIA HIGH', col: '#f59e0b', isMajor: false },
-      { price: sessions.asian_low,   label: 'ASIA LOW',  col: '#f59e0b', bg: '#f59e0b', isMajor: false },
+      { price: sessions.asian_low,   label: 'ASIA LOW',  col: '#f59e0b', isMajor: false },
       { price: sessions.london_high, label: 'LDN HIGH',  col: '#06b6d4', isMajor: false },
       { price: sessions.london_low,  label: 'LDN LOW',   col: '#06b6d4', isMajor: false },
       { price: sessions.ny_high,     label: 'NY HIGH',   col: '#c084fc', isMajor: false },
       { price: sessions.ny_low,      label: 'NY LOW',    col: '#c084fc', isMajor: false }
     ];
 
-    // Consolidate nearby SNR levels within $0.40 to prevent badge piling
+    // Smart SNR Consolidation: De-clutter 18 stacked lines into Core Institutional Anchors
+    const curP = lastPrice || (candles.length > 0 ? candles[candles.length - 1].close : 0);
+
+    // 1. Core Daily Anchors (Always visible)
+    const coreLevels = rawLevels.filter(r => ['1D OPEN', '1D HIGH', '1D LOW'].includes(r.label) && r.price > 0);
+
+    // 2. Nearest 1 Major Resistance above current price
+    const resLevels = rawLevels.filter(r => r.price > curP && (r.label.includes('RES') || r.label.includes('HIGH')) && r.price > 0).sort((a, b) => a.price - b.price);
+    if (resLevels.length > 0) coreLevels.push(resLevels[0]);
+
+    // 3. Nearest 1 Major Support below current price
+    const supLevels = rawLevels.filter(r => r.price < curP && (r.label.includes('SUP') || r.label.includes('LOW')) && r.price > 0).sort((a, b) => b.price - a.price);
+    if (supLevels.length > 0) coreLevels.push(supLevels[0]);
+
+    // Consolidate nearby SNR levels within $0.35 to prevent duplicate labels
     const consolidated = [];
-    for (const raw of levels) {
-      if (!raw.price || raw.price <= 0) continue;
-      const matched = consolidated.find(c => Math.abs(c.price - raw.price) < 0.40);
+    for (const raw of coreLevels) {
+      const matched = consolidated.find(c => Math.abs(c.price - raw.price) < 0.35);
       if (matched) {
         if (!matched.labels.includes(raw.label)) matched.labels.push(raw.label);
-        if (raw.isMajor) { matched.isMajor = true; matched.col = raw.col; }
       } else {
         consolidated.push({
           price: raw.price,
@@ -1319,36 +1331,24 @@ class FootprintRenderer {
       const y = this.priceToY(lv.price);
       if (y < 22 || y > this.height - 75) continue;
 
-      // High-Visibility Neon Luminous SNR Ray with Dark Contrast Halo (Always drawn for all in-view SNR levels!)
+      // Clean, elegant dashed line across chart (Zero blinding glow so candles remain 100% readable)
       ctx.save();
-      // 1. Dark contrast underlay so ray pops against dark/light background
-      ctx.strokeStyle = 'rgba(6, 10, 18, 0.90)';
-      ctx.lineWidth = lv.isMajor ? 3.0 : 2.4;
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(80, y);
-      ctx.lineTo(this.width - 70, y);
-      ctx.stroke();
-
-      // 2. Glowing Neon SNR Ray (Full 92% visibility, crisp glow)
-      ctx.globalAlpha = 0.92;
-      ctx.setLineDash(lv.isMajor ? [8, 4] : [5, 4]);
       ctx.strokeStyle = lv.col;
-      ctx.lineWidth = lv.isMajor ? 1.8 : 1.3;
-      ctx.shadowColor = lv.col;
-      ctx.shadowBlur = lv.isMajor ? 6 : 3.5;
+      ctx.globalAlpha = 0.65;
+      ctx.lineWidth = lv.isMajor ? 1.4 : 1.0;
+      ctx.setLineDash(lv.isMajor ? [8, 4] : [5, 4]);
       ctx.beginPath();
-      ctx.moveTo(80, y);
+      ctx.moveTo(85, y);
       ctx.lineTo(this.width - 70, y);
       ctx.stroke();
-      ctx.shadowBlur = 0;
+      ctx.setLineDash([]);
       ctx.restore();
 
       const text = `${lv.labels.join(' • ')} $${lv.price.toFixed(2)}`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const tw = ctx.measureText(text).width + 10;
 
-      // Strict Left Docking with Anti-Collision Vertical Stacking (Never shoots across chart)
+      // Strict Left Docking with Anti-Collision Vertical Stacking
       let tagY = y;
       let attempts = 0;
       while (drawnTagSlots.some(slotY => Math.abs(slotY - tagY) < 15) && attempts < 5) {
@@ -1361,7 +1361,7 @@ class FootprintRenderer {
       ctx.fillStyle = 'rgba(8, 13, 24, 0.94)';
       ctx.fillRect(tagX, tagY - 8, tw, 15);
       ctx.strokeStyle = lv.col;
-      ctx.lineWidth = 0.9;
+      ctx.lineWidth = 1;
       ctx.strokeRect(tagX, tagY - 8, tw, 15);
 
       ctx.fillStyle = lv.col;
@@ -1418,22 +1418,38 @@ class FootprintRenderer {
       }
     }
 
-    // 2. Iceberg Absorption Badges on Footprint
+    // 2. Iceberg Absorption Badges on Footprint (Sleek Clean Marker - No wide blinding banner)
     const icebergs = snapshot.icebergs || [];
     if (this.showIcebergs && icebergs.length > 0) {
       const now = Date.now();
-      for (const ic of icebergs.slice(-3)) {
-        if (now - ic.timestamp > 90000) continue;
-        const y = this.priceToY(ic.price);
-        if (y < 20 || y > this.height - 70) continue;
-        const isBuy = ic.bias === 'BUY';
-        const col = isBuy ? '#00f0ff' : '#f43f5e';
-        ctx.fillStyle = isBuy ? 'rgba(0, 240, 255, 0.14)' : 'rgba(244, 63, 94, 0.14)';
-        ctx.fillRect(0, y - 5, this.width - 70, 10);
-        ctx.fillStyle = col;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText(ic.badge, 10, y + 3);
+      const latestIc = icebergs.slice(-1)[0]; // Only show the single most recent iceberg
+      if (latestIc && (now - latestIc.timestamp <= 60000)) {
+        const y = this.priceToY(latestIc.price);
+        if (y >= 20 && y <= this.height - 70) {
+          const isBuy = latestIc.bias === 'BUY';
+          const col = isBuy ? '#00f0ff' : '#f43f5e';
+          // Draw a sleek right-docked or subtle tag
+          ctx.save();
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(120, y);
+          ctx.lineTo(this.width - 70, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(latestIc.badge).width + 8;
+          ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
+          ctx.fillRect(120, y - 7, tw, 14);
+          ctx.strokeStyle = col;
+          ctx.strokeRect(120, y - 7, tw, 14);
+          ctx.fillStyle = col;
+          ctx.textAlign = 'left';
+          ctx.fillText(latestIc.badge, 124, y + 3.5);
+          ctx.restore();
+        }
       }
     }
     ctx.restore();
