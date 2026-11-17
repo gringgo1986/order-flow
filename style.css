@@ -427,7 +427,7 @@ canvas#cvdCanvas {
 
 .dom-table-header {
   display: grid;
-  grid-template-columns: 1fr 68px 1fr;
+  grid-template-columns: 1fr 74px 1fr;
   padding: 4px 6px;
   font-size: 9px;
   font-family: var(--font-mono);
@@ -455,7 +455,7 @@ canvas#cvdCanvas {
 
 .dom-row {
   display: grid;
-  grid-template-columns: 1fr 68px 1fr;
+  grid-template-columns: 1fr 74px 1fr;
   height: 20px;
   align-items: center;
   cursor: pointer;
@@ -1174,7 +1174,7 @@ canvas#cvdCanvas {
 .dom-row {
   height: 20px !important;
   font-size: 10px !important;
-  grid-template-columns: 1fr 68px 1fr !important;
+  grid-template-columns: 1fr 74px 1fr !important;
 }
 
 .dom-center-spread {
@@ -1671,7 +1671,7 @@ header.app-header {
     left: 0 !important;
     right: 0 !important;
     height: 52px !important;
-    z-index: 99990 !important;
+    z-index: 9999999 !important;
     background: rgba(8, 12, 22, 0.96) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
@@ -1796,5 +1796,31 @@ header.app-header {
     color: #000000 !important;
     font-weight: 900 !important;
     box-shadow: 0 0 8px rgba(255, 214, 10, 0.6);
+  }
+}
+
+/* Mobile Header Clean-up: Hide secondary badges so .view-switchers are visible in top header */
+@media (max-width: 900px) {
+  #precisionBadge,
+  #sessionHeaderBadge,
+  #tapeSpeedGauge,
+  #sweepLevelBanner {
+    display: none !important;
+  }
+
+  .brand-section {
+    max-width: 140px !important;
+    overflow: hidden !important;
+  }
+
+  .view-switchers {
+    display: flex !important;
+    gap: 4px !important;
+  }
+
+  .view-switchers .nav-btn {
+    padding: 3px 7px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
   }
 }
