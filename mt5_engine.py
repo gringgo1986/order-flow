@@ -891,20 +891,30 @@ class OrderFlowEngine:
         if now - self._last_iceberg_time < 24.0:
             return
 
-        # Aggregate aggressive buy & sell volume at this $0.20 bucket
-        same_zone = [x for x in self._absorption_window if abs(x["p"] - bucket_20) <= 0.20]
-        if len(same_zone) < 4:
+        # Dynamic Mitigation Invalidation: Remove any active iceberg that has been broken by > $0.45
+        if self.iceberg_orders:
+            self.iceberg_orders = [
+                ic for ic in self.iceberg_orders
+                if not ((ic.get("bias") == "SELL" and price > ic.get("price", 0) + 0.45) or
+                        (ic.get("bias") == "BUY" and price < ic.get("price", 0) - 0.45))
+            ]
+
+        # Aggregate aggressive buy & sell volume at this $0.25 bucket
+        same_zone = [x for x in self._absorption_window if abs(x["p"] - bucket_20) <= 0.25]
+        if len(same_zone) < 5:
             return
 
         agg_buy_vol = sum(x["v"] for x in same_zone if x["is_buy"])
         agg_sell_vol = sum(x["v"] for x in same_zone if not x["is_buy"])
         max_p_zone = max(x["raw_p"] for x in same_zone)
         min_p_zone = min(x["raw_p"] for x in same_zone)
+        zone_spread = max(0.05, max_p_zone - min_p_zone)
 
-        # 1. Bearish Iceberg (Passive Sell Limit Order absorbing aggressive Market Buyers at highs)
-        if agg_buy_vol >= 12.0 and (max_p_zone - min_p_zone) <= 0.45 and price <= bucket_20 + 0.05:
+        # 1. Bearish Iceberg (Upgraded: >= 25.0 Lots absorbed within tight <= $0.40 range + price rejecting downward)
+        if agg_buy_vol >= 25.0 and zone_spread <= 0.40 and price <= bucket_20:
             self._last_iceberg_time = now
             self.iceberg_orders = [ic for ic in self.iceberg_orders if abs(ic["price"] - bucket_20) > 0.60]
+            eff_ratio = min(99, int((agg_buy_vol / (zone_spread * 100)) * 25))
             iceberg = {
                 "id": now_ms,
                 "timestamp": now_ms,
@@ -912,20 +922,20 @@ class OrderFlowEngine:
                 "bias": "SELL",
                 "price": bucket_20,
                 "absorbed_vol": round(agg_buy_vol, 1),
-                "badge": f"🧊 ICEBERG SELL @ ${bucket_20:.2f} ({agg_buy_vol:.1f}L)",
-                "desc": f"Pesanan Iceberg Institusi menyerap +{agg_buy_vol:.1f} Lots belian agresif pada ${bucket_20:.2f} (Rintangan Kuat)."
+                "badge": f"🧊 ICEBERG SELL @ ${bucket_20:.2f} ({agg_buy_vol:.0f}L • Serapan {eff_ratio}%)",
+                "desc": f"Iceberg Jualan Institusi menyerap +{agg_buy_vol:.1f}L belian agresif tanpa tembus pada ${bucket_20:.2f}."
             }
             self.iceberg_orders.append(iceberg)
-            if len(self.iceberg_orders) > 6:
+            if len(self.iceberg_orders) > 4:
                 self.iceberg_orders.pop(0)
-            # Reinforce persistent wall at iceberg level
             lvl_10 = round(round(bucket_20 * 10) / 10.0, 2)
-            self.persistent_walls[lvl_10] = round(min(98.0, self.persistent_walls.get(lvl_10, 52.0) + 32.0), 1)
+            self.persistent_walls[lvl_10] = round(min(98.0, self.persistent_walls.get(lvl_10, 55.0) + 35.0), 1)
 
-        # 2. Bullish Iceberg (Passive Buy Limit Order absorbing aggressive Market Sellers at lows)
-        elif agg_sell_vol >= 12.0 and (max_p_zone - min_p_zone) <= 0.45 and price >= bucket_20 - 0.05:
+        # 2. Bullish Iceberg (Upgraded: >= 25.0 Lots absorbed within tight <= $0.40 range + price bouncing upward)
+        elif agg_sell_vol >= 25.0 and zone_spread <= 0.40 and price >= bucket_20:
             self._last_iceberg_time = now
             self.iceberg_orders = [ic for ic in self.iceberg_orders if abs(ic["price"] - bucket_20) > 0.60]
+            eff_ratio = min(99, int((agg_sell_vol / (zone_spread * 100)) * 25))
             iceberg = {
                 "id": now_ms,
                 "timestamp": now_ms,
@@ -933,8 +943,8 @@ class OrderFlowEngine:
                 "bias": "BUY",
                 "price": bucket_20,
                 "absorbed_vol": round(agg_sell_vol, 1),
-                "badge": f"🧊 ICEBERG BUY @ ${bucket_20:.2f} ({agg_sell_vol:.1f}L)",
-                "desc": f"Pesanan Iceberg Institusi menyerap -{agg_sell_vol:.1f} Lots jualan agresif pada ${bucket_20:.2f} (Sokongan Kuat)."
+                "badge": f"🧊 ICEBERG BUY @ ${bucket_20:.2f} ({agg_sell_vol:.0f}L • Serapan {eff_ratio}%)",
+                "desc": f"Iceberg Belian Institusi menyerap -{agg_sell_vol:.1f}L jualan agresif tanpa tembus pada ${bucket_20:.2f}."
             }
             self.iceberg_orders.append(iceberg)
             if len(self.iceberg_orders) > 6:
@@ -1930,28 +1940,33 @@ class OrderFlowEngine:
         min_p = min(prices)
         cur_cvd = self.cvd
 
-        # Bearish Divergence near recent highs (Strict Supply Filter with Hold Timer)
-        if price >= max_p - 0.20 and cur_cvd < max(cvds) - 12.0:
-            # Cegah kelipan: jangan tulis ganti jika divergence yang sama baru dihantar kurang daripada 10 saat
-            if not self.detected_divergence or (now_ms - self.detected_divergence.get("timestamp", 0) > 10000):
+        # Check candle wick rejection confirmation
+        c_high = self.current_candle["high"] if self.current_candle else max_p
+        c_low = self.current_candle["low"] if self.current_candle else min_p
+        upper_wick_reject = (c_high - price) >= 0.15
+        lower_wick_reject = (price - c_low) >= 0.15
+
+        # Bearish Divergence: Near recent high + CVD Lower High (-15L) + Wick Rejection Confirmed
+        if price >= max_p - 0.35 and upper_wick_reject and cur_cvd < max(cvds) - 15.0:
+            if not self.detected_divergence or (now_ms - self.detected_divergence.get("timestamp", 0) > 18000):
                 is_valid, zone_desc = self._is_near_institutional_level(price, "SELL")
                 if is_valid:
                     self.detected_divergence = {
                         "type": "bearish",
-                        "title": "CVD BEARISH DIVERGENCE",
-                        "desc": f"Penyerapan jualan institusi di zon Supply {zone_desc}",
+                        "title": "CVD BEARISH DIVERGENCE [SAH]",
+                        "desc": f"Serapan Jualan + Tolakan Sumbu di {zone_desc}",
                         "price": price,
                         "timestamp": now_ms
                     }
-        # Bullish Divergence near recent lows (Strict Demand Filter with Hold Timer)
-        elif price <= min_p + 0.20 and cur_cvd > min(cvds) + 12.0:
-            if not self.detected_divergence or (now_ms - self.detected_divergence.get("timestamp", 0) > 10000):
+        # Bullish Divergence: Near recent low + CVD Higher Low (+15L) + Wick Rejection Confirmed
+        elif price <= min_p + 0.35 and lower_wick_reject and cur_cvd > min(cvds) + 15.0:
+            if not self.detected_divergence or (now_ms - self.detected_divergence.get("timestamp", 0) > 18000):
                 is_valid, zone_desc = self._is_near_institutional_level(price, "BUY")
                 if is_valid:
                     self.detected_divergence = {
                         "type": "bullish",
-                        "title": "CVD BULLISH DIVERGENCE",
-                        "desc": f"Penyerapan belian institusi di zon Demand {zone_desc}",
+                        "title": "CVD BULLISH DIVERGENCE [SAH]",
+                        "desc": f"Serapan Belian + Lantunan Sumbu di {zone_desc}",
                         "price": price,
                         "timestamp": now_ms
                     }
@@ -2917,23 +2932,26 @@ class OrderFlowEngine:
         if has_demand_zone:
             d_name = active_demand["name"]
             if self._can_emit_signal("BUY", p, d_name, now):
-                trigger = None
+                # Unified Confluence Scoring (Combine all active institutional buy factors)
+                confluences = []
                 if any(ic.get("bias") == "BUY" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
-                    trigger = "ICEBERG BID ABSORPTION"
-                elif any(tr.get("type") == "TRAPPED_SELLERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
-                    trigger = "TRAPPED SELLERS AT LOW"
-                elif self.detected_divergence and self.detected_divergence.get("type") == "bullish":
-                    trigger = "BULLISH CVD DIVERGENCE"
-                elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "BUY" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
-                    trigger = "LIQUIDITY RAID & SWEEP"
-                elif bid_wall >= 28.0:
-                    trigger = f"WHALE BID WALL ({bid_wall:.0f}L)"
+                    confluences.append("ICEBERG")
+                if any(tr.get("type") == "TRAPPED_SELLERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
+                    confluences.append("TRAPPED SELLERS")
+                if self.detected_divergence and self.detected_divergence.get("type") == "bullish":
+                    confluences.append("CVD DIV")
+                if sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "BUY" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
+                    confluences.append("SWEEP")
+                if bid_wall >= 45.0:
+                    confluences.append(f"DINDING {bid_wall:.0f}L")
 
-                if trigger:
+                # Emit unified signal if >= 2 confluences OR 1 primary orderflow trigger supported by >= 30L wall
+                if len(confluences) >= 2 or (len(confluences) == 1 and bid_wall >= 35.0):
+                    trigger = " + ".join(confluences[:3])
                     sig = {
                         "id": f"bm_{now_ms}",
                         "timestamp": int(now),
-                        "type": f"🎯 [BOOKMAP] {d_name}",
+                        "type": f"⭐ [KONFLUENS A+] {d_name} ({trigger})",
                         "trigger": trigger,
                         "direction": "BUY",
                         "price": round(p, 2),
@@ -2943,9 +2961,9 @@ class OrderFlowEngine:
                         "tp3": round(p + 15.00, 2),
                         "tp4": round(p + 20.00, 2),
                         "tp5": round(p + 25.00, 2),
-                        "zone": d_name,
+                        "zone": f"{d_name} • {trigger}",
                         "wall_lots": round(bid_wall, 1),
-                        "badge": f"🟢 [BOOKMAP BUY] {d_name}",
+                        "badge": f"🟢 [BUY A+] {d_name} ({trigger})",
                         "status": "ACTIVE"
                     }
                     self.bookmap_signals.append(sig)
@@ -2961,23 +2979,25 @@ class OrderFlowEngine:
         if has_supply_zone:
             s_name = active_supply["name"]
             if self._can_emit_signal("SELL", p, s_name, now):
-                trigger = None
+                # Unified Confluence Scoring (Combine all active institutional sell factors)
+                confluences = []
                 if any(ic.get("bias") == "SELL" and abs(ic.get("price", 0) - p) <= 1.20 for ic in self.iceberg_orders):
-                    trigger = "ICEBERG ASK ABSORPTION"
-                elif any(tr.get("type") == "TRAPPED_BUYERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
-                    trigger = "TRAPPED BUYERS AT HIGH"
-                elif self.detected_divergence and self.detected_divergence.get("type") == "bearish":
-                    trigger = "BEARISH CVD DIVERGENCE"
-                elif sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "SELL" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
-                    trigger = "LIQUIDITY RAID & SWEEP"
-                elif ask_wall >= 28.0:
-                    trigger = f"WHALE ASK WALL ({ask_wall:.0f}L)"
+                    confluences.append("ICEBERG")
+                if any(tr.get("type") == "TRAPPED_BUYERS" and abs(tr.get("price", 0) - p) <= 1.20 for tr in self.trapped_traders):
+                    confluences.append("TRAPPED BUYERS")
+                if self.detected_divergence and self.detected_divergence.get("type") == "bearish":
+                    confluences.append("CVD DIV")
+                if sess.get("sweep_alert") and sess["sweep_alert"].get("bias") == "SELL" and (now_ms - sess["sweep_alert"].get("timestamp", 0) < 60000):
+                    confluences.append("SWEEP")
+                if ask_wall >= 45.0:
+                    confluences.append(f"DINDING {ask_wall:.0f}L")
 
-                if trigger:
+                if len(confluences) >= 2 or (len(confluences) == 1 and ask_wall >= 35.0):
+                    trigger = " + ".join(confluences[:3])
                     sig = {
                         "id": f"bm_{now_ms}",
                         "timestamp": int(now),
-                        "type": f"🎯 [BOOKMAP] {s_name}",
+                        "type": f"⭐ [KONFLUENS A+] {s_name} ({trigger})",
                         "trigger": trigger,
                         "direction": "SELL",
                         "price": round(p, 2),
@@ -2987,9 +3007,9 @@ class OrderFlowEngine:
                         "tp3": round(p - 15.00, 2),
                         "tp4": round(p - 20.00, 2),
                         "tp5": round(p - 25.00, 2),
-                        "zone": s_name,
+                        "zone": f"{s_name} • {trigger}",
                         "wall_lots": round(ask_wall, 1),
-                        "badge": f"🔴 [BOOKMAP SELL] {s_name}",
+                        "badge": f"🔴 [SELL A+] {s_name} ({trigger})",
                         "status": "ACTIVE"
                     }
                     self.bookmap_signals.append(sig)
