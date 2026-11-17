@@ -635,6 +635,10 @@ class OrderFlowEngine:
         nl = round(base_price - 1.60, 2)
         pdh = round(base_price + 4.80, 2)
         pdl = round(base_price - 4.50, 2)
+        pwh = round(base_price + 9.60, 2)
+        pwl = round(base_price - 9.20, 2)
+        eqh = round(base_price + 3.10, 2)
+        eql = round(base_price - 2.90, 2)
         daily_open = round(base_price - 0.90, 2)
 
         # Higher Timeframe M15, M30, H1, H4 & H8 SNR Defaults
@@ -766,6 +770,10 @@ class OrderFlowEngine:
             "ny_low": nl,
             "pdh": pdh,
             "pdl": pdl,
+            "pwh": pwh,
+            "pwl": pwl,
+            "eqh": eqh,
+            "eql": eql,
             "daily_open": daily_open,
             "m15_high": m15_high,
             "m15_low": m15_low,
@@ -910,20 +918,25 @@ class OrderFlowEngine:
         min_p_zone = min(x["raw_p"] for x in same_zone)
         zone_spread = max(0.05, max_p_zone - min_p_zone)
 
-        # 1. Bearish Iceberg (Upgraded: >= 25.0 Lots absorbed within tight <= $0.40 range + price rejecting downward)
+        # 1. Potential Bearish Iceberg (Inference based on repeated fills & price hold)
         if agg_buy_vol >= 25.0 and zone_spread <= 0.40 and price <= bucket_20:
             self._last_iceberg_time = now
             self.iceberg_orders = [ic for ic in self.iceberg_orders if abs(ic["price"] - bucket_20) > 0.60]
-            eff_ratio = min(99, int((agg_buy_vol / (zone_spread * 100)) * 25))
+            hits = len([x for x in same_zone if x["is_buy"]])
+            conf = min(92, int(55 + (agg_buy_vol * 0.6) + (hits * 2.5)))
+            evidence = f"{hits}x isian berulang, +{agg_buy_vol:.0f}L diserap dlm ${zone_spread:.2f}"
             iceberg = {
                 "id": now_ms,
                 "timestamp": now_ms,
-                "type": "ICEBERG_SELL",
+                "type": "POTENTIAL_ICEBERG_SELL",
                 "bias": "SELL",
                 "price": bucket_20,
                 "absorbed_vol": round(agg_buy_vol, 1),
-                "badge": f"🧊 ICEBERG SELL @ ${bucket_20:.2f} ({agg_buy_vol:.0f}L • Serapan {eff_ratio}%)",
-                "desc": f"Iceberg Jualan Institusi menyerap +{agg_buy_vol:.1f}L belian agresif tanpa tembus pada ${bucket_20:.2f}."
+                "hits": hits,
+                "confidence": conf,
+                "evidence": evidence,
+                "badge": f"🧊 POTENTIAL ICEBERG SELL @ ${bucket_20:.2f} [Keyakinan: {conf}% | {hits}x Isian, {agg_buy_vol:.0f}L]",
+                "desc": f"Inferens Pesanan Besar: {evidence} tanpa harga menembusi atas ${bucket_20:.2f}."
             }
             self.iceberg_orders.append(iceberg)
             if len(self.iceberg_orders) > 4:
@@ -931,20 +944,25 @@ class OrderFlowEngine:
             lvl_10 = round(round(bucket_20 * 10) / 10.0, 2)
             self.persistent_walls[lvl_10] = round(min(98.0, self.persistent_walls.get(lvl_10, 55.0) + 35.0), 1)
 
-        # 2. Bullish Iceberg (Upgraded: >= 25.0 Lots absorbed within tight <= $0.40 range + price bouncing upward)
+        # 2. Potential Bullish Iceberg (Inference based on repeated fills & price hold)
         elif agg_sell_vol >= 25.0 and zone_spread <= 0.40 and price >= bucket_20:
             self._last_iceberg_time = now
             self.iceberg_orders = [ic for ic in self.iceberg_orders if abs(ic["price"] - bucket_20) > 0.60]
-            eff_ratio = min(99, int((agg_sell_vol / (zone_spread * 100)) * 25))
+            hits = len([x for x in same_zone if not x["is_buy"]])
+            conf = min(92, int(55 + (agg_sell_vol * 0.6) + (hits * 2.5)))
+            evidence = f"{hits}x isian berulang, -{agg_sell_vol:.0f}L diserap dlm ${zone_spread:.2f}"
             iceberg = {
                 "id": now_ms,
                 "timestamp": now_ms,
-                "type": "ICEBERG_BUY",
+                "type": "POTENTIAL_ICEBERG_BUY",
                 "bias": "BUY",
                 "price": bucket_20,
                 "absorbed_vol": round(agg_sell_vol, 1),
-                "badge": f"🧊 ICEBERG BUY @ ${bucket_20:.2f} ({agg_sell_vol:.0f}L • Serapan {eff_ratio}%)",
-                "desc": f"Iceberg Belian Institusi menyerap -{agg_sell_vol:.1f}L jualan agresif tanpa tembus pada ${bucket_20:.2f}."
+                "hits": hits,
+                "confidence": conf,
+                "evidence": evidence,
+                "badge": f"🧊 POTENTIAL ICEBERG BUY @ ${bucket_20:.2f} [Keyakinan: {conf}% | {hits}x Isian, {agg_sell_vol:.0f}L]",
+                "desc": f"Inferens Pesanan Besar: {evidence} tanpa harga menembusi bawah ${bucket_20:.2f}."
             }
             self.iceberg_orders.append(iceberg)
             if len(self.iceberg_orders) > 6:
@@ -1030,67 +1048,151 @@ class OrderFlowEngine:
             self.sessions_data["h8_res"] = round(price + 12.00, 2)
             self.sessions_data["h8_sup"] = round(price - 11.50, 2)
 
-        # Detect Liquidity Sweep of Asian High / Asian Low or London High / Low
+        # Dynamically compute Equal High (EQH) & Equal Low (EQL) from recent closed candles
+        if len(self.candles) >= 6:
+            recent_c = self.candles[-12:]
+            c_highs = sorted([x["high"] for x in recent_c], reverse=True)
+            c_lows = sorted([x["low"] for x in recent_c])
+            if len(c_highs) >= 2 and abs(c_highs[0] - c_highs[1]) <= 0.22:
+                self.sessions_data["eqh"] = round((c_highs[0] + c_highs[1]) / 2.0, 2)
+            if len(c_lows) >= 2 and abs(c_lows[0] - c_lows[1]) <= 0.22:
+                self.sessions_data["eql"] = round((c_lows[0] + c_lows[1]) / 2.0, 2)
+
+        # 7-Target Sweep Detection Engine with 5-Step Checklist (Sweep Reversal vs Normal Breakout)
         c = self.current_candle
         if not c:
             return
 
         now = time.time()
-        if now - self._last_sweep_time < 45.0:
+        if now - self._last_sweep_time < 30.0:
             return
 
-        # 1. Bearish Sweep of Asian High: Candle high pierced above Asian High, but price rejected back below Asian High
-        if c["high"] > ah + 0.08 and price < ah - 0.12:
-            self._last_sweep_time = now
-            self.sessions_data["sweep_alert"] = {
-                "type": "ASIAN_HIGH_SWEEP",
-                "bias": "SELL",
-                "level_name": "ASIAN HIGH",
-                "level_price": ah,
-                "sweep_peak": c["high"],
-                "badge": f"🔥 SWEEP ASIAN HIGH (${ah:.2f})",
-                "desc": f"Kecairan Asian High (${ah:.2f}) telah disapu ke ${c['high']:.2f} & ditolak ke bawah! Setup Reversal SELL.",
-                "timestamp": now_ms
-            }
-        # 2. Bullish Sweep of Asian Low: Candle low pierced below Asian Low, but price rejected back above Asian Low
-        elif c["low"] < al - 0.08 and price > al + 0.12:
-            self._last_sweep_time = now
-            self.sessions_data["sweep_alert"] = {
-                "type": "ASIAN_LOW_SWEEP",
-                "bias": "BUY",
-                "level_name": "ASIAN LOW",
-                "level_price": al,
-                "sweep_peak": c["low"],
-                "badge": f"🔥 SWEEP ASIAN LOW (${al:.2f})",
-                "desc": f"Kecairan Asian Low (${al:.2f}) telah disapu ke ${c['low']:.2f} & melantun naik! Setup Reversal BUY.",
-                "timestamp": now_ms
-            }
-        # 3. Bearish Sweep of London High
-        elif c["high"] > lh + 0.08 and price < lh - 0.12:
-            self._last_sweep_time = now
-            self.sessions_data["sweep_alert"] = {
-                "type": "LONDON_HIGH_SWEEP",
-                "bias": "SELL",
-                "level_name": "LONDON HIGH",
-                "level_price": lh,
-                "sweep_peak": c["high"],
-                "badge": f"🔥 SWEEP LONDON HIGH (${lh:.2f})",
-                "desc": f"Kecairan London High (${lh:.2f}) telah disapu & ditolak ke bawah! Setup Reversal SELL.",
-                "timestamp": now_ms
-            }
-        # 4. Bullish Sweep of London Low
-        elif c["low"] < ll - 0.08 and price > ll + 0.12:
-            self._last_sweep_time = now
-            self.sessions_data["sweep_alert"] = {
-                "type": "LONDON_LOW_SWEEP",
-                "bias": "BUY",
-                "level_name": "LONDON LOW",
-                "level_price": ll,
-                "sweep_peak": c["low"],
-                "badge": f"🔥 SWEEP LONDON LOW (${ll:.2f})",
-                "desc": f"Kecairan London Low (${ll:.2f}) telah disapu & melantun naik! Setup Reversal BUY.",
-                "timestamp": now_ms
-            }
+        pdh = self.sessions_data.get("pdh", 0.0)
+        pdl = self.sessions_data.get("pdl", 0.0)
+        eqh = self.sessions_data.get("eqh", 0.0)
+        eql = self.sessions_data.get("eql", 0.0)
+        nh = self.sessions_data.get("ny_high", 0.0)
+        nl = self.sessions_data.get("ny_low", 0.0)
+        c_delta = c.get("delta", 0.0)
+
+        high_targets = [
+            ("ASIAN HIGH", ah),
+            ("PDH (PREV DAY HIGH)", pdh),
+            ("EQUAL HIGH (EQH)", eqh),
+            ("LONDON HIGH", lh),
+            ("SESSION NY HIGH", nh)
+        ]
+        low_targets = [
+            ("ASIAN LOW", al),
+            ("PDL (PREV DAY LOW)", pdl),
+            ("EQUAL LOW (EQL)", eql),
+            ("LONDON LOW", ll),
+            ("SESSION NY LOW", nl)
+        ]
+
+        # Check High Sweeps vs Breakout
+        for lvl_name, lvl_p in high_targets:
+            if lvl_p <= 0:
+                continue
+            # Step 1: Harga menembusi paras High
+            if c["high"] > lvl_p + 0.06:
+                pierce_dist = c["high"] - lvl_p
+                # Step 2: Gagal meneruskan kenaikan (tidak lari > $1.60)
+                step2_no_runaway = pierce_dist <= 1.60
+                # Step 3: Harga kembali ke bawah paras High (Reclaim)
+                step3_reclaim = price < lvl_p - 0.08
+                # Step 4: Delta atau CVD menunjukkan perubahan tekanan jualan
+                step4_delta_shift = (c_delta < -2.0) or (len(self.cvd_history) >= 3 and self.cvd < self.cvd_history[-3]["cvd"])
+                # Step 5: Struktur sumbu penolakan (Upper wick >= 0.18)
+                step5_structure = (c["high"] - max(c["open"], price)) >= 0.18
+
+                if step3_reclaim and step2_no_runaway:
+                    score = 3 + (1 if step4_delta_shift else 0) + (1 if step5_structure else 0)
+                    conf = min(94, 58 + score * 7)
+                    self._last_sweep_time = now
+                    self.sessions_data["sweep_alert"] = {
+                        "type": f"{lvl_name}_SWEEP",
+                        "is_sweep": True,
+                        "bias": "SELL",
+                        "level_name": lvl_name,
+                        "level_price": lvl_p,
+                        "sweep_peak": c["high"],
+                        "score": f"{score}/5",
+                        "confidence": conf,
+                        "badge": f"🔥 SWEEP {lvl_name} (${lvl_p:.2f}) [Sah {score}/5 • {conf}%]",
+                        "desc": f"1.Tembus ${c['high']:.2f} ✓ 2.Gagal Terus ✓ 3.Kembali Bawah ${lvl_p:.2f} ✓ 4.Delta Shift {'✓' if step4_delta_shift else '○'} 5.Struktur {'✓' if step5_structure else '○'} → Potensi Reversal SELL",
+                        "timestamp": now_ms
+                    }
+                    break
+                elif price > lvl_p + 0.35 and c_delta > 8.0:
+                    # Ini adalah BREAKOUT BIASA, bukan Sweep!
+                    self._last_sweep_time = now
+                    self.sessions_data["sweep_alert"] = {
+                        "type": f"{lvl_name}_BREAKOUT",
+                        "is_sweep": False,
+                        "bias": "BREAKOUT_UP",
+                        "level_name": lvl_name,
+                        "level_price": lvl_p,
+                        "sweep_peak": c["high"],
+                        "score": "BREAKOUT",
+                        "confidence": 80,
+                        "badge": f"⚡ BREAKOUT {lvl_name} (${lvl_p:.2f}) [Bukan Sweep]",
+                        "desc": f"Harga menembusi ${lvl_p:.2f} dengan sokongan Delta +{c_delta:.0f}L tanpa masuk semula. Jangan lawan arus!",
+                        "timestamp": now_ms
+                    }
+                    break
+
+        # Check Low Sweeps vs Breakout
+        for lvl_name, lvl_p in low_targets:
+            if lvl_p <= 0:
+                continue
+            # Step 1: Harga menembusi paras Low
+            if c["low"] < lvl_p - 0.06:
+                pierce_dist = lvl_p - c["low"]
+                # Step 2: Gagal meneruskan penurunan (tidak lari > $1.60)
+                step2_no_runaway = pierce_dist <= 1.60
+                # Step 3: Harga kembali ke atas paras Low (Reclaim)
+                step3_reclaim = price > lvl_p + 0.08
+                # Step 4: Delta atau CVD menunjukkan perubahan tekanan belian
+                step4_delta_shift = (c_delta > 2.0) or (len(self.cvd_history) >= 3 and self.cvd > self.cvd_history[-3]["cvd"])
+                # Step 5: Struktur sumbu penolakan (Lower wick >= 0.18)
+                step5_structure = (min(c["open"], price) - c["low"]) >= 0.18
+
+                if step3_reclaim and step2_no_runaway:
+                    score = 3 + (1 if step4_delta_shift else 0) + (1 if step5_structure else 0)
+                    conf = min(94, 58 + score * 7)
+                    self._last_sweep_time = now
+                    self.sessions_data["sweep_alert"] = {
+                        "type": f"{lvl_name}_SWEEP",
+                        "is_sweep": True,
+                        "bias": "BUY",
+                        "level_name": lvl_name,
+                        "level_price": lvl_p,
+                        "sweep_peak": c["low"],
+                        "score": f"{score}/5",
+                        "confidence": conf,
+                        "badge": f"🔥 SWEEP {lvl_name} (${lvl_p:.2f}) [Sah {score}/5 • {conf}%]",
+                        "desc": f"1.Tembus ${c['low']:.2f} ✓ 2.Gagal Terus ✓ 3.Kembali Atas ${lvl_p:.2f} ✓ 4.Delta Shift {'✓' if step4_delta_shift else '○'} 5.Struktur {'✓' if step5_structure else '○'} → Potensi Reversal BUY",
+                        "timestamp": now_ms
+                    }
+                    break
+                elif price < lvl_p - 0.35 and c_delta < -8.0:
+                    # Ini adalah BREAKOUT BIASA, bukan Sweep!
+                    self._last_sweep_time = now
+                    self.sessions_data["sweep_alert"] = {
+                        "type": f"{lvl_name}_BREAKOUT",
+                        "is_sweep": False,
+                        "bias": "BREAKOUT_DOWN",
+                        "level_name": lvl_name,
+                        "level_price": lvl_p,
+                        "sweep_peak": c["low"],
+                        "score": "BREAKOUT",
+                        "confidence": 80,
+                        "badge": f"⚡ BREAKOUT {lvl_name} (${lvl_p:.2f}) [Bukan Sweep]",
+                        "desc": f"Harga menembusi bawah ${lvl_p:.2f} dengan tekanan Delta {c_delta:.0f}L tanpa masuk semula. Jangan lawan arus!",
+                        "timestamp": now_ms
+                    }
+                    break
 
     def _synthesize_book_depth(self, center_price: float):
         """
@@ -1925,51 +2027,100 @@ class OrderFlowEngine:
 
     def _evaluate_cvd_divergence(self, price: float, now_ms: int):
         """
-        Detects Order Flow Cumulative Volume Delta divergence:
-        1. Bearish Divergence: Price higher high, but CVD lower high (Seller absorption)
-        2. Bullish Divergence: Price lower low, but CVD higher low (Buyer absorption)
+        4-Type Confirmed Swing CVD & Absorption Engine (Evaluated ONLY on CLOSED Candles):
+        1. Bullish Divergence : Harga turun (Lower Low pada swing) tetapi CVD naik (Higher Low)
+        2. Bearish Divergence : Harga naik (Higher High pada swing) tetapi CVD turun (Lower High)
+        3. Bullish Absorption : Tekanan jual tinggi (Delta negatif kuat) gagal menurunkan harga (Lilin tutup naik/sumbu bawah)
+        4. Bearish Absorption : Tekanan beli tinggi (Delta positif kuat) gagal menaikkan harga (Lilin tutup turun/sumbu atas)
         """
-        if len(self.cvd_history) < 20:
+        if len(self.candles) < 6:
             return
 
-        recent_slice = self.cvd_history[-30:]
-        prices = [x["price"] for x in recent_slice]
-        cvds = [x["cvd"] for x in recent_slice]
+        # Hanya nilai apabila candle baru sahaja ditutup (atau sekali setiap candle tutup)
+        last_closed = self.candles[-1]
+        closed_ts = last_closed.get("timestamp", 0)
+        if getattr(self, "_last_eval_closed_ts", 0) == closed_ts:
+            return
+        self._last_eval_closed_ts = closed_ts
 
-        max_p = max(prices)
-        min_p = min(prices)
-        cur_cvd = self.cvd
+        prev_swings = self.candles[-12:-1]
+        if not prev_swings:
+            return
 
-        # Check candle wick rejection confirmation
-        c_high = self.current_candle["high"] if self.current_candle else max_p
-        c_low = self.current_candle["low"] if self.current_candle else min_p
-        upper_wick_reject = (c_high - price) >= 0.15
-        lower_wick_reject = (price - c_low) >= 0.15
+        c_open = last_closed["open"]
+        c_close = last_closed["close"]
+        c_high = last_closed["high"]
+        c_low = last_closed["low"]
+        c_delta = last_closed.get("delta", 0.0)
+        c_range = max(0.05, c_high - c_low)
+        upper_wick = c_high - max(c_open, c_close)
+        lower_wick = min(c_open, c_close) - c_low
 
-        # Bearish Divergence: Near recent high + CVD Lower High (-15L) + Wick Rejection Confirmed
-        if price >= max_p - 0.35 and upper_wick_reject and cur_cvd < max(cvds) - 15.0:
-            if not self.detected_divergence or (now_ms - self.detected_divergence.get("timestamp", 0) > 18000):
-                is_valid, zone_desc = self._is_near_institutional_level(price, "SELL")
-                if is_valid:
-                    self.detected_divergence = {
-                        "type": "bearish",
-                        "title": "CVD BEARISH DIVERGENCE [SAH]",
-                        "desc": f"Serapan Jualan + Tolakan Sumbu di {zone_desc}",
-                        "price": price,
-                        "timestamp": now_ms
-                    }
-        # Bullish Divergence: Near recent low + CVD Higher Low (+15L) + Wick Rejection Confirmed
-        elif price <= min_p + 0.35 and lower_wick_reject and cur_cvd > min(cvds) + 15.0:
-            if not self.detected_divergence or (now_ms - self.detected_divergence.get("timestamp", 0) > 18000):
-                is_valid, zone_desc = self._is_near_institutional_level(price, "BUY")
-                if is_valid:
-                    self.detected_divergence = {
-                        "type": "bullish",
-                        "title": "CVD BULLISH DIVERGENCE [SAH]",
-                        "desc": f"Serapan Belian + Lantunan Sumbu di {zone_desc}",
-                        "price": price,
-                        "timestamp": now_ms
-                    }
+        prev_max_high = max(x["high"] for x in prev_swings)
+        prev_min_low = min(x["low"] for x in prev_swings)
+
+        # Estimate cumulative delta progression across closed candles
+        running_deltas = []
+        acc = 0.0
+        for sc in self.candles[-12:]:
+            acc += sc.get("delta", 0.0)
+            running_deltas.append(acc)
+        cur_swing_cvd = running_deltas[-1]
+        prev_max_cvd = max(running_deltas[:-1])
+        prev_min_cvd = min(running_deltas[:-1])
+
+        # 1. BULLISH DIVERGENCE (Closed Swing: Harga Lower Low tetapi CVD Higher Low)
+        if c_low <= prev_min_low + 0.15 and cur_swing_cvd > prev_min_cvd + 10.0 and c_close > c_low + 0.12:
+            is_valid, zone_desc = self._is_near_institutional_level(c_close, "BUY")
+            if is_valid:
+                self.detected_divergence = {
+                    "type": "bullish",
+                    "subtype": "BULLISH_DIVERGENCE",
+                    "title": "BULLISH DIVERGENCE [SWING SAH]",
+                    "desc": f"Harga turun (${c_low:.2f}) tapi CVD naik (+{cur_swing_cvd - prev_min_cvd:.0f}L) di {zone_desc}",
+                    "price": c_close,
+                    "confidence": 85,
+                    "timestamp": now_ms
+                }
+        # 2. BEARISH DIVERGENCE (Closed Swing: Harga Higher High tetapi CVD Lower High)
+        elif c_high >= prev_max_high - 0.15 and cur_swing_cvd < prev_max_cvd - 10.0 and c_close < c_high - 0.12:
+            is_valid, zone_desc = self._is_near_institutional_level(c_close, "SELL")
+            if is_valid:
+                self.detected_divergence = {
+                    "type": "bearish",
+                    "subtype": "BEARISH_DIVERGENCE",
+                    "title": "BEARISH DIVERGENCE [SWING SAH]",
+                    "desc": f"Harga naik (${c_high:.2f}) tapi CVD turun ({cur_swing_cvd - prev_max_cvd:.0f}L) di {zone_desc}",
+                    "price": c_close,
+                    "confidence": 85,
+                    "timestamp": now_ms
+                }
+        # 3. BULLISH ABSORPTION (Closed Candle: Tekanan jual kuat Delta <= -15L gagal menurunkan harga)
+        elif c_delta <= -15.0 and (c_close >= c_open or lower_wick >= c_range * 0.45):
+            is_valid, zone_desc = self._is_near_institutional_level(c_close, "BUY")
+            if is_valid:
+                self.detected_divergence = {
+                    "type": "bullish",
+                    "subtype": "BULLISH_ABSORPTION",
+                    "title": "BULLISH ABSORPTION [LILIN TUTUP]",
+                    "desc": f"Tekanan jual ({c_delta:.0f}L) gagal turunkan harga di {zone_desc}",
+                    "price": c_close,
+                    "confidence": 82,
+                    "timestamp": now_ms
+                }
+        # 4. BEARISH ABSORPTION (Closed Candle: Tekanan beli kuat Delta >= +15L gagal menaikkan harga)
+        elif c_delta >= 15.0 and (c_close <= c_open or upper_wick >= c_range * 0.45):
+            is_valid, zone_desc = self._is_near_institutional_level(c_close, "SELL")
+            if is_valid:
+                self.detected_divergence = {
+                    "type": "bearish",
+                    "subtype": "BEARISH_ABSORPTION",
+                    "title": "BEARISH ABSORPTION [LILIN TUTUP]",
+                    "desc": f"Tekanan beli (+{c_delta:.0f}L) gagal naikkan harga di {zone_desc}",
+                    "price": c_close,
+                    "confidence": 82,
+                    "timestamp": now_ms
+                }
 
     def _evaluate_trapped_traders(self, now_ms: int):
         """
