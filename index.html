@@ -14,7 +14,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Gringgo Orderflow - Bookmap & Order Flow Trading Terminal</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=46.0">
+  <link rel="stylesheet" href="/static/css/style.css?v=47.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -294,6 +294,13 @@
         <!-- Reconnecting Banner Alert -->
         <div id="reconnectBanner" style="display:none; position:absolute; top:8px; left:50%; transform:translateX(-50%); background:rgba(239,68,68,0.92); color:#fff; padding:5px 14px; border-radius:5px; font-family:var(--font-mono); font-size:10.5px; font-weight:700; z-index:9999; box-shadow:0 4px 15px rgba(0,0,0,0.5); align-items:center; gap:6px;">
           <span>⚠️</span> <span id="reconnectText">Sambungan pelayan terputus. Menyambung semula...</span>
+        </div>
+        <!-- Mobile Quick Switcher Floating Island (Top Right of Chart) -->
+        <div class="mobile-quick-switcher" id="mobileQuickSwitcher">
+          <button class="mqs-btn active" data-view="bookmap">📈 BM</button>
+          <button class="mqs-btn" data-view="clusterdelta">📊 CLUSTER</button>
+          <button class="mqs-btn" data-view="footprint">👣 FP</button>
+          <button class="mqs-btn" data-view="split">🔀 SPLIT</button>
         </div>
         <canvas id="bookmapCanvas"></canvas>
         <canvas id="footprintCanvas" style="display:none;"></canvas>
@@ -981,10 +988,10 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/static/js/bookmap.js?v=46.0"></script>
-  <script src="/static/js/footprint.js?v=46.0"></script>
-  <script src="/static/js/dom.js?v=46.0"></script>
-  <script src="/static/js/app.js?v=46.0"></script>
+  <script src="/static/js/bookmap.js?v=47.0"></script>
+  <script src="/static/js/footprint.js?v=47.0"></script>
+  <script src="/static/js/dom.js?v=47.0"></script>
+  <script src="/static/js/app.js?v=47.0"></script>
   <!-- Admin SaaS & User Management Modal (Customer Control Center) -->
   <div id="adminModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); z-index:99999; align-items:center; justify-content:center; padding:15px;">
     <div style="background:#090e1a; border:1px solid #f59e0b; border-radius:12px; width:100%; max-width:860px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 16px 48px rgba(0,0,0,0.9), 0 0 24px rgba(245,158,11,0.25); overflow:hidden; font-family:var(--font-sans);">
@@ -1329,6 +1336,30 @@
       </div>
     </div>
   </div>
+
+  <!-- Dedicated Mobile Module Navigation Dock (Fixed Thumb-Access Bar) -->
+  <nav class="mobile-module-dock" id="mobileModuleDock">
+    <button class="mob-module-tab active" data-view="bookmap" id="mobTabBookmap">
+      <span class="mob-tab-icon">📈</span>
+      <span class="mob-tab-label">Bookmap</span>
+    </button>
+    <button class="mob-module-tab" data-view="clusterdelta" id="mobTabCluster">
+      <span class="mob-tab-icon">📊</span>
+      <span class="mob-tab-label">Cluster</span>
+    </button>
+    <button class="mob-module-tab" data-view="footprint" id="mobTabFootprint">
+      <span class="mob-tab-icon">👣</span>
+      <span class="mob-tab-label">Footprint</span>
+    </button>
+    <button class="mob-module-tab" data-view="split" id="mobTabSplit">
+      <span class="mob-tab-icon">🔀</span>
+      <span class="mob-tab-label">Split</span>
+    </button>
+    <button class="mob-module-tab mob-dom-tab" id="mobTabDom">
+      <span class="mob-tab-icon">🪜</span>
+      <span class="mob-tab-label">DOM</span>
+    </button>
+  </nav>
 
 </body>
 </html>
