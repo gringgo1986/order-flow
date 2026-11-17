@@ -3388,75 +3388,72 @@ class FootprintRenderer {
 
     this.hoverCell = null;
 
-    // 6.5 Draw Unfinished Auction Rays (Untested Highs / Lows)
+    // 6.5 Draw Unfinished Auction Rays (Untested Highs / Lows - Cleaned: max 2 active untested rays)
     if (this.cdShowUnfinished !== false) {
       ctx.save();
-      for (let i = 0; i < processedCandles.length - 1; i++) {
+      let drawnUfHigh = 0;
+      let drawnUfLow = 0;
+      // Iterate backwards from the most recent closed candle so only the 2 closest active rays are shown
+      for (let i = processedCandles.length - 2; i >= 0; i--) {
         const pc = processedCandles[i];
         const colStartX = startX + i * colW + colW / 2;
 
-        if (pc.unfinishedHigh) {
+        if (pc.unfinishedHigh && drawnUfHigh < 2) {
           const ufPrice = pc.unfinishedHigh.price;
-          // Check if any subsequent candle swept this high
           let tested = false;
-          let sweptX = chartW;
           for (let k = i + 1; k < processedCandles.length; k++) {
             if (processedCandles[k].raw.high >= ufPrice) {
               tested = true;
-              sweptX = startX + k * colW + colW / 2;
               break;
             }
           }
-          if (ufPrice >= lowest && ufPrice <= highest) {
+          if (!tested && ufPrice >= lowest && ufPrice <= highest) {
+            drawnUfHigh++;
             const uy = priceToRowY(ufPrice + step * 0.5);
-            ctx.strokeStyle = tested ? 'rgba(244, 63, 94, 0.28)' : '#f43f5e';
-            ctx.lineWidth = tested ? 0.9 : 1.6;
-            ctx.setLineDash(tested ? [3, 3] : [6, 3]);
+            ctx.strokeStyle = '#f43f5e';
+            ctx.lineWidth = 1.3;
+            ctx.setLineDash([5, 3]);
             ctx.beginPath();
             ctx.moveTo(colStartX, uy);
-            ctx.lineTo(sweptX, uy);
+            ctx.lineTo(chartW, uy);
             ctx.stroke();
             ctx.setLineDash([]);
 
-            if (!tested) {
-              ctx.fillStyle = '#f43f5e';
-              ctx.font = 'bold 8px "JetBrains Mono", monospace';
-              ctx.textAlign = 'right';
-              ctx.fillText(`⚡UF HIGH $${ufPrice.toFixed(2)}`, chartW - 4, uy - 3);
-            }
+            ctx.fillStyle = '#f43f5e';
+            ctx.font = 'bold 8px "JetBrains Mono", monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(`⚡UF HIGH $${ufPrice.toFixed(2)}`, chartW - 4, uy - 3);
           }
         }
 
-        if (pc.unfinishedLow) {
+        if (pc.unfinishedLow && drawnUfLow < 2) {
           const ufPrice = pc.unfinishedLow.price;
           let tested = false;
-          let sweptX = chartW;
           for (let k = i + 1; k < processedCandles.length; k++) {
             if (processedCandles[k].raw.low <= ufPrice) {
               tested = true;
-              sweptX = startX + k * colW + colW / 2;
               break;
             }
           }
-          if (ufPrice >= lowest && ufPrice <= highest) {
+          if (!tested && ufPrice >= lowest && ufPrice <= highest) {
+            drawnUfLow++;
             const uy = priceToRowY(ufPrice + step * 0.5);
-            ctx.strokeStyle = tested ? 'rgba(16, 185, 129, 0.28)' : '#10b981';
-            ctx.lineWidth = tested ? 0.9 : 1.6;
-            ctx.setLineDash(tested ? [3, 3] : [6, 3]);
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 1.3;
+            ctx.setLineDash([5, 3]);
             ctx.beginPath();
             ctx.moveTo(colStartX, uy);
-            ctx.lineTo(sweptX, uy);
+            ctx.lineTo(chartW, uy);
             ctx.stroke();
             ctx.setLineDash([]);
 
-            if (!tested) {
-              ctx.fillStyle = '#10b981';
-              ctx.font = 'bold 8px "JetBrains Mono", monospace';
-              ctx.textAlign = 'right';
-              ctx.fillText(`⚡UF LOW $${ufPrice.toFixed(2)}`, chartW - 4, uy - 3);
-            }
+            ctx.fillStyle = '#10b981';
+            ctx.font = 'bold 8px "JetBrains Mono", monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(`⚡UF LOW $${ufPrice.toFixed(2)}`, chartW - 4, uy - 3);
           }
         }
+        if (drawnUfHigh >= 2 && drawnUfLow >= 2) break;
       }
       ctx.restore();
     }
@@ -4265,7 +4262,20 @@ class FootprintRenderer {
       }
     }
 
-    // Draw the horizontal lines & tags
+    // Draw the horizontal lines & tags (Smart SNR Consolidation: only core anchors get left badges)
+    const curP = livePrice || 0;
+    const resLevels = cdLevels.filter(lv => lv.price > curP && (lv.code.includes('RES') || lv.code.includes('HIGH'))).sort((a,b) => a.price - b.price);
+    const supLevels = cdLevels.filter(lv => lv.price < curP && (lv.code.includes('SUP') || lv.code.includes('LOW'))).sort((a,b) => b.price - a.price);
+
+    const nearestRes = resLevels[0];
+    const nearestSup = supLevels[0];
+
+    for (const lv of cdLevels) {
+      lv.showLeftBadge = ['1D OPEN', '1D HIGH', '1D LOW', 'VWAP', 'dPOC'].includes(lv.code) ||
+                         (nearestRes && lv === nearestRes) ||
+                         (nearestSup && lv === nearestSup);
+    }
+
     const drawnCdTagYs = [];
     for (const lv of cdLevels) {
       if (lv.price < lowest || lv.price > highest) continue;
@@ -4274,40 +4284,42 @@ class FootprintRenderer {
 
       ctx.save();
       ctx.setLineDash(lv.dash || [5, 3]);
-      ctx.strokeStyle = lv.col;
-      ctx.lineWidth = lv.width || 1.2;
+      ctx.strokeStyle = lv.showLeftBadge ? lv.col : (lv.col + '55'); // subtle line if secondary
+      ctx.lineWidth = lv.showLeftBadge ? (lv.width || 1.2) : 0.8;
       ctx.beginPath();
       ctx.moveTo(0, ly);
       ctx.lineTo(chartW, ly);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Anti-Collision Badge Tag on LEFT side of chart (Keeps right live candle area 100% spacious)
-      const tagText = `${lv.label} $${lv.price.toFixed(2)}`;
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      const tagW = ctx.measureText(tagText).width + 10;
+      // Anti-Collision Badge Tag on LEFT side of chart ONLY for core anchors
+      if (lv.showLeftBadge) {
+        const tagText = `${lv.label} $${lv.price.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tagW = ctx.measureText(tagText).width + 10;
 
-      let tagX = 8;
-      let tagY = ly;
-      let colShift = 0;
-      while (drawnCdTagYs.some(pt => Math.abs(pt.y - tagY) < 15 && Math.abs(pt.x - tagX) < (tagW + 8)) && colShift < 4) {
-        tagX += tagW + 8;
-        colShift++;
-      }
+        let tagX = 8;
+        let tagY = ly;
+        let colShift = 0;
+        while (drawnCdTagYs.some(pt => Math.abs(pt.y - tagY) < 15 && Math.abs(pt.x - tagX) < (tagW + 8)) && colShift < 4) {
+          tagX += tagW + 8;
+          colShift++;
+        }
 
-      if (tagY <= topHeaderH + chartH - 10) {
-        drawnCdTagYs.push({ x: tagX, y: tagY });
+        if (tagY <= topHeaderH + chartH - 10) {
+          drawnCdTagYs.push({ x: tagX, y: tagY });
 
-        ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
-        ctx.fillRect(tagX, tagY - 7, tagW, 14);
-        ctx.fillStyle = lv.bg;
-        ctx.fillRect(tagX, tagY - 7, tagW, 14);
-        ctx.strokeStyle = lv.col;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(tagX, tagY - 7, tagW, 14);
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.fillText(tagText, tagX + tagW / 2, tagY + 3.5);
+          ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
+          ctx.fillRect(tagX, tagY - 7, tagW, 14);
+          ctx.fillStyle = lv.bg;
+          ctx.fillRect(tagX, tagY - 7, tagW, 14);
+          ctx.strokeStyle = lv.col;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(tagX, tagY - 7, tagW, 14);
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.fillText(tagText, tagX + tagW / 2, tagY + 3.5);
+        }
       }
       ctx.restore();
     }
