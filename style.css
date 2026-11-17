@@ -1655,3 +1655,146 @@ header.app-header {
   background: rgba(56, 189, 248, 0.45) !important;
   box-shadow: inset 1px 0 0 rgba(56, 189, 248, 0.9);
 }
+
+/* ==================== V47.0 MOBILE QUICK SWAP & NAVIGATION DOCK ==================== */
+.mobile-module-dock,
+.mobile-quick-switcher {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  /* Dedicated Mobile Bottom Module Bar (Native App Style) */
+  .mobile-module-dock {
+    display: flex !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 52px !important;
+    z-index: 99990 !important;
+    background: rgba(8, 12, 22, 0.96) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-top: 1.5px solid rgba(56, 189, 248, 0.4) !important;
+    box-shadow: 0 -6px 25px rgba(0, 0, 0, 0.85), 0 0 15px rgba(56, 189, 248, 0.15) !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+    padding: 0 4px !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  .mob-module-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 48px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #94a3b8;
+    cursor: pointer;
+    position: relative;
+    padding: 3px 2px;
+    border-radius: 6px;
+    transition: all 0.18s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mob-module-tab .mob-tab-icon {
+    font-size: 16px;
+    line-height: 1.2;
+    transition: transform 0.18s ease;
+  }
+
+  .mob-module-tab .mob-tab-label {
+    font-size: 9.5px;
+    font-family: var(--font-mono, monospace);
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    margin-top: 2px;
+  }
+
+  .mob-module-tab:active {
+    transform: scale(0.90);
+  }
+
+  .mob-module-tab.active {
+    color: #ffd60a !important;
+    background: linear-gradient(180deg, rgba(255, 214, 10, 0.18), transparent) !important;
+  }
+
+  .mob-module-tab.active .mob-tab-icon {
+    transform: translateY(-2px) scale(1.18);
+    filter: drop-shadow(0 0 6px rgba(255, 214, 10, 0.8));
+  }
+
+  .mob-module-tab.active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 20%;
+    right: 20%;
+    height: 3px;
+    background: #ffd60a;
+    border-radius: 0 0 3px 3px;
+    box-shadow: 0 0 10px #ffd60a;
+  }
+
+  .mob-module-tab.mob-dom-tab.active-dom {
+    color: #00e676 !important;
+    background: linear-gradient(180deg, rgba(0, 230, 118, 0.18), transparent) !important;
+  }
+
+  .mob-module-tab.mob-dom-tab.active-dom::after {
+    background: #00e676 !important;
+    box-shadow: 0 0 10px #00e676 !important;
+  }
+
+  /* Space for bottom dock bar on mobile */
+  .main-workspace {
+    margin-bottom: 52px !important;
+  }
+
+  .mobile-dom-fab {
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Floating Quick Switcher Pill (Top Right of Chart on Mobile) */
+  .mobile-quick-switcher {
+    display: inline-flex !important;
+    position: absolute !important;
+    top: 8px !important;
+    right: 8px !important;
+    z-index: 85 !important;
+    background: rgba(8, 14, 28, 0.88) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(56, 189, 248, 0.45) !important;
+    border-radius: 16px !important;
+    padding: 2px !important;
+    gap: 3px !important;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.6) !important;
+  }
+
+  .mqs-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-family: var(--font-mono, monospace);
+    font-size: 8.5px;
+    font-weight: 800;
+    padding: 3px 7px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .mqs-btn.active {
+    background: #ffd60a !important;
+    color: #000000 !important;
+    font-weight: 900 !important;
+    box-shadow: 0 0 8px rgba(255, 214, 10, 0.6);
+  }
+}
