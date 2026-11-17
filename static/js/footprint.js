@@ -1269,32 +1269,33 @@ class FootprintRenderer {
   _drawSessionLevels(ctx, sessions, candles = [], lastPrice = 0) {
     if (!sessions) return;
     ctx.save();
+    const tfCfg = window.snrTfFilter || { M15: true, M30: false, H1: true, H4: false, D1: true, W1: false, SESSION: true };
     const rawLevels = [
-      // 1D (Daily) Major Levels (Clean Institutional Anchors)
-      { price: sessions.pdh,         label: '1D HIGH',  col: '#fde047', isMajor: true },
-      { price: sessions.pdl,         label: '1D LOW',   col: '#fde047', isMajor: true },
-      { price: sessions.daily_open,  label: '1D OPEN',  col: '#38bdf8', isMajor: true },
+      // 1W (Previous Week High/Low)
+      { price: sessions.pwh,         label: 'PWH (1W H)', tf: 'W1', col: '#f43f5e', isMajor: true },
+      { price: sessions.pwl,         label: 'PWL (1W L)', tf: 'W1', col: '#10b981', isMajor: true },
 
-      // Higher Timeframe SNR H8, H4, H1, M30, M15
-      { price: sessions.h8_res || sessions.h8_high, label: 'H8 RES', col: '#e11d48', isMajor: true },
-      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SUP', col: '#059669', isMajor: true },
-      { price: sessions.h4_res || sessions.h4_high, label: 'H4 RES', col: '#ec4899', isMajor: true },
-      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SUP', col: '#10b981', isMajor: true },
-      { price: sessions.h1_res || sessions.h1_high, label: 'H1 RES', col: '#f97316', isMajor: true },
-      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SUP', col: '#06b6d4', isMajor: true },
-      { price: sessions.m30_res || sessions.m30_high, label: 'M30 RES', col: '#a855f7', isMajor: false },
-      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SUP', col: '#3b82f6', isMajor: false },
-      { price: sessions.m15_res || sessions.m15_high, label: 'M15 RES', col: '#fbbf24', isMajor: false },
-      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SUP', col: '#2dd4bf', isMajor: false },
+      // 1D (Daily) Major Levels
+      { price: sessions.pdh,         label: 'PDH (1D H)', tf: 'D1', col: '#fde047', isMajor: true },
+      { price: sessions.pdl,         label: 'PDL (1D L)', tf: 'D1', col: '#fde047', isMajor: true },
+      { price: sessions.daily_open,  label: '1D OPEN',    tf: 'D1', col: '#38bdf8', isMajor: true },
+
+      // Higher Timeframe SNR H4, H1, M30, M15
+      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SUPPLY', tf: 'H4', col: '#ec4899', isMajor: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 DEMAND', tf: 'H4', col: '#10b981', isMajor: true },
+      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SUPPLY', tf: 'H1', col: '#f97316', isMajor: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 DEMAND', tf: 'H1', col: '#06b6d4', isMajor: true },
+      { price: sessions.m30_res || sessions.m30_high, label: 'M30 RES', tf: 'M30', col: '#a855f7', isMajor: false },
+      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SUP', tf: 'M30', col: '#3b82f6', isMajor: false },
+      { price: sessions.m15_res || sessions.m15_high, label: 'M15 RES', tf: 'M15', col: '#fbbf24', isMajor: false },
+      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SUP', tf: 'M15', col: '#2dd4bf', isMajor: false },
 
       // Session Extremes
-      { price: sessions.asian_high,  label: 'ASIA HIGH', col: '#f59e0b', isMajor: false },
-      { price: sessions.asian_low,   label: 'ASIA LOW',  col: '#f59e0b', isMajor: false },
-      { price: sessions.london_high, label: 'LDN HIGH',  col: '#06b6d4', isMajor: false },
-      { price: sessions.london_low,  label: 'LDN LOW',   col: '#06b6d4', isMajor: false },
-      { price: sessions.ny_high,     label: 'NY HIGH',   col: '#c084fc', isMajor: false },
-      { price: sessions.ny_low,      label: 'NY LOW',    col: '#c084fc', isMajor: false }
-    ];
+      { price: sessions.asian_high,  label: 'ASIA HIGH', tf: 'SESSION', col: '#f59e0b', isMajor: false },
+      { price: sessions.asian_low,   label: 'ASIA LOW',  tf: 'SESSION', col: '#f59e0b', isMajor: false },
+      { price: sessions.london_high, label: 'LDN HIGH',  tf: 'SESSION', col: '#06b6d4', isMajor: false },
+      { price: sessions.london_low,  label: 'LDN LOW',   tf: 'SESSION', col: '#06b6d4', isMajor: false }
+    ].filter(r => r.price > 0 && tfCfg[r.tf] !== false);
 
     // Smart SNR Consolidation: De-clutter 18 stacked lines into Core Institutional Anchors
     const curP = lastPrice || (candles.length > 0 ? candles[candles.length - 1].close : 0);
