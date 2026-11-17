@@ -1146,21 +1146,65 @@ class BookmapRenderer {
           return selected;
         };
 
+        // Section A: Track Liquidity Age, Size Delta, Touched vs Traded, and Disappeared/Pulled Walls
+        if (!this._liqStateMap) this._liqStateMap = {};
+        if (!this._pulledGhostWalls) this._pulledGhostWalls = [];
+        const curLiveP = this._currentPrice || 0;
+
+        const updateLiqMeta = (p, v, isAsk) => {
+          const key = p.toFixed(2);
+          let st = this._liqStateMap[key];
+          if (!st) {
+            st = { firstSeen: now, startVol: v, prevVol: v, maxVol: v, touched: false, tradedVol: 0, lastSeen: now, isAsk };
+            this._liqStateMap[key] = st;
+          } else {
+            st.lastSeen = now;
+            if (v > st.maxVol) st.maxVol = v;
+          }
+          if (curLiveP > 0 && Math.abs(curLiveP - p) <= 0.15) {
+            st.touched = true;
+          }
+          const deltaV = Math.round(v - st.startVol);
+          st.prevVol = v;
+          const ageSec = Math.max(1, Math.round((now - st.firstSeen) / 1000));
+          const ageStr = ageSec >= 60 ? `${Math.floor(ageSec / 60)}m` : `${ageSec}s`;
+          const deltaStr = deltaV > 0 ? `+${deltaV}L` : (deltaV < 0 ? `${deltaV}L` : '0L');
+          const touchState = st.touched ? 'DIUJI' : 'AKTIF';
+          return { ageStr, deltaStr, touchState, deltaV };
+        };
+
+        // Check for walls that suddenly disappeared/pulled before price reached them
+        for (const [k, st] of Object.entries(this._liqStateMap)) {
+          const p = +k;
+          const curBookV = (asks[k] || bids[k] || 0);
+          if (st.maxVol >= 55 && curBookV < 20 && (now - st.lastSeen < 4000)) {
+            const wasTouched = curLiveP > 0 && Math.abs(curLiveP - p) <= 0.20;
+            if (!wasTouched && !this._pulledGhostWalls.some(g => Math.abs(g.p - p) < 0.20)) {
+              this._pulledGhostWalls.push({ p, dropped: Math.round(st.maxVol - curBookV), time: now, isAsk: st.isAsk });
+            }
+            delete this._liqStateMap[k];
+          } else if (now - st.lastSeen > 60000) {
+            delete this._liqStateMap[k];
+          }
+        }
+        this._pulledGhostWalls = this._pulledGhostWalls.filter(g => now - g.time < 12000).slice(-2);
+
         const topAskWalls = pickTopWalls(asks, 50, 3);
         const topBidWalls = pickTopWalls(bids, 50, 3);
 
         const drawSharkWallOverlay = (wall, isAsk, rankIdx) => {
           const wy = wall.wy;
+          const meta = updateLiqMeta(wall.p, wall.v, isAsk);
           const isMega = wall.v >= 90;
           const col = isAsk ? (isMega ? '#ff2a55' : '#fb923c') : (isMega ? '#00f59b' : '#facc15');
-          const glowBg = isAsk ? 'rgba(255, 42, 85, 0.16)' : 'rgba(0, 245, 155, 0.16)';
+          const glowBg = isAsk ? 'rgba(255, 42, 85, 0.14)' : 'rgba(0, 245, 155, 0.14)';
 
-          // 1. Subtle glowing laser guide across the heatmap ribbon
+          // 1. Active Liquidity Guide Line (Solid if Tested/Traded, Dashed if Untouched Active)
           ctx.fillStyle = glowBg;
           ctx.fillRect(this.CHART_LEFT, wy - drawH * 0.55, this.CHART_WIDTH, drawH * 1.1);
 
           ctx.save();
-          ctx.setLineDash([6, 4]);
+          ctx.setLineDash(meta.touchState === 'DIUJI' ? [] : [6, 4]);
           ctx.strokeStyle = col;
           ctx.lineWidth = isMega ? 1.5 : 1.0;
           ctx.beginPath();
@@ -1169,23 +1213,21 @@ class BookmapRenderer {
           ctx.stroke();
           ctx.restore();
 
-          // 2. Clear & Uncluttered Shark Wall Tag inside Projection Zone (NOW_X -> CHART_RIGHT)
-          // NEVER obstruct live candlestick & trade bubbles in front of NOW_X
+          // 2. Large Activity Wall Tag inside Projection Zone showing Size, Delta, Age & Status
           if (rankIdx < 2) {
-            const sideLbl = isAsk ? 'SELL' : 'BUY';
-            const fullTxt = `🦈 ${Math.round(wall.v)}L ${sideLbl}`;
-            const shortTxt = `🦈 ${Math.round(wall.v)}L`;
-            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            const fullTxt = `📊 ${Math.round(wall.v)}L (${meta.deltaStr}•${meta.ageStr}•${meta.touchState})`;
+            const shortTxt = `📊 ${Math.round(wall.v)}L ${meta.ageStr}`;
+            ctx.font = 'bold 8px "JetBrains Mono", monospace';
             const fullW = ctx.measureText(fullTxt).width + 8;
-            const useFull = (projW >= fullW + 8);
+            const useFull = (projW >= fullW + 4);
             const pTxt = useFull ? fullTxt : shortTxt;
-            const ptw = Math.min(projW - 6, ctx.measureText(pTxt).width + 8);
+            const ptw = Math.min(projW - 4, ctx.measureText(pTxt).width + 8);
 
             ctx.fillStyle = isAsk ? 'rgba(28, 6, 14, 0.92)' : 'rgba(4, 24, 16, 0.92)';
-            ctx.fillRect(projX + 4, wy - 7, ptw, 14);
+            ctx.fillRect(projX + 3, wy - 7, ptw, 14);
             ctx.strokeStyle = col;
             ctx.lineWidth = 1;
-            ctx.strokeRect(projX + 4, wy - 7, ptw, 14);
+            ctx.strokeRect(projX + 3, wy - 7, ptw, 14);
             ctx.fillStyle = col;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
@@ -1195,6 +1237,31 @@ class BookmapRenderer {
 
         topAskWalls.forEach((w, idx) => drawSharkWallOverlay(w, true, idx));
         topBidWalls.forEach((w, idx) => drawSharkWallOverlay(w, false, idx));
+
+        // 2B. Render Ghost Indicator for Disappeared/Pulled Liquidity (Cancelled before price touched)
+        for (const gw of this._pulledGhostWalls) {
+          const gy = this.priceToY(gw.p);
+          if (gy >= this.CHART_TOP + 14 && gy <= this.CHART_BOTTOM - 14) {
+            ctx.save();
+            ctx.setLineDash([3, 5]);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+            ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(this.CHART_LEFT, gy);
+            ctx.lineTo(this.NOW_X, gy);
+            ctx.stroke();
+            ctx.font = 'bold 8px "JetBrains Mono", monospace';
+            const gTxt = `👻 HILANG -${gw.dropped}L @ $${gw.p.toFixed(2)} (Ditarik Sebelum Sentuh)`;
+            const gtw = ctx.measureText(gTxt).width + 8;
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+            ctx.fillRect(this.NOW_X - gtw - 10, gy - 6.5, gtw, 13);
+            ctx.fillStyle = '#94a3b8';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(gTxt, this.NOW_X - gtw - 6, gy);
+            ctx.restore();
+          }
+        }
       }
 
       // 3. Spoofing Pulling & Stacking Detection Badges on Heatmap
@@ -2251,58 +2318,80 @@ class BookmapRenderer {
     if (!sessions) return;
     ctx.save();
 
+    // Section C: Initialize Global Timeframe Filter & Touch Tracker
+    if (!window.snrTfFilter) {
+      window.snrTfFilter = { M15: true, M30: false, H1: true, H4: false, D1: true, W1: false, SESSION: true };
+    }
+    if (!window.toggleSnrTf) {
+      window.toggleSnrTf = function(tf, btnEl) {
+        window.snrTfFilter[tf] = !window.snrTfFilter[tf];
+        if (btnEl) {
+          btnEl.classList.toggle('active', window.snrTfFilter[tf]);
+          btnEl.style.opacity = window.snrTfFilter[tf] ? '1' : '0.45';
+        }
+      };
+    }
+    if (!this._snrTouchTracker) this._snrTouchTracker = {};
+
+    const tfCfg = window.snrTfFilter;
     const rawLevels = [
-      // 1D (Daily) Levels - Major Institutional S/R (Clean Institutional Labels)
-      { price: sessions.pdh,         label: '1D HIGH',  col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.pdl,         label: '1D LOW',   col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.daily_open,  label: '1D OPEN',  col: '#38bdf8', bg: 'rgba(56, 189, 248, 0.26)', isHtf: true },
+      // 1W (Previous Week High/Low)
+      { price: sessions.pwh,         label: 'PWH (1W HIGH)', tf: 'W1', strength: '95%', col: '#f43f5e', bg: 'rgba(244, 63, 94, 0.26)', isHtf: true },
+      { price: sessions.pwl,         label: 'PWL (1W LOW)',  tf: 'W1', strength: '95%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.26)', isHtf: true },
 
-      // H8 & H4 Swing Levels
-      { price: sessions.h8_res || sessions.h8_high, label: 'H8 RES', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.26)', isHtf: true },
-      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SUP', col: '#059669', bg: 'rgba(5, 150, 105, 0.26)', isHtf: true },
-      { price: sessions.h4_res || sessions.h4_high, label: 'H4 RES', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
-      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SUP', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
+      // 1D (Previous Day High/Low & Daily Open)
+      { price: sessions.pdh,         label: 'PDH (1D HIGH)', tf: 'D1', strength: '90%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.pdl,         label: 'PDL (1D LOW)',  tf: 'D1', strength: '90%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.daily_open,  label: '1D OPEN',       tf: 'D1', strength: '85%', col: '#38bdf8', bg: 'rgba(56, 189, 248, 0.26)', isHtf: true },
 
-      // H1 Swing Levels
-      { price: sessions.h1_res || sessions.h1_high, label: 'H1 RES', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
-      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SUP', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
+      // H4 Supply/Demand
+      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SUPPLY', tf: 'H4', strength: '85%', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 DEMAND', tf: 'H4', strength: '85%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
 
-      // M30 Swing Levels
-      { price: sessions.m30_res || sessions.m30_high, label: 'M30 RES', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
-      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SUP', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
+      // H1 Supply/Demand
+      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SUPPLY', tf: 'H1', strength: '78%', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 DEMAND', tf: 'H1', strength: '78%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
 
-      // M15 Swing Levels
-      { price: sessions.m15_res || sessions.m15_high, label: 'M15 RES', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
-      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SUP', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true },
+      // M30 Supply/Demand
+      { price: sessions.m30_res || sessions.m30_high, label: 'M30 RES', tf: 'M30', strength: '70%', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
+      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SUP', tf: 'M30', strength: '70%', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
 
-      // Session Extremes
-      { price: sessions.asian_high,  label: 'ASIA HIGH', col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
-      { price: sessions.asian_low,   label: 'ASIA LOW',  col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
-      { price: sessions.london_high, label: 'LDN HIGH',  col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
-      { price: sessions.london_low,  label: 'LDN LOW',   col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
-      { price: sessions.ny_high,     label: 'NY HIGH',   col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false },
-      { price: sessions.ny_low,      label: 'NY LOW',    col: '#c084fc', bg: 'rgba(192, 132, 252, 0.18)', isHtf: false }
-    ];
+      // M15 Supply/Demand
+      { price: sessions.m15_res || sessions.m15_high, label: 'M15 RES', tf: 'M15', strength: '65%', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
+      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SUP', tf: 'M15', strength: '65%', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true },
 
-    // Smart SNR Consolidation: De-clutter 18 stacked lines into Core Institutional Anchors
+      // Session Extremes (Asian / London)
+      { price: sessions.asian_high,  label: 'ASIA HIGH', tf: 'SESSION', strength: '72%', col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
+      { price: sessions.asian_low,   label: 'ASIA LOW',  tf: 'SESSION', strength: '72%', col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
+      { price: sessions.london_high, label: 'LDN HIGH',  tf: 'SESSION', strength: '74%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
+      { price: sessions.london_low,  label: 'LDN LOW',   tf: 'SESSION', strength: '74%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false }
+    ].filter(r => r.price > 0 && tfCfg[r.tf] !== false);
+
     const currentPrice = this._currentPrice || (this._latestSnapshot && (this._latestSnapshot.last_price || this._latestSnapshot.bid)) || 0;
-    
-    // 1. Always keep 1D (Daily) Anchors
-    const coreLevels = rawLevels.filter(r => ['1D OPEN', '1D HIGH', '1D LOW'].includes(r.label));
-    
-    // 2. Select ONLY the Nearest 1 Major Resistance above current price
-    const resLevels = rawLevels.filter(r => r.price > currentPrice && r.label.includes('RES') || r.label.includes('HIGH'));
-    resLevels.sort((a, b) => a.price - b.price); // Ascending: closest above
-    if (resLevels.length > 0) coreLevels.push(resLevels[0]);
+    const nowTs = Date.now();
 
-    // 3. Select ONLY the Nearest 1 Major Support below current price
-    const supLevels = rawLevels.filter(r => r.price < currentPrice && r.label.includes('SUP') || r.label.includes('LOW'));
-    supLevels.sort((a, b) => b.price - a.price); // Descending: closest below
-    if (supLevels.length > 0) coreLevels.push(supLevels[0]);
+    // Update Fresh vs Tested touch count
+    for (const r of rawLevels) {
+      const k = r.price.toFixed(2);
+      if (!this._snrTouchTracker[k]) this._snrTouchTracker[k] = { count: 0, lastTouch: 0 };
+      if (currentPrice > 0 && Math.abs(currentPrice - r.price) <= 0.18 && (nowTs - this._snrTouchTracker[k].lastTouch > 35000)) {
+        this._snrTouchTracker[k].count += 1;
+        this._snrTouchTracker[k].lastTouch = nowTs;
+      }
+    }
+
+    // Select active levels while preventing clutter (max 2 above + max 2 below + 1D Open)
+    const coreLevels = rawLevels.filter(r => r.label === '1D OPEN');
+    const resLevels = rawLevels.filter(r => r.price > currentPrice && r.label !== '1D OPEN').sort((a, b) => a.price - b.price);
+    const supLevels = rawLevels.filter(r => r.price < currentPrice && r.label !== '1D OPEN').sort((a, b) => b.price - a.price);
+    coreLevels.push(...resLevels.slice(0, 2));
+    coreLevels.push(...supLevels.slice(0, 2));
 
     const levels = [];
     for (const raw of coreLevels) {
       if (!raw.price || raw.price <= 0) continue;
+      const tInfo = this._snrTouchTracker[raw.price.toFixed(2)] || { count: 0 };
+      const freshTag = tInfo.count === 0 ? 'FRESH' : `TESTED ${tInfo.count}x`;
       const matched = levels.find(l => Math.abs(l.price - raw.price) < 0.35);
       if (matched) {
         if (!matched.labels.includes(raw.label)) matched.labels.push(raw.label);
@@ -2310,6 +2399,7 @@ class BookmapRenderer {
         levels.push({
           price: raw.price,
           labels: [raw.label],
+          metaTag: `${freshTag}•${raw.strength}`,
           col: raw.col,
           bg: raw.bg,
           isHtf: raw.isHtf
@@ -2350,8 +2440,8 @@ class BookmapRenderer {
         ctx.shadowBlur = 0;
         ctx.restore();
 
-        // 2. Consolidated & 100% collision-proof badge slotting
-        const text = `${lv.labels.join(' • ')} $${lv.price.toFixed(2)}`;
+        // 2. Consolidated & 100% collision-proof badge slotting (with Fresh/Tested & Strength)
+        const text = `${lv.labels.join('•')} $${lv.price.toFixed(2)} [${lv.metaTag || 'FRESH'}]`;
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
         const tw = ctx.measureText(text).width + 8;
 
@@ -2412,14 +2502,16 @@ class BookmapRenderer {
       }
     }
 
-    // Draw Session Liquidity Sweep Alert Banner if active (< 60s old) and NOT in Zen mode
+    // Section B: Draw Sweep Reversal vs Normal Breakout Alert Banner (< 60s old)
     const sw = sessions.sweep_alert;
     if (!this.bmZenMode && sw && (Date.now() - sw.timestamp < 60000)) {
       const sy = this.priceToY(sw.level_price);
       if (sy >= this.CHART_TOP + 10 && sy <= this.CHART_BOTTOM - 10) {
-        const isBull = sw.bias === 'BUY';
-        const col = isBull ? '#00e676' : '#ff3366';
-        const txt = `${sw.badge} → REVERSAL ${sw.bias}`;
+        const isBreakout = sw.is_sweep === false;
+        const isBull = sw.bias === 'BUY' || sw.bias === 'BREAKOUT_UP';
+        const col = isBreakout ? '#fbbf24' : (isBull ? '#00e676' : '#ff3366');
+        const actionTxt = isBreakout ? 'BREAKOUT BIASA' : `POTENSI REVERSAL ${sw.bias}`;
+        const txt = `${sw.badge} → ${actionTxt}`;
         ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
         const w = ctx.measureText(txt).width + 14;
         const x = this.CHART_LEFT + 165;
@@ -2592,7 +2684,9 @@ class BookmapRenderer {
       // Compact Iceberg Pill with Anti-Collision Slotting
       const badgeH = 15;
       const resolvedY = this._resolveNonOverlappingY(y, badgeH, 20);
-      const txt = `🧊 ICE ${ic.bias} $${ic.price.toFixed(2)} (${ic.absorbed_vol}L${reloadTxt})`;
+      const confPct = ic.confidence || 78;
+      const hitsCnt = ic.hits || reloadCount;
+      const txt = `🧊 POTENTIAL ICEBERG ${ic.bias} $${ic.price.toFixed(2)} [${confPct}% | ${hitsCnt}x Isian, ${ic.absorbed_vol}L]`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const tw = ctx.measureText(txt).width + 12;
       const bx = this.NOW_X - tw - 16;
@@ -3330,7 +3424,7 @@ class BookmapRenderer {
     // Single Toast Notification (Strictly for >= 100L Mega Shark alerts)
     if (window.orderFlowApp && window.orderFlowApp.showToast) {
       const dirTxt = side === 'bid' ? '🟢 BELIAN' : '🔴 JUALAN';
-      window.orderFlowApp.showToast(`👑 [AMARAN MEGA JERUNG ≥100L] +${vol.toFixed(0)}L ${dirTxt} @ $${price.toFixed(2)} [Potensi Win: 90%+]`);
+      window.orderFlowApp.showToast(`📊 [LARGE ACTIVITY ≥100L | Keyakinan 85%] +${vol.toFixed(0)}L ${dirTxt} @ $${price.toFixed(2)} [Potensi Win: 90%+]`);
     }
   }
 
