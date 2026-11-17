@@ -862,10 +862,8 @@ class DOMManager {
 
           </div>
 
-          <div class="dom-col price" style="color:#ffd60a; font-weight:900; font-size:10.5px; letter-spacing:0.2px;">
-
-            ⚡ ${currentPrice.toFixed(2)} <span style="color:${deltaColor}; font-size:8.5px; margin-left:2px;">(${spread.toFixed(2)})</span>
-
+          <div class="dom-col price" style="color:#ffd60a; font-weight:900; font-size:11px; letter-spacing:0.2px;" title="Harga Pasaran: $${currentPrice.toFixed(2)} | Spread: $${spread.toFixed(2)} | Bid: $${(snapshot.bid || currentPrice).toFixed(2)} | Ask: $${(snapshot.ask || currentPrice).toFixed(2)}">
+            ${currentPrice.toFixed(2)}
           </div>
 
           <div class="dom-col" style="justify-content:flex-end; padding-right:4px; color:#ff3366; font-weight:800; font-size:9.5px;">
