@@ -106,24 +106,41 @@ class BookmapRenderer {
     this._setupInteractions();
   }
 
-  /* ─── Anti-Collision Vertical Badge Slotting ───────────────────── */
-  _resolveNonOverlappingY(targetY, badgeH = 18, minGap = 20) {
-    if (!this._occupiedBadgeSlots) this._occupiedBadgeSlots = [];
-    let resolvedY = targetY;
-    let attempts = 0;
-    while (attempts < 8) {
-      const collision = this._occupiedBadgeSlots.find(slotY => Math.abs(slotY - resolvedY) < minGap);
-      if (!collision) break;
-      if (resolvedY + minGap <= this.CHART_BOTTOM - badgeH) {
-        resolvedY += minGap;
-      } else if (resolvedY - minGap >= this.CHART_TOP + badgeH) {
-        resolvedY -= minGap;
-      } else {
-        break;
-      }
-      attempts++;
+  /* ─── 2D Lane-Aware Anti-Collision Vertical Badge Slotting ────── */
+  _resolveNonOverlappingY(targetY, badgeH = 16, minGap = 19, lane = 'LEFT') {
+    if (!this._occupiedBadgeLanes) {
+      this._occupiedBadgeLanes = { LEFT: [], CENTER: [], RIGHT: [], PROJ: [] };
     }
-    this._occupiedBadgeSlots.push(resolvedY);
+    const slots = this._occupiedBadgeLanes[lane] || this._occupiedBadgeLanes.LEFT;
+    const minTop = (this.CHART_TOP || 0) + (lane === 'LEFT' ? 30 : 16);
+    const maxBot = (this.CHART_BOTTOM || 500) - badgeH - 6;
+
+    // Protect live price & active 3D trade bubble corridor in CENTER and RIGHT lanes
+    const liveY = this._currentPrice ? this.priceToY(this._currentPrice) : -999;
+    const protectLiveCorridor = (lane === 'RIGHT' || lane === 'CENTER') && liveY > minTop && liveY < maxBot;
+
+    const isColliding = (candY) => {
+      if (candY < minTop || candY > maxBot) return true;
+      if (protectLiveCorridor && Math.abs(candY - liveY) < 22) return true;
+      return slots.some(slotY => Math.abs(slotY - candY) < minGap);
+    };
+
+    let resolvedY = Math.max(minTop, Math.min(maxBot, targetY));
+    if (isColliding(resolvedY)) {
+      for (let step = 1; step <= 10; step++) {
+        const downY = targetY + step * minGap;
+        if (!isColliding(downY)) {
+          resolvedY = downY;
+          break;
+        }
+        const upY = targetY - step * minGap;
+        if (!isColliding(upY)) {
+          resolvedY = upY;
+          break;
+        }
+      }
+    }
+    slots.push(resolvedY);
     return resolvedY;
   }
 
@@ -615,18 +632,18 @@ class BookmapRenderer {
 
   /* ─── Bookmap Multi-Palette High-Definition Thermal Color Engine ── */
   getThermalColor(vol) {
-    // Institutional Clean Heatmap: Filter minor noise (< 18L) to create deep dark void contrast
-    let minCut = 18.0;
+    // Institutional Clean Heatmap: Filter ambient market-maker noise (< 22L) to preserve deep dark obsidian void
+    let minCut = 22.0;
     if (this.bmWallFilterOnly) {
-      minCut = 35.0;
+      minCut = 38.0;
     } else if (this.bmContrastMode === 'HIGH') {
-      minCut = 40.0; // Ultra Clean: Only major institutional walls
+      minCut = 42.0; // Ultra Clean: Only major institutional walls
     } else if (this.bmContrastMode === 'MED') {
-      minCut = 20.0; // Balanced: Clear walls, zero noise stripes
+      minCut = 22.0; // Balanced Institutional: Clear shelves & walls, zero barcode stripes
     } else if (this.bmContrastMode === 'LOW') {
-      minCut = 12.0;
+      minCut = 15.0;
     } else if (this.bmContrastMode === 'AUTO') {
-      minCut = this._autoMinCut || 18.0;
+      minCut = Math.max(20.0, this._autoMinCut || 22.0);
     }
 
     if (vol < minCut) return null;
@@ -634,33 +651,31 @@ class BookmapRenderer {
     let stops;
     if (this.bmPaletteMode === 'cyber') {
       stops = [
-        [3.0,   10,  10,  28, 0.22],  // Subtle Deep Indigo (Ambient)
-        [18.0,  28,  20,  82, 0.44],  // Muted Violet
-        [30.0,  52,  82, 210, 0.68],  // Cyber Blue ($0.50 shelf)
-        [45.0,  56, 189, 248, 0.82],  // Neon Aqua
-        [60.0,   0, 245, 212, 0.90],  // Hyper Mint ($1.00 wall)
-        [80.0, 247,  37, 133, 0.95],  // Laser Magenta Major Wall
-        [105.0, 255, 240, 250, 0.98]  // Bright Core
+        [22.0,  22,  18,  72, 0.34],  // Muted Deep Indigo
+        [34.0,  48,  82, 210, 0.56],  // Cyber Blue Shelf
+        [52.0,  56, 189, 248, 0.74],  // Neon Aqua Shelf
+        [72.0,   0, 245, 212, 0.86],  // Hyper Mint Major Wall
+        [92.0, 247,  37, 133, 0.93],  // Laser Magenta Shark Wall
+        [115.0, 255, 240, 250, 0.97]  // Bright Core
       ];
     } else if (this.bmPaletteMode === 'gold') {
       stops = [
-        [3.0,   14,  11,   6, 0.22],  // Subtle Dark Bronze (Ambient)
-        [18.0,  58,  38,  10, 0.44],  // Muted Copper
-        [30.0, 145,  90,  14, 0.68],  // Warm Amber ($0.50 shelf)
-        [45.0, 217, 155,  18, 0.82],  // Rich Gold
-        [60.0, 250, 204,  21, 0.90],  // Pure Gold ($1.00 wall)
-        [80.0, 249, 115,  22, 0.95],  // Solar Orange Major Wall
-        [105.0, 225,  29,  72, 0.98]  // Ruby Red Institutional Wall
+        [22.0,  48,  32,  10, 0.34],  // Muted Copper
+        [34.0, 145,  90,  14, 0.56],  // Warm Amber Shelf
+        [52.0, 217, 155,  18, 0.74],  // Rich Gold Shelf
+        [72.0, 250, 204,  21, 0.86],  // Pure Gold Major Wall
+        [92.0, 249, 115,  22, 0.93],  // Solar Orange Shark Wall
+        [115.0, 225,  29,  72, 0.97]  // Ruby Red Institutional Wall
       ];
     } else {
-      // Classic Bookmap Global+ High-Contrast Clean Spectrum (Zero Barcode / Pure Dark Void)
+      // Authentic Bookmap Global+ CME MBO Thermal Spectrum (Zero Barcode / Pure Dark Void)
       stops = [
-        [18.0,  12,  28,  55, 0.30],  // Subtle Deep Navy (Only visible when > 18L)
-        [32.0,   0, 140, 200, 0.58],  // Steel Blue / Cyan Liquidity Shelf
-        [50.0,   0, 210, 245, 0.75],  // Bright Aqua Shelf
-        [70.0, 255, 195,  15, 0.88],  // Radiant Gold Major Wall
-        [90.0, 255,  95,   0, 0.95],  // Fiery Orange Jerung Wall
-        [120.0, 245,  25,  40, 0.98]  // Vivid Crimson Mega Shark Wall
+        [22.0,  14,  38,  78, 0.28],  // Subtle Deep Navy Transition
+        [34.0,   0, 130, 195, 0.52],  // Steel Blue / Cyan Liquidity Shelf
+        [52.0,   0, 205, 240, 0.68],  // Bright Aqua Institutional Shelf
+        [72.0, 255, 196,  18, 0.84],  // Radiant Gold Major Wall
+        [94.0, 255,  92,   0, 0.92],  // Fiery Orange Jerung Wall
+        [118.0, 245,  25,  42, 0.96]  // Vivid Crimson Mega Shark Wall
       ];
     }
 
@@ -743,8 +758,8 @@ class BookmapRenderer {
       for (const v of Object.values(snapshot.order_book.asks || {})) if (v > 1) vols.push(v);
       if (vols.length > 5) {
         vols.sort((a, b) => a - b);
-        const medIdx = Math.floor(vols.length * 0.50);
-        this._autoMinCut = Math.max(6.0, Math.min(26.0, vols[medIdx] || 12.0));
+        const medIdx = Math.floor(vols.length * 0.65);
+        this._autoMinCut = Math.max(18.0, Math.min(30.0, vols[medIdx] || 22.0));
       }
     }
 
@@ -756,6 +771,7 @@ class BookmapRenderer {
     /* ── Professional Bookmap Pro Stable Deadzone Tracking (Zero Jitter / Zero Kembang-Kecut) ── */
     const currentPrice = this.lastKnownPrice || snapshot.last_price || snapshot.bid || ((Number.isFinite(this.minPrice) && Number.isFinite(this.maxPrice)) ? (this.minPrice + this.maxPrice) / 2 : 3880.0);
     this.lastKnownPrice = currentPrice;
+    this._currentPrice = currentPrice;
     const halfSpan = Math.max(2.5, this.bmHalfSpan || 4.5);
 
     // Ensure minPrice and maxPrice are valid finite numbers at all times
@@ -795,7 +811,8 @@ class BookmapRenderer {
       }
     }
 
-    this._occupiedBadgeSlots = []; // Reset anti-collision vertical slot registry
+    this._occupiedBadgeSlots = []; // Legacy fallback
+    this._occupiedBadgeLanes = { LEFT: [], CENTER: [], RIGHT: [], PROJ: [] }; // 2D Lane anti-collision registry
     /* ── 1. Clear Canvas with Bookmap Obsidian Navy Background ── */
     ctx.fillStyle = '#050a14';
     ctx.fillRect(0, 0, this.width, this.height);
@@ -1052,10 +1069,10 @@ class BookmapRenderer {
     ctx.clip();
 
     const PRICE_STEP = 0.10;
-    const pxPerStep  = Math.max(2.6, Math.abs(this.priceToY(0) - this.priceToY(PRICE_STEP)));
-    const drawH = pxPerStep + 0.85;
+    const pxPerStep  = Math.max(2.4, Math.abs(this.priceToY(0) - this.priceToY(PRICE_STEP)));
+    const drawH = Math.max(1.8, pxPerStep * 0.85);
 
-    // 1. Historical Heatmap (CHART_LEFT -> NOW_X)
+    // 1. Historical Heatmap (CHART_LEFT -> NOW_X) with Authentic MBO Consumption Caps
     if (history && history.length >= 2) {
       for (let i = 0; i < history.length; i++) {
         const snap     = history[i];
@@ -1067,28 +1084,52 @@ class BookmapRenderer {
         if (x2 < this.CHART_LEFT || x1 > this.NOW_X) continue;
 
         const drawX = Math.max(this.CHART_LEFT, x1);
-        const drawW = Math.max(2.4, Math.min(this.NOW_X, x2) - drawX + 1.2);
+        const drawW = Math.max(2.2, Math.min(this.NOW_X, x2) - drawX + 0.9);
+        const nextBids = (nextSnap && nextSnap.bids) || null;
+        const nextAsks = (nextSnap && nextSnap.asks) || null;
 
         const bids = snap.bids || {};
         for (const priceKey of Object.keys(bids)) {
+          const vol = bids[priceKey];
+          const color = this.getThermalColor(vol);
+          if (!color) continue;
           const price = +priceKey;
           const y     = this.priceToY(price);
           if (y < this.CHART_TOP - 4 || y > this.CHART_BOTTOM + 4) continue;
-          const color = this.getThermalColor(bids[priceKey]);
-          if (!color) continue;
           ctx.fillStyle = color;
           ctx.fillRect(drawX, y - drawH * 0.5, drawW, drawH);
+
+          // Bookmap MBO Bright Cap when resting wall gets consumed/eaten by price
+          if (vol >= 38.0 && nextBids) {
+            const nextV = nextBids[priceKey] || 0;
+            if (nextV < vol * 0.52) {
+              const capW = Math.min(3.0, Math.max(1.2, drawW * 0.4));
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.50)';
+              ctx.fillRect(drawX + drawW - capW, y - drawH * 0.5, capW, drawH);
+            }
+          }
         }
 
         const asks = snap.asks || {};
         for (const priceKey of Object.keys(asks)) {
+          const vol = asks[priceKey];
+          const color = this.getThermalColor(vol);
+          if (!color) continue;
           const price = +priceKey;
           const y     = this.priceToY(price);
           if (y < this.CHART_TOP - 4 || y > this.CHART_BOTTOM + 4) continue;
-          const color = this.getThermalColor(asks[priceKey]);
-          if (!color) continue;
           ctx.fillStyle = color;
           ctx.fillRect(drawX, y - drawH * 0.5, drawW, drawH);
+
+          // Bookmap MBO Bright Cap when resting wall gets consumed/eaten by price
+          if (vol >= 38.0 && nextAsks) {
+            const nextV = nextAsks[priceKey] || 0;
+            if (nextV < vol * 0.52) {
+              const capW = Math.min(3.0, Math.max(1.2, drawW * 0.4));
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.50)';
+              ctx.fillRect(drawX + drawW - capW, y - drawH * 0.5, capW, drawH);
+            }
+          }
         }
       }
     }
@@ -1125,20 +1166,20 @@ class BookmapRenderer {
         ctx.fillRect(projX, y - drawH * 0.5, projW, drawH);
       }
 
-      // Highlight Top Institutional Shark/Jerung Limit Walls directly on the Heatmap & Projection Zone
+      // Highlight Top Institutional Shark/Jerung Limit Walls cleanly in the Live Projection Zone
       if (this.bmShowSharkWalls !== false) {
         const pickTopWalls = (bookDict, minVol, maxCount) => {
           const candidates = [];
           for (const [pKey, v] of Object.entries(bookDict)) {
             const p = +pKey;
             const wy = this.priceToY(p);
-            if (wy < this.CHART_TOP + 16 || wy > this.CHART_BOTTOM - 16) continue;
+            if (wy < this.CHART_TOP + 18 || wy > this.CHART_BOTTOM - 18) continue;
             if (v >= minVol) candidates.push({ p, v, wy });
           }
           candidates.sort((a, b) => b.v - a.v);
           const selected = [];
           for (const cand of candidates) {
-            if (selected.every(s => Math.abs(s.wy - cand.wy) >= 20)) {
+            if (selected.every(s => Math.abs(s.wy - cand.wy) >= 22)) {
               selected.push(cand);
               if (selected.length >= maxCount) break;
             }
@@ -1177,9 +1218,9 @@ class BookmapRenderer {
         for (const [k, st] of Object.entries(this._liqStateMap)) {
           const p = +k;
           const curBookV = (asks[k] || bids[k] || 0);
-          if (st.maxVol >= 55 && curBookV < 20 && (now - st.lastSeen < 4000)) {
-            const wasTouched = curLiveP > 0 && Math.abs(curLiveP - p) <= 0.20;
-            if (!wasTouched && !this._pulledGhostWalls.some(g => Math.abs(g.p - p) < 0.20)) {
+          if (st.maxVol >= 62 && curBookV < 20 && (now - st.lastSeen < 4000)) {
+            const wasTouched = curLiveP > 0 && Math.abs(curLiveP - p) <= 0.25;
+            if (!wasTouched && !this._pulledGhostWalls.some(g => Math.abs(g.p - p) < 0.30)) {
               this._pulledGhostWalls.push({ p, dropped: Math.round(st.maxVol - curBookV), time: now, isAsk: st.isAsk });
             }
             delete this._liqStateMap[k];
@@ -1187,10 +1228,10 @@ class BookmapRenderer {
             delete this._liqStateMap[k];
           }
         }
-        this._pulledGhostWalls = this._pulledGhostWalls.filter(g => now - g.time < 12000).slice(-2);
+        this._pulledGhostWalls = this._pulledGhostWalls.filter(g => now - g.time < 9000).slice(-1);
 
-        const topAskWalls = pickTopWalls(asks, 50, 3);
-        const topBidWalls = pickTopWalls(bids, 50, 3);
+        const topAskWalls = pickTopWalls(asks, 60, 2);
+        const topBidWalls = pickTopWalls(bids, 60, 2);
 
         const drawSharkWallOverlay = (wall, isAsk, rankIdx) => {
           const wy = wall.wy;
@@ -1199,21 +1240,22 @@ class BookmapRenderer {
           const col = isAsk ? (isMega ? '#ff2a55' : '#fb923c') : (isMega ? '#00f59b' : '#facc15');
           const glowBg = isAsk ? 'rgba(255, 42, 85, 0.14)' : 'rgba(0, 245, 155, 0.14)';
 
-          // 1. Active Liquidity Guide Line (Solid if Tested/Traded, Dashed if Untouched Active)
+          // 1. Confine Active Liquidity Guide Line cleanly to Projection Zone + short lead-in (Zero historical clutter)
+          const leadInX = Math.max(this.CHART_LEFT, projX - 36);
           ctx.fillStyle = glowBg;
-          ctx.fillRect(this.CHART_LEFT, wy - drawH * 0.55, this.CHART_WIDTH, drawH * 1.1);
+          ctx.fillRect(projX, wy - drawH * 0.55, projW, drawH * 1.1);
 
           ctx.save();
-          ctx.setLineDash(meta.touchState === 'DIUJI' ? [] : [6, 4]);
+          ctx.setLineDash(meta.touchState === 'DIUJI' ? [] : [4, 3]);
           ctx.strokeStyle = col;
-          ctx.lineWidth = isMega ? 1.5 : 1.0;
+          ctx.lineWidth = isMega ? 1.4 : 1.0;
           ctx.beginPath();
-          ctx.moveTo(this.CHART_LEFT, wy);
+          ctx.moveTo(leadInX, wy);
           ctx.lineTo(this.CHART_RIGHT, wy);
           ctx.stroke();
           ctx.restore();
 
-          // 2. Large Activity Wall Tag inside Projection Zone showing Size, Delta, Age & Status
+          // 2. Large Activity Wall Tag inside Projection Zone with Anti-Collision Slotting
           if (rankIdx < 2) {
             const fullTxt = `📊 ${Math.round(wall.v)}L (${meta.deltaStr}•${meta.ageStr}•${meta.touchState})`;
             const shortTxt = `📊 ${Math.round(wall.v)}L ${meta.ageStr}`;
@@ -1222,130 +1264,137 @@ class BookmapRenderer {
             const useFull = (projW >= fullW + 4);
             const pTxt = useFull ? fullTxt : shortTxt;
             const ptw = Math.min(projW - 4, ctx.measureText(pTxt).width + 8);
+            const tagY = this._resolveNonOverlappingY(wy, 14, 16, 'PROJ');
 
             ctx.fillStyle = isAsk ? 'rgba(28, 6, 14, 0.92)' : 'rgba(4, 24, 16, 0.92)';
-            ctx.fillRect(projX + 3, wy - 7, ptw, 14);
+            ctx.fillRect(projX + 3, tagY - 7, ptw, 14);
             ctx.strokeStyle = col;
             ctx.lineWidth = 1;
-            ctx.strokeRect(projX + 3, wy - 7, ptw, 14);
+            ctx.strokeRect(projX + 3, tagY - 7, ptw, 14);
             ctx.fillStyle = col;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText(pTxt, projX + 6, wy);
+            ctx.fillText(pTxt, projX + 6, tagY);
           }
         };
 
         topAskWalls.forEach((w, idx) => drawSharkWallOverlay(w, true, idx));
         topBidWalls.forEach((w, idx) => drawSharkWallOverlay(w, false, idx));
 
-        // 2B. Render Ghost Indicator for Disappeared/Pulled Liquidity (Cancelled before price touched)
+        // 2B. Render Ghost Indicator for Disappeared/Pulled Liquidity (Collision-Protected in RIGHT lane)
         for (const gw of this._pulledGhostWalls) {
           const gy = this.priceToY(gw.p);
-          if (gy >= this.CHART_TOP + 14 && gy <= this.CHART_BOTTOM - 14) {
+          if (gy >= this.CHART_TOP + 18 && gy <= this.CHART_BOTTOM - 18) {
             ctx.save();
             ctx.setLineDash([3, 5]);
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
-            ctx.lineWidth = 1.0;
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+            ctx.lineWidth = 0.9;
             ctx.beginPath();
-            ctx.moveTo(this.CHART_LEFT, gy);
+            ctx.moveTo(Math.max(this.CHART_LEFT, this.NOW_X - 180), gy);
             ctx.lineTo(this.NOW_X, gy);
             ctx.stroke();
+
             ctx.font = 'bold 8px "JetBrains Mono", monospace';
-            const gTxt = `👻 HILANG -${gw.dropped}L @ $${gw.p.toFixed(2)} (Ditarik Sebelum Sentuh)`;
-            const gtw = ctx.measureText(gTxt).width + 8;
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-            ctx.fillRect(this.NOW_X - gtw - 10, gy - 6.5, gtw, 13);
-            ctx.fillStyle = '#94a3b8';
+            const gTxt = `👻 HILANG -${gw.dropped}L @ $${gw.p.toFixed(2)}`;
+            const gtw = ctx.measureText(gTxt).width + 10;
+            const resolvedGy = this._resolveNonOverlappingY(gy, 14, 19, 'RIGHT');
+            const gx = this.NOW_X - gtw - 10;
+            const gby = resolvedGy - 7;
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+            ctx.fillRect(gx, gby, gtw, 14);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.65)';
+            ctx.lineWidth = 0.9;
+            ctx.strokeRect(gx, gby, gtw, 14);
+            ctx.fillStyle = '#cbd5e1';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText(gTxt, this.NOW_X - gtw - 6, gy);
+            ctx.fillText(gTxt, gx + 5, resolvedGy);
             ctx.restore();
           }
         }
       }
 
-      // 3. Spoofing Pulling & Stacking Detection Badges on Heatmap
+      // 3. Spoofing Pulling & Stacking Detection Badges on Heatmap (Max 1 Active to Prevent Clutter)
       if (spoofEvents && spoofEvents.length > 0) {
-        for (const sp of spoofEvents) {
-          if (now - sp.timestamp > 14000) continue; // Show for 14 seconds
+        const freshSpoofs = spoofEvents.filter(sp => now - sp.timestamp <= 12000).slice(-1);
+        for (const sp of freshSpoofs) {
           const sy = this.priceToY(sp.price);
-          if (sy < this.CHART_TOP + 14 || sy > this.CHART_BOTTOM - 14) continue;
+          if (sy < this.CHART_TOP + 18 || sy > this.CHART_BOTTOM - 18) continue;
 
           const isPull = sp.type === 'PULLING';
           const col = isPull ? '#f43f5e' : '#00f0ff';
           const bgCol = isPull ? 'rgba(38, 8, 16, 0.94)' : 'rgba(4, 28, 38, 0.94)';
 
-          // Flashing laser dashed line
+          // Subtle localized laser dashed line
           ctx.save();
-          ctx.setLineDash([4, 3]);
-          ctx.strokeStyle = col;
-          ctx.lineWidth = 1.3;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = isPull ? 'rgba(244, 63, 94, 0.55)' : 'rgba(0, 240, 255, 0.55)';
+          ctx.lineWidth = 1.0;
           ctx.beginPath();
           ctx.moveTo(this.CHART_LEFT, sy);
-          ctx.lineTo(this.CHART_RIGHT, sy);
+          ctx.lineTo(this.NOW_X, sy);
           ctx.stroke();
           ctx.restore();
 
-          // Badge pill
+          // Badge pill registered in LEFT lane
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const tw = ctx.measureText(sp.badge).width + 12;
-          const bx = this.CHART_LEFT + 14;
-          const by = sy - 8;
+          const bx = this.CHART_LEFT + 8;
+          const resolvedSy = this._resolveNonOverlappingY(sy, 15, 19, 'LEFT');
+          const by = resolvedSy - 7.5;
 
           ctx.fillStyle = bgCol;
-          ctx.fillRect(bx, by, tw, 16);
+          ctx.fillRect(bx, by, tw, 15);
           ctx.strokeStyle = col;
-          ctx.lineWidth = 1.1;
-          ctx.strokeRect(bx, by, tw, 16);
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(bx, by, tw, 15);
           ctx.fillStyle = col;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(sp.badge, bx + 6, by + 8);
+          ctx.fillText(sp.badge, bx + 6, resolvedSy);
         }
       }
 
-      // 4. World-Class Liquidity Sweeps & Voids Visualizer
+      // 4. World-Class Liquidity Sweeps & Voids Visualizer (Max 1 Most Significant Sweep Active)
       if (this.bmShowSweeps !== false && this._bmSweepEvents && this._bmSweepEvents.length > 0) {
-        for (const sw of this._bmSweepEvents) {
-          if (now - sw.time > 45000) continue; // Show for 45s
+        const activeSweeps = this._bmSweepEvents.filter(sw => now - sw.time <= 35000).slice(-1);
+        for (const sw of activeSweeps) {
           const wy = this.priceToY(sw.price);
-          if (wy < this.CHART_TOP + 14 || wy > this.CHART_BOTTOM - 14) continue;
+          if (wy < this.CHART_TOP + 18 || wy > this.CHART_BOTTOM - 18) continue;
 
           const isBuySweep = sw.bias === 'BUY_SWEEP';
           const col = isBuySweep ? '#00f0ff' : '#ff0055';
           const bgCol = isBuySweep ? 'rgba(0, 32, 45, 0.94)' : 'rgba(45, 0, 16, 0.94)';
 
-          // Flashing animated neon laser sweep line across full chart
+          // Sleek sweep ray
           ctx.save();
-          ctx.setLineDash([8, 4]);
-          ctx.strokeStyle = col;
-          ctx.lineWidth = 1.4;
-          ctx.shadowColor = col;
-          ctx.shadowBlur = 6;
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = isBuySweep ? 'rgba(0, 240, 255, 0.60)' : 'rgba(255, 0, 85, 0.60)';
+          ctx.lineWidth = 1.1;
           ctx.beginPath();
           ctx.moveTo(this.CHART_LEFT, wy);
-          ctx.lineTo(this.CHART_RIGHT, wy);
+          ctx.lineTo(this.NOW_X, wy);
           ctx.stroke();
-          ctx.shadowBlur = 0;
           ctx.restore();
 
-          // High-Impact Pill Badge with Anti-Collision Slotting
+          // High-Impact Pill Badge with LEFT Lane Anti-Collision Slotting
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const badgeTxt = sw.badge;
-          const tw = ctx.measureText(badgeTxt).width + 14;
-          const bx = this.CHART_LEFT + 16;
-          const resolvedSweepY = this._resolveNonOverlappingY(wy, 16, 22);
-          const by = resolvedSweepY - 8;
+          const tw = ctx.measureText(badgeTxt).width + 12;
+          const bx = this.CHART_LEFT + 8;
+          const resolvedSweepY = this._resolveNonOverlappingY(wy, 15, 19, 'LEFT');
+          const by = resolvedSweepY - 7.5;
 
           ctx.fillStyle = bgCol;
-          ctx.fillRect(bx, by, tw, 16);
+          ctx.fillRect(bx, by, tw, 15);
           ctx.strokeStyle = col;
-          ctx.lineWidth = 1.2;
-          ctx.strokeRect(bx, by, tw, 16);
+          ctx.lineWidth = 1.1;
+          ctx.strokeRect(bx, by, tw, 15);
           ctx.fillStyle = col;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(badgeTxt, bx + 7, by + 8);
+          ctx.fillText(badgeTxt, bx + 6, resolvedSweepY);
         }
       }
     }
@@ -1663,18 +1712,18 @@ class BookmapRenderer {
     this.hoverTrade = null;
     const drawnWhaleBadges = [];
 
-    // 2. Bookmap True Institutional Node Aggregator:
-    // Merges executions along the stepped price line into single discrete non-overlapping nodes ('sebaris')
-    // Trades at the same price step (within 0.15) merge together unless separated by at least 32px
+    // 2. Bookmap True Institutional Node Aggregator (with Anti-Inflation & 2D Spatial De-Crowding):
+    // Merges executions along the stepped price line without inflating normal retail ticks into fake Mega Sharks
     const timeSorted = [...trades].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     const aggregated = [];
     let cur = null;
-    const minPixelGap = 32;
+    const minPixelGap = 28;
 
     for (const t of timeSorted) {
       const tMs = (t.timestamp && t.timestamp < 1e11) ? t.timestamp * 1000 : (t.timestamp || 0);
       const buyV  = t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
       const sellV = t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
+      const tVol  = Math.max(0.1, buyV + sellV);
       const curX = this.timeToX(tMs, now);
 
       if (cur) {
@@ -1682,49 +1731,63 @@ class BookmapRenderer {
         const pDiff = Math.abs(cur.price - t.price);
         const xDiff = Math.abs(curX - prevX);
 
-        // If price is virtually at the same step (< 0.18) AND within minPixelGap:
-        // Merge into the same bead on the stepped price line!
-        if (pDiff < 0.18 && xDiff < minPixelGap) {
-          cur.buy_vol += buyV;
-          cur.sell_vol += sellV;
-          cur.volume = cur.buy_vol + cur.sell_vol;
+        if (pDiff < 0.22 && xDiff < minPixelGap) {
+          const rawBuySum = cur.buy_vol + buyV;
+          const rawSellSum = cur.sell_vol + sellV;
+          const rawTotal = Math.max(0.1, rawBuySum + rawSellSum);
+          // Preserve dominant institutional block size + dampened cluster tail (prevents retail sum inflation)
+          const dampenedVol = Math.min(118.0, Math.max(cur.maxSingle, tVol) + Math.min(cur.volume, tVol) * 0.22);
+          cur.volume = Math.round(dampenedVol * 10) / 10;
+          cur.buy_vol = cur.volume * (rawBuySum / rawTotal);
+          cur.sell_vol = cur.volume * (rawSellSum / rawTotal);
+          cur.maxSingle = Math.max(cur.maxSingle, tVol);
           cur.is_large = cur.is_large || t.is_large || cur.volume >= 12.0;
-          cur.price = t.price;
+          if (tVol >= cur.maxSingle) cur.price = t.price;
           cur.timestamp = Math.max(cur.timestamp, tMs);
           continue;
         }
       }
 
-      // Start a new node
       if (cur) aggregated.push(cur);
       cur = {
         id: t.id || `${tMs}_${t.price}`,
         timestamp: tMs,
         price: t.price,
-        volume: buyV + sellV,
+        volume: tVol,
+        maxSingle: tVol,
         buy_vol: buyV,
         sell_vol: sellV,
         side: buyV >= sellV ? 'buy' : 'sell',
-        is_large: t.is_large || (buyV + sellV) >= 12.0
+        is_large: t.is_large || tVol >= 12.0
       };
     }
     if (cur) aggregated.push(cur);
 
-    // 3. Strict Lot Filtering: ONLY nodes with volume >= minVol are drawn!
-    // When filtering by Mega Shark (>=80L), trades < 80L are 100% DISCARDED (NO circles, NO micro dots, NO text)
-    const qualifyingTrades = (minVol > 0) 
+    // 3. Strict Lot Filtering & 2D Spatial De-Crowding (Largest Institutional Spheres Take Priority)
+    const filteredTrades = (minVol > 0) 
       ? aggregated.filter(t => t.volume >= minVol)
       : aggregated;
 
-    for (const t of qualifyingTrades) {
-      const cx = this.timeToX(t.timestamp, now);
-      const cy = this.priceToY(t.price);
-
-      if (cx < this.CHART_LEFT - 60 || cx > this.CHART_RIGHT + 60) continue;
+    const bySizeDesc = [...filteredTrades].sort((a, b) => b.volume - a.volume);
+    const placedNodes = [];
+    for (const cand of bySizeDesc) {
+      const cx = this.timeToX(cand.timestamp, now);
+      const cy = this.priceToY(cand.price);
+      if (cx < this.CHART_LEFT - 40 || cx > this.NOW_X + 16) continue;
       if (cy < this.CHART_TOP - 20  || cy > this.CHART_BOTTOM + 20) continue;
+      const baseR = Math.sqrt(Math.max(0.2, cand.volume)) * 1.62 * (this.bubbleZoom || 1.0);
+      const r = Math.min(17.5, Math.max(3.2, baseR));
 
-      const baseR = Math.sqrt(Math.max(0.2, t.volume)) * 1.85 * (this.bubbleZoom || 1.0);
-      const r = Math.min(22, Math.max(3.5, baseR));
+      // Skip smaller bubble if it physically overlaps an already-placed larger institutional bubble
+      const overlaps = placedNodes.some(p => Math.hypot(p.cx - cx, p.cy - cy) < (p.r + r - 1.5));
+      if (!overlaps) {
+        placedNodes.push({ ...cand, cx, cy, r });
+      }
+    }
+    const qualifyingTrades = placedNodes.sort((a, b) => a.timestamp - b.timestamp);
+
+    for (const t of qualifyingTrades) {
+      const { cx, cy, r } = t;
 
       const buyV  = t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
       const sellV = t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
@@ -1742,11 +1805,11 @@ class BookmapRenderer {
         this.hoverTrade = { ...t, cx, cy, r, buyV, sellV };
       }
 
-      // Outer Glow for Whale Trades (>= 16px radius)
-      if (r >= 16) {
-        const glowR = r * 1.8;
+      // Outer Glow for Whale Trades (>= 14px radius)
+      if (r >= 14) {
+        const glowR = r * 1.65;
         const glow = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, glowR);
-        const glowColor = buyRatio >= 0.5 ? 'rgba(0, 230, 118, 0.22)' : 'rgba(255, 51, 102, 0.22)';
+        const glowColor = buyRatio >= 0.5 ? 'rgba(0, 230, 118, 0.20)' : 'rgba(255, 51, 102, 0.20)';
         glow.addColorStop(0, glowColor);
         glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.beginPath();
@@ -1834,9 +1897,9 @@ class BookmapRenderer {
       ctx.fill();
       ctx.restore();
 
-      // Bold lot volume label in center of bubble (for visible whales >= 12L or if filtered)
-      if (r >= 5.5 && (t.volume >= 12.0 || minVol > 0)) {
-        const fontSize = r >= 16 ? 10 : (r >= 11 ? 8.5 : 7.5);
+      // Bold lot volume label in center of bubble (for visible whales >= 14L or if filtered)
+      if (r >= 6.0 && (t.volume >= 14.0 || minVol > 0)) {
+        const fontSize = r >= 14 ? 9.5 : (r >= 10 ? 8.0 : 7.0);
         ctx.font         = `bold ${fontSize}px "JetBrains Mono", monospace`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
@@ -1852,33 +1915,33 @@ class BookmapRenderer {
         // Mega Shark (≥80L): Double Crimson-Gold Crown Halo
         ctx.save();
         ctx.strokeStyle = '#f43f5e';
-        ctx.lineWidth = 2.4;
+        ctx.lineWidth = 2.0;
         ctx.beginPath();
-        ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r + 2.5, 0, Math.PI * 2);
         ctx.stroke();
         ctx.strokeStyle = '#ffd60a';
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 1.3;
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
-        ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r + 5, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       } else if (t.volume >= 35.0) {
         // Major Institutional (≥35L): Radiant Amber Halo
         ctx.save();
         ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 2.0;
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.arc(cx, cy, r + 2.5, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r + 2.2, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
-      } else if (t.is_large && r >= 16) {
-        // Normal Whale (≥12L): Subtle Golden Ring
+      } else if (t.is_large && r >= 13) {
+        // Normal Whale (≥12L): Subtle Cyan Ring
         ctx.save();
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.90)';
-        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.arc(cx, cy, r + 1.5, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r + 1.4, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
@@ -1959,8 +2022,8 @@ class BookmapRenderer {
           const label = `▲ BUY ZONE [SAH] +${topBuy.buy.toFixed(0)}L`;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const txtW = ctx.measureText(label).width + 8;
-          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 12);
-          const resolvedBuyY = this._resolveNonOverlappingY(buyY, 14, 22);
+          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 6);
+          const resolvedBuyY = this._resolveNonOverlappingY(buyY, 14, 18, 'PROJ');
           const badgeY = resolvedBuyY - 7;
 
           ctx.fillStyle = 'rgba(5, 22, 14, 0.90)';
@@ -2006,8 +2069,8 @@ class BookmapRenderer {
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const txtW = ctx.measureText(label).width + 8;
           // Place inside projection zone on right of NOW_X so bubbles are completely unobstructed
-          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 12);
-          const resolvedSellY = this._resolveNonOverlappingY(sellY, 14, 22);
+          const badgeX = Math.min(this.CHART_RIGHT - txtW - 4, this.NOW_X + 6);
+          const resolvedSellY = this._resolveNonOverlappingY(sellY, 14, 18, 'PROJ');
           const badgeY = resolvedSellY - 7;
 
           ctx.fillStyle = 'rgba(30, 8, 15, 0.90)';
@@ -2250,8 +2313,8 @@ class BookmapRenderer {
     const now = Date.now();
 
     ctx.save();
-    for (const tr of trappedList) {
-      if (now - tr.timestamp > 35000) continue; // Persist for 35 seconds
+    for (const tr of trappedList.slice(-1)) {
+      if (now - tr.timestamp > 30000) continue; // Persist for 30 seconds
 
       const rawY = this.priceToY(tr.price);
       if (rawY < this.CHART_TOP || rawY > this.CHART_BOTTOM) continue;
@@ -2263,21 +2326,21 @@ class BookmapRenderer {
       // Dashed horizontal line indicating the trapped level
       ctx.setLineDash([4, 4]);
       ctx.strokeStyle = col;
-      ctx.lineWidth = 1.3;
+      ctx.lineWidth = 1.1;
       ctx.beginPath();
       ctx.moveTo(this.CHART_LEFT, rawY);
-      ctx.lineTo(this.CHART_RIGHT - 120, rawY);
+      ctx.lineTo(this.NOW_X, rawY);
       ctx.stroke();
       ctx.setLineDash([]);
 
       // In Zen mode, skip the bulky badge pill to keep candles completely clear
       if (this.bmZenMode) continue;
 
-      // Glowing Badge Pill with Anti-Collision Slotting
+      // Glowing Badge Pill with RIGHT Lane Anti-Collision Slotting
       const badgeW = 215;
-      const badgeH = 18;
-      const resolvedY = this._resolveNonOverlappingY(rawY, badgeH, 20);
-      const bx = this.CHART_RIGHT - badgeW - 130;
+      const badgeH = 16;
+      const resolvedY = this._resolveNonOverlappingY(rawY, badgeH, 20, 'RIGHT');
+      const bx = this.NOW_X - badgeW - 14;
       const by = resolvedY - (badgeH / 2);
 
       // Connecting lead-line if offset vertically
@@ -2286,21 +2349,21 @@ class BookmapRenderer {
         ctx.lineWidth = 0.8;
         ctx.beginPath();
         ctx.moveTo(bx + badgeW, by + badgeH / 2);
-        ctx.lineTo(this.CHART_RIGHT - 120, rawY);
+        ctx.lineTo(this.NOW_X - 4, rawY);
         ctx.stroke();
       }
 
       ctx.fillStyle = bgCol;
       ctx.fillRect(bx, by, badgeW, badgeH);
       ctx.strokeStyle = col;
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.1;
       ctx.strokeRect(bx, by, badgeW, badgeH);
 
       ctx.fillStyle = col;
-      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${tr.badge}: @ $${tr.price.toFixed(2)} [${tr.action}]`, bx + 6, by + badgeH / 2);
+      ctx.fillText(`${tr.badge}: @ $${tr.price.toFixed(2)} [${tr.action}]`, bx + 6, resolvedY);
 
       // Trigger Voice Alert if freshly detected (< 1.5s)
       if (now - tr.timestamp < 1500) {
@@ -2407,7 +2470,6 @@ class BookmapRenderer {
       }
     }
 
-    const drawnBadges = [];
     let offScreenAboveCount = 0;
     let offScreenBelowCount = 0;
 
@@ -2416,43 +2478,34 @@ class BookmapRenderer {
       const inView = (y >= this.CHART_TOP - 4 && y <= this.CHART_BOTTOM + 4);
 
       if (inView) {
-        // 1. High-Visibility Neon Luminous SNR Ray with Dark Contrast Halo
+        // 1. Sleek Luminous SNR Ray with Subtle Dark Contrast Underlay
         ctx.save();
-        // Dark contrast underlay so ray pierces clearly across dense heatmap bands
-        ctx.strokeStyle = 'rgba(5, 10, 20, 0.90)';
-        ctx.lineWidth = lv.isHtf ? 3.4 : 2.8;
+        ctx.strokeStyle = 'rgba(5, 10, 20, 0.78)';
+        ctx.lineWidth = lv.isHtf ? 2.4 : 1.8;
         ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(this.CHART_LEFT, y);
         ctx.lineTo(this.CHART_RIGHT, y);
         ctx.stroke();
 
-        // Glowing Neon Foreground SNR Line
-        ctx.setLineDash(lv.isHtf ? [10, 4] : [6, 4]);
+        ctx.setLineDash(lv.isHtf ? [8, 4] : [5, 4]);
         ctx.strokeStyle = lv.col;
-        ctx.lineWidth = lv.isHtf ? 2.0 : 1.5;
-        ctx.shadowColor = lv.col;
-        ctx.shadowBlur = 6;
+        ctx.lineWidth = lv.isHtf ? 1.4 : 1.1;
         ctx.beginPath();
         ctx.moveTo(this.CHART_LEFT, y);
         ctx.lineTo(this.CHART_RIGHT, y);
         ctx.stroke();
-        ctx.shadowBlur = 0;
         ctx.restore();
 
-        // 2. Consolidated & 100% collision-proof badge slotting (with Fresh/Tested & Strength)
+        // 2. Unified LEFT Lane Anti-Collision Slotting (Zero overlap with Spoof/Sweep/SMR badges)
         const text = `${lv.labels.join('•')} $${lv.price.toFixed(2)} [${lv.metaTag || 'FRESH'}]`;
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
         const tw = ctx.measureText(text).width + 8;
 
         const bx = this.CHART_LEFT + 6;
-        let by = y - 7;
-        let attempts = 0;
-        while (drawnBadges.some(b => Math.abs(b.y - by) < 14) && attempts < 5) {
-          by += 14;
-          attempts++;
-        }
-        drawnBadges.push({ y: by });
+        const resolvedLvY = this._resolveNonOverlappingY(y, 14, 18, 'LEFT');
+        const by = resolvedLvY - 7;
+
         ctx.fillStyle = 'rgba(8, 13, 24, 0.92)';
         ctx.fillRect(bx, by, tw, 14);
         ctx.fillStyle = lv.bg;
@@ -2464,7 +2517,7 @@ class BookmapRenderer {
         ctx.fillStyle = lv.col;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(text, bx + 4, y);
+        ctx.fillText(text, bx + 4, resolvedLvY);
       } else if (lv.isHtf) {
         // Track major off-screen HTF levels (1D, H4, H1)
         const primaryLabel = lv.labels[0] || 'LEVEL';
@@ -2502,28 +2555,29 @@ class BookmapRenderer {
       }
     }
 
-    // Section B: Draw Sweep Reversal vs Normal Breakout Alert Banner (< 60s old)
+    // Section B: Draw Sweep Reversal vs Normal Breakout Alert Banner (< 45s old, Protected in CENTER lane)
     const sw = sessions.sweep_alert;
-    if (!this.bmZenMode && sw && (Date.now() - sw.timestamp < 60000)) {
+    if (!this.bmZenMode && sw && (Date.now() - sw.timestamp < 45000)) {
       const sy = this.priceToY(sw.level_price);
-      if (sy >= this.CHART_TOP + 10 && sy <= this.CHART_BOTTOM - 10) {
+      if (sy >= this.CHART_TOP + 16 && sy <= this.CHART_BOTTOM - 16) {
         const isBreakout = sw.is_sweep === false;
         const isBull = sw.bias === 'BUY' || sw.bias === 'BREAKOUT_UP';
         const col = isBreakout ? '#fbbf24' : (isBull ? '#00e676' : '#ff3366');
         const actionTxt = isBreakout ? 'BREAKOUT BIASA' : `POTENSI REVERSAL ${sw.bias}`;
         const txt = `${sw.badge} → ${actionTxt}`;
-        ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
         const w = ctx.measureText(txt).width + 14;
-        const x = this.CHART_LEFT + 165;
+        const x = this.CHART_LEFT + 205;
+        const resolvedSwY = this._resolveNonOverlappingY(sy, 18, 22, 'CENTER');
         ctx.fillStyle = 'rgba(10, 14, 26, 0.94)';
-        ctx.fillRect(x, sy - 10, w, 19);
+        ctx.fillRect(x, resolvedSwY - 9, w, 18);
         ctx.strokeStyle = col;
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(x, sy - 10, w, 19);
+        ctx.lineWidth = 1.3;
+        ctx.strokeRect(x, resolvedSwY - 9, w, 18);
         ctx.fillStyle = col;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(txt, x + 7, sy);
+        ctx.fillText(txt, x + 7, resolvedSwY);
       }
     }
 
@@ -2586,15 +2640,16 @@ class BookmapRenderer {
         ctx.font = 'bold 8px "JetBrains Mono", monospace';
         const tw = ctx.measureText(txt).width + 8;
         const bx = this.CHART_LEFT + maxBarW + 4;
+        const resolvedPocY = this._resolveNonOverlappingY(py, 14, 18, 'LEFT');
         ctx.fillStyle = 'rgba(20, 16, 4, 0.90)';
-        ctx.fillRect(bx, py - 7, tw, 14);
+        ctx.fillRect(bx, resolvedPocY - 7, tw, 14);
         ctx.strokeStyle = '#ffd60a';
         ctx.lineWidth = 0.9;
-        ctx.strokeRect(bx, py - 7, tw, 14);
+        ctx.strokeRect(bx, resolvedPocY - 7, tw, 14);
         ctx.fillStyle = '#ffd60a';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(txt, bx + 4, py);
+        ctx.fillText(txt, bx + 4, resolvedPocY);
       }
     }
 
@@ -2648,9 +2703,9 @@ class BookmapRenderer {
       }
     }
 
-    for (const ic of icebergs.slice(-3).reverse()) {
-      if (now - ic.timestamp > 75000) continue; // Show active icebergs for 75s
-      if (drawnIcebergYs.length >= 2) break;    // Max 2 active iceberg badges on chart
+    for (const ic of icebergs.slice(-2).reverse()) {
+      if (now - ic.timestamp > 60000) continue; // Show active icebergs for 60s
+      if (drawnIcebergYs.length >= 1) break;    // Max 1 active iceberg badge on chart for zero clutter
       const y = this.priceToY(ic.price);
       if (y < this.CHART_TOP + 16 || y > this.CHART_BOTTOM - 16) continue;
       if (drawnIcebergYs.some(py => Math.abs(py - y) < 22)) continue;
@@ -2658,20 +2713,19 @@ class BookmapRenderer {
 
       const isBuyIceberg = ic.bias === 'BUY';
       const col = isBuyIceberg ? '#00f0ff' : '#f43f5e';
-      const bg = isBuyIceberg ? 'rgba(0, 240, 255, 0.10)' : 'rgba(244, 63, 94, 0.10)';
+      const bg = isBuyIceberg ? 'rgba(0, 240, 255, 0.08)' : 'rgba(244, 63, 94, 0.08)';
 
       const key = `${ic.bias}_${ic.price.toFixed(2)}`;
       const reloadInfo = this._icebergReloads[key];
       const reloadCount = reloadInfo ? reloadInfo.count : 1;
-      const reloadTxt = reloadCount > 1 ? ` • RELOAD ${reloadCount}x` : '';
 
       // Subtle Shaded Absorption Band
       ctx.fillStyle = bg;
-      ctx.fillRect(this.CHART_LEFT, y - 5, this.NOW_X - this.CHART_LEFT, 10);
+      ctx.fillRect(this.CHART_LEFT, y - 4, this.NOW_X - this.CHART_LEFT, 8);
 
       ctx.setLineDash([2, 3]);
       ctx.strokeStyle = col;
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.0;
       ctx.beginPath();
       ctx.moveTo(this.CHART_LEFT, y);
       ctx.lineTo(this.NOW_X, y);
@@ -2681,15 +2735,15 @@ class BookmapRenderer {
       // In Zen mode, skip bulky badge pill to preserve clean heatmap and candles
       if (this.bmZenMode) continue;
 
-      // Compact Iceberg Pill with Anti-Collision Slotting
+      // Compact Iceberg Pill with RIGHT Lane Anti-Collision Slotting
       const badgeH = 15;
-      const resolvedY = this._resolveNonOverlappingY(y, badgeH, 20);
+      const resolvedY = this._resolveNonOverlappingY(y, badgeH, 20, 'RIGHT');
       const confPct = ic.confidence || 78;
       const hitsCnt = ic.hits || reloadCount;
       const txt = `🧊 POTENTIAL ICEBERG ${ic.bias} $${ic.price.toFixed(2)} [${confPct}% | ${hitsCnt}x Isian, ${ic.absorbed_vol}L]`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const tw = ctx.measureText(txt).width + 12;
-      const bx = this.NOW_X - tw - 16;
+      const bx = this.NOW_X - tw - 14;
       const by = resolvedY - 7.5;
 
       ctx.fillStyle = 'rgba(6, 12, 24, 0.94)';
@@ -2947,7 +3001,7 @@ class BookmapRenderer {
           const bh = 16;
           const bx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - bw - 4, sigX - bw / 2));
           const rawBy = isBuy ? (sigY + 18) : (sigY - bh - 18);
-          const resolvedBy = this._resolveNonOverlappingY(rawBy, bh, 22);
+          const resolvedBy = this._resolveNonOverlappingY(rawBy, bh, 22, 'CENTER');
           const by = resolvedBy;
 
           ctx.fillStyle = bgCol;
@@ -3819,12 +3873,13 @@ class BookmapRenderer {
       ctx.strokeRect(this.CHART_LEFT, y, this.CHART_WIDTH, h);
       ctx.restore();
 
-      // Clean, Sleek Left Badge (Zero redundant 2MV clutter)
+      // Clean, Sleek Left Badge with Unified LEFT Lane Anti-Collision Slotting
       const badgeTxt = isRes ? `SMR RES $${z.zone_high.toFixed(2)}` : `SMR SUP $${z.zone_low.toFixed(2)}`;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const bw = ctx.measureText(badgeTxt).width + 10;
       const bx = this.CHART_LEFT + 8;
-      const by = y + h / 2 - 7;
+      const resolvedSmrY = this._resolveNonOverlappingY(y + h / 2, 14, 18, 'LEFT');
+      const by = resolvedSmrY - 7;
 
       ctx.fillStyle = 'rgba(6, 12, 22, 0.90)';
       ctx.fillRect(bx, by, bw, 14);
@@ -3834,7 +3889,7 @@ class BookmapRenderer {
       ctx.fillStyle = col;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(badgeTxt, bx + 5, by + 7);
+      ctx.fillText(badgeTxt, bx + 5, resolvedSmrY);
     }
   }
 
