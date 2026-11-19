@@ -875,7 +875,7 @@ class App {
         if (this.footprint && this.footprint.setViewMode) {
           this.footprint.setViewMode(mode);
           const clusterWrap = document.getElementById('clusterJalurWrap');
-          if (clusterWrap) clusterWrap.style.display = (mode === 'clusterdelta') ? 'inline-flex' : 'none';
+          if (clusterWrap) clusterWrap.style.display = (mode !== 'candlestick') ? 'inline-flex' : 'none';
           if (mode === 'candlestick' && this.currentView !== 'candlestick') {
             document.querySelectorAll('.view-switchers .nav-btn').forEach(b => {
               b.classList.toggle('active', b.dataset.view === 'candlestick');
@@ -1417,7 +1417,7 @@ class App {
       if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'footprint') {
       if (fpTools) fpTools.style.display = 'inline-flex';
-      if (clusterWrap) clusterWrap.style.display = 'none';
+      if (clusterWrap) clusterWrap.style.display = 'inline-flex';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
       if (whaleWrap) whaleWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'none';
