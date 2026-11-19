@@ -405,7 +405,7 @@ class FootprintRenderer {
       this._dragStartY = cy;
       this._dragStartOffset = this.priceOffset || 0;
       this._dragStartBarOffset = this.barOffset || 0;
-      this._dragStartZoom = this.viewMode === 'candlestick' ? (this.csVerticalScale || 1.0) : (this.verticalZoom || 1.0);
+      this._dragStartZoom = this.viewMode === 'candlestick' ? (this.csVerticalScale || 1.0) : (this.fpUserVerticalZoom || 1.0);
 
       const rightScaleBoundary = this.viewMode === 'clusterdelta' ? (this.width - 70) : (this.width - 75);
       if (cx >= rightScaleBoundary) {
@@ -464,7 +464,8 @@ class FootprintRenderer {
           if (this.viewMode === 'candlestick') {
             this.csVerticalScale = Math.max(0.4, Math.min(3.5, this._dragStartZoom - dy * 0.006));
           } else {
-            this.verticalZoom = Math.max(0.5, Math.min(4.0, this._dragStartZoom - dy * 0.006));
+            this.fpUserVerticalZoom = Math.max(0.4, Math.min(3.5, this._dragStartZoom - dy * 0.006));
+            this.verticalZoom = this.fpUserVerticalZoom;
           }
           this.canvas.style.cursor = 'ns-resize';
         } else {
@@ -669,6 +670,8 @@ class FootprintRenderer {
     const clamped = Math.max(20, Math.min(50, Math.round(parseFloat(val) || 30)));
     this.cdVisibleCols = clamped;
     this.cdMaxRows = clamped;
+    // Map 20..50 scale to 7..25 Footprint bars (20=7 bars Mikro, 30=13 bars Std, 50=25 bars Makro)
+    this.fpVisibleBars = Math.round(7 + ((clamped - 20) / 30) * 18);
     const sl = document.getElementById('sliderClusterJalur');
     const lb = document.getElementById('lblClusterJalur');
     if (sl && parseInt(sl.value, 10) !== clamped) sl.value = String(clamped);
@@ -1065,20 +1068,16 @@ class FootprintRenderer {
       return;
     }
 
-    // Responsive visible candle count for mobile screens (4-6 bars fit comfortably)
+    // Responsive & Fully Adjustable visible candle count (Default 13 bars on Desktop, zoomable 5..26 bars)
     const isMobile = Boolean(this.width && this.width < 600);
-    const defaultBars = isMobile ? 5 : (this.fpVisibleBars || 10);
-    const candleCount = Math.max(isMobile ? 3 : 6, Math.min(22, defaultBars));
+    if (!this.fpVisibleBars) this.fpVisibleBars = 13;
+    if (!this.fpUserVerticalZoom) this.fpUserVerticalZoom = 1.0;
+    const defaultBars = isMobile ? Math.min(8, this.fpVisibleBars) : this.fpVisibleBars;
+    const candleCount = Math.max(isMobile ? 3 : 5, Math.min(26, defaultBars));
     const candles = this._sliceCandlesWithOffset(rawCandles, candleCount);
     if (!candles || candles.length === 0) return;
 
-    // Responsive candle width based on screen width & count
-    const rightMargin = 80;
-    const availableWidth = this.width - rightMargin - 40;
-    const computedCandleW = Math.floor(availableWidth / Math.max(1, candles.length)) - this.candleSpacing;
-    this.candleWidth = Math.max(115, Math.min(185, computedCandleW));
-
-    // Calculate auto vertical bounds
+    // Calculate auto vertical bounds across visible candles
     let lowest = Infinity;
     let highest = -Infinity;
     for (const c of candles) {
@@ -1096,15 +1095,15 @@ class FootprintRenderer {
       highest = lowest + step * 4;
     }
 
-    // Auto-expand vertical scale so each box has comfortable height
+    // Respect user vertical zoom (fpUserVerticalZoom) without overwriting it on every frame!
     const totalSteps = Math.max(3, (highest - lowest) / step);
     const availableHeight = Math.max(200, this.height - 140);
     const rawBoxHeight = availableHeight / totalSteps;
-    if (rawBoxHeight < 24) {
-      this.verticalZoom = Math.min(3.0, 24 / rawBoxHeight);
-    } else if (rawBoxHeight > 60 && !this._isDragging) {
-      this.verticalZoom = 1.0;
+    let baseVertZoom = 1.0;
+    if (rawBoxHeight < 18) {
+      baseVertZoom = Math.min(1.8, 18 / rawBoxHeight);
     }
+    this.verticalZoom = Math.max(0.4, Math.min(3.8, baseVertZoom * this.fpUserVerticalZoom));
 
     // Auto vertical bounds: fast-snap on mode switch, smooth track when live
     const padMin = lowest - (step * 2.2);
@@ -1145,13 +1144,14 @@ class FootprintRenderer {
       this.height = Math.max(this.canvas.clientHeight || 260, 180);
     }
     const isMobileScreen = Boolean(this.width && this.width < 600);
-    const leftMargin = isMobileScreen ? 55 : 120; // Compact 55px safe zone for clean mobile SNR badges
-    const rightMargin = isMobileScreen ? 55 : 85;
-    const spacing = isMobileScreen ? 8 : 18;
-    this.candleSpacing = spacing;
+    const leftMargin = isMobileScreen ? 55 : 105;
+    const rightMargin = isMobileScreen ? 55 : 78;
     const usableW = Math.max(isMobileScreen ? 160 : 260, this.width - rightMargin - leftMargin);
-    const dynamicW = Math.floor(usableW / Math.max(1, candles.length)) - spacing;
-    this.candleWidth = isMobileScreen ? Math.max(62, Math.min(88, dynamicW)) : Math.max(90, Math.min(150, dynamicW));
+    const targetSlots = Math.max(5, candleCount);
+    const spacing = isMobileScreen ? 6 : Math.max(5, Math.min(14, Math.floor(usableW / (targetSlots * 7))));
+    this.candleSpacing = spacing;
+    const dynamicW = Math.floor(usableW / targetSlots) - spacing;
+    this.candleWidth = isMobileScreen ? Math.max(42, Math.min(88, dynamicW)) : Math.max(44, Math.min(145, dynamicW));
 
     // Right-anchored: Latest live candle sits firmly on the right side of the chart
     const rightAnchorX = this.width - rightMargin - this.candleWidth - 8;
@@ -6302,21 +6302,21 @@ class FootprintRenderer {
 
 
   zoomIn() {
-    this.candleWidth = Math.min(240, this.candleWidth + 20);
-    this.verticalZoom = Math.min(4.0, this.verticalZoom + 0.25);
-    this.setJalurCount((this.cdVisibleCols || 30) - 2);
+    this.fpUserVerticalZoom = Math.min(3.2, (this.fpUserVerticalZoom || 1.0) + 0.15);
+    this.verticalZoom = this.fpUserVerticalZoom;
+    this.setJalurCount((this.cdVisibleCols || 30) - 3);
     this.csVisibleBars = Math.max(14, (this.csVisibleBars || 34) - 4);
   }
 
   zoomOut() {
-    this.candleWidth = Math.max(90, this.candleWidth - 20);
-    this.verticalZoom = Math.max(0.6, this.verticalZoom - 0.25);
-    this.setJalurCount((this.cdVisibleCols || 30) + 2);
+    this.fpUserVerticalZoom = Math.max(0.45, (this.fpUserVerticalZoom || 1.0) - 0.15);
+    this.verticalZoom = this.fpUserVerticalZoom;
+    this.setJalurCount((this.cdVisibleCols || 30) + 3);
     this.csVisibleBars = Math.min(50, (this.csVisibleBars || 34) + 4);
   }
 
   resetZoom() {
-    this.candleWidth = 145;
+    this.fpUserVerticalZoom = 1.0;
     this.verticalZoom = 1.0;
     this.priceOffset = 0.0;
     this.barOffset = 0;
@@ -6465,40 +6465,39 @@ class FootprintRenderer {
 
   _drawSnrValidZones(ctx, snrZones) {
     if (!snrZones || snrZones.length === 0) return;
-    for (const z of snrZones) {
+    const midP = ((this.minPrice || 0) + (this.maxPrice || 0)) / 2;
+    const resZ = snrZones.filter(z => z.type === 'RESISTANCE' && z.zone_low >= midP - 1.0).sort((a, b) => a.zone_low - b.zone_low);
+    const supZ = snrZones.filter(z => z.type !== 'RESISTANCE' && z.zone_high <= midP + 1.0).sort((a, b) => b.zone_high - a.zone_high);
+    const activeZones = [];
+    if (resZ.length > 0) activeZones.push(resZ[0]);
+    if (supZ.length > 0) activeZones.push(supZ[0]);
+
+    for (const z of activeZones) {
       const yTop = this.priceToY(z.zone_high);
       const yBot = this.priceToY(z.zone_low);
       if (yBot < 30 || yTop > (this.height || 600) - 40) continue;
 
       const isRes = z.type === 'RESISTANCE';
       const col = isRes ? '#f43f5e' : '#00e676';
-      const bgCol = isRes ? 'rgba(244, 63, 94, 0.10)' : 'rgba(0, 230, 118, 0.10)';
+      const bgCol = isRes ? 'rgba(244, 63, 94, 0.04)' : 'rgba(0, 230, 118, 0.04)';
       const h = Math.max(6, Math.abs(yBot - yTop));
       const y = Math.min(yTop, yBot);
 
-      // Shaded Band
+      // Subtle Shaded Band
       ctx.fillStyle = bgCol;
-      ctx.fillRect(0, y, this.width || 800, h);
+      ctx.fillRect(0, y, (this.width || 800) - 75, h);
 
-      // Dashed boundary
-      ctx.save();
-      ctx.setLineDash([3, 4]);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(0, y, this.width || 800, h);
-      ctx.restore();
-
-      // Left Margin Badge
-      const badgeTxt = isRes ? `🏆 SNR VALID RES (2MV) $${z.zone_high.toFixed(2)}` : `🏆 SNR VALID SUP (2MV) $${z.zone_low.toFixed(2)}`;
+      // Compact Left Margin Badge
+      const badgeTxt = isRes ? `SNR RES $${z.zone_high.toFixed(2)}` : `SNR SUP $${z.zone_low.toFixed(2)}`;
       ctx.font = 'bold 8px "JetBrains Mono", monospace';
       const bw = ctx.measureText(badgeTxt).width + 10;
-      const bx = 6;
+      const bx = 8;
       const by = y + h / 2 - 7;
 
-      ctx.fillStyle = isRes ? 'rgba(38, 8, 16, 0.95)' : 'rgba(4, 30, 16, 0.95)';
+      ctx.fillStyle = isRes ? 'rgba(38, 8, 16, 0.92)' : 'rgba(4, 30, 16, 0.92)';
       ctx.fillRect(bx, by, bw, 14);
       ctx.strokeStyle = col;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 0.9;
       ctx.strokeRect(bx, by, bw, 14);
       ctx.fillStyle = col;
       ctx.textAlign = 'left';
@@ -6508,9 +6507,9 @@ class FootprintRenderer {
   }
 
 
-  /* ─── Mobile Floating Touch Quick Toolbar (🎯 Pusat, ➕ Zoom, ➖ Zoom) ────── */
+  /* ─── Floating Quick Zoom & Center Toolbar (🎯 Pusat, ➕ Zoom In, ➖ Zoom Out) ────── */
   _drawMobileToolbar(ctx) {
-    if (!this.width || this.width >= 768) return;
+    if (!this.width) return;
     ctx.save();
     this.mobileHitboxes = [];
 
