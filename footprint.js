@@ -1443,15 +1443,16 @@ class FootprintRenderer {
           ctx.stroke();
           ctx.setLineDash([]);
 
+          const shortIceBadge = `🧊 POT. ICE ${latestIc.bias} $${latestIc.price.toFixed(2)} (${Math.round(latestIc.absorbed_vol || 25)}L•${latestIc.confidence || 85}%)`;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-          const tw = ctx.measureText(latestIc.badge).width + 8;
+          const tw = ctx.measureText(shortIceBadge).width + 8;
           ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
           ctx.fillRect(120, y - 7, tw, 14);
           ctx.strokeStyle = col;
           ctx.strokeRect(120, y - 7, tw, 14);
           ctx.fillStyle = col;
           ctx.textAlign = 'left';
-          ctx.fillText(latestIc.badge, 124, y + 3.5);
+          ctx.fillText(shortIceBadge, 124, y + 3.5);
           ctx.restore();
         }
       }
@@ -2454,8 +2455,20 @@ class FootprintRenderer {
     if (!this._emittedFpSignals) this._emittedFpSignals = new Set();
     ctx.save();
 
-    // Check recent completed candles and current live candle (last 8 bars)
+    // Pre-find the SINGLE most recent BUY and SINGLE most recent SELL candle index so boxes NEVER stack 2-deep!
     const scanStart = Math.max(0, candles.length - 8);
+    let latestBuySigIdx = -1;
+    let latestSellSigIdx = -1;
+    for (let k = candles.length - 1; k >= Math.max(0, candles.length - 2); k--) {
+      const ck = candles[k];
+      const actDem = demandLevels.find(l => Math.abs(l.p - ck.low) <= tol || (ck.low <= l.p && ck.close >= l.p));
+      const actSup = supplyLevels.find(l => Math.abs(l.p - ck.high) <= tol || (ck.high >= l.p && ck.close <= l.p));
+      const bullOk = (actDem && (ck._absorptionLow || (ck.delta > 0 && ck.close >= ck.open))) || (ck._absorptionLow && ck.delta > 0) || (actDem && ck.delta > 10.0);
+      const bearOk = (actSup && (ck._absorptionHigh || (ck.delta < 0 && ck.close <= ck.open))) || (ck._absorptionHigh && ck.delta < 0) || (actSup && ck.delta < -10.0);
+      if (bullOk && latestBuySigIdx === -1) latestBuySigIdx = k;
+      if (bearOk && latestSellSigIdx === -1) latestSellSigIdx = k;
+    }
+
     for (let i = scanStart; i < candles.length; i++) {
       const c = candles[i];
       const candleIndexFromRight = (candles.length - 1) - i;
@@ -2474,13 +2487,13 @@ class FootprintRenderer {
                           (c._absorptionLow && c.delta > 0) || 
                           (activeDemand && c.delta > 10.0);
 
-      const isRecentSignal = (i >= candles.length - 2);
+      const isRecentSignal = (i === latestBuySigIdx);
 
       if (isBullSetup) {
         const zoneName = activeDemand ? activeDemand.name : 'DEMAND ABSORPTION';
 
         if (isRecentSignal) {
-          // Neon Glowing Pulse Arrow & Full Bulky Badge for LIVE/FRESH signal
+          // Neon Glowing Pulse Arrow & Single Clean Badge for LIVE/FRESH signal
           ctx.fillStyle = '#00e676';
           ctx.shadowColor = '#00e676';
           ctx.shadowBlur = 10;
@@ -2492,7 +2505,7 @@ class FootprintRenderer {
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          const badgeText = `🎯 [CLUSTER] BUY [${zoneName}]`;
+          const badgeText = `🎯 [FOOTPRINT] BUY [${zoneName}]`;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const bw = ctx.measureText(badgeText).width + 12;
           const bx = Math.max(10, centerX - bw / 2);
@@ -2530,11 +2543,12 @@ class FootprintRenderer {
                           (c._absorptionHigh && c.delta < 0) || 
                           (activeSupply && c.delta < -10.0);
 
+      const isRecentSellSignal = (i === latestSellSigIdx);
       if (isBearSetup) {
         const zoneName = activeSupply ? activeSupply.name : 'SUPPLY ABSORPTION';
 
-        if (isRecentSignal) {
-          // Neon Glowing Pulse Arrow & Full Bulky Badge for LIVE/FRESH signal
+        if (isRecentSellSignal) {
+          // Neon Glowing Pulse Arrow & Single Clean Badge for LIVE/FRESH signal
           ctx.fillStyle = '#ff3366';
           ctx.shadowColor = '#ff3366';
           ctx.shadowBlur = 10;
@@ -2546,7 +2560,7 @@ class FootprintRenderer {
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          const badgeText = `🎯 [CLUSTER] SELL [${zoneName}]`;
+          const badgeText = `🎯 [FOOTPRINT] SELL [${zoneName}]`;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const bw = ctx.measureText(badgeText).width + 12;
           const bx = Math.max(10, centerX - bw / 2);
@@ -3503,6 +3517,17 @@ class FootprintRenderer {
 
     // 9. Render Each Candle Column + Top 4-Row Telemetry Table + Brick Matrix
     const pocPoints = [];
+    let latestClusterDivIdx = -1;
+    for (let k = processedCandles.length - 1; k >= Math.max(0, processedCandles.length - 4); k--) {
+      const pk = processedCandles[k];
+      const ck = pk.raw;
+      const kBull = ck.close >= ck.open;
+      const kDiv = (kBull && ck.delta < -1.5) || (!kBull && ck.delta > 1.5);
+      if (kDiv && !pk.climaxSignal) {
+        latestClusterDivIdx = k;
+        break;
+      }
+    }
 
     for (let i = 0; i < processedCandles.length; i++) {
       const pc = processedCandles[i];
@@ -3947,12 +3972,12 @@ class FootprintRenderer {
         }
       }
 
-      // Feature: On-Chart Delta Divergence Warning Marker
-      if (this.cdShowDivMarkers !== false && isDivergent && !pc.climaxSignal) {
+      // Feature: On-Chart Delta Divergence Warning Marker (Only on single latest divergent candle to prevent overlap)
+      if (this.cdShowDivMarkers !== false && i === latestClusterDivIdx && isDivergent && !pc.climaxSignal) {
         ctx.save();
         const isBullDiv = !isBull && c.delta > 1.5;
         const isBearDiv = isBull && c.delta < -1.5;
-        const divY = isBearDiv ? (yHigh - 16) : (yLow + 6);
+        const divY = isBearDiv ? (yHigh - 18) : (yLow + 8);
         const divCol = isBearDiv ? '#fb923c' : '#38bdf8';
         const divBg = isBearDiv ? 'rgba(67, 20, 7, 0.95)' : 'rgba(8, 47, 73, 0.95)';
         const tagW = Math.max(colW - 2, 42);
