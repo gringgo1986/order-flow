@@ -855,15 +855,35 @@ class FootprintRenderer {
       this.allCandles = snapshotCandles.slice();
       return;
     }
+    // Check if existing cached candles have a stale time gap or large price jump vs incoming server candles
+    if (snapshotCandles.length >= 15) {
+      const firstIncoming = snapshotCandles[0];
+      const latestIncoming = snapshotCandles[snapshotCandles.length - 1];
+      const existingLast = this.allCandles[this.allCandles.length - 1];
+      if (existingLast && Math.abs((existingLast.close || 0) - (latestIncoming.close || 0)) > 10.0) {
+        this.allCandles = snapshotCandles.slice();
+        this._cdAnchorMid = null;
+        return;
+      }
+      // Remove any old candles inside the incoming time window that might have had a giant fake wick
+      this.allCandles = this.allCandles.filter(c => c.time < firstIncoming.time || Math.abs(c.high - c.low) <= 12.0);
+    }
+
+    let addedNew = false;
     for (const sc of snapshotCandles) {
+      if (!sc || !sc.time) continue;
       const idx = this.allCandles.findIndex(c => c.time === sc.time);
       if (idx !== -1) {
         this.allCandles[idx] = sc;
-      } else if (this.allCandles.length > 0 && sc.time > this.allCandles[this.allCandles.length - 1].time) {
+      } else {
         this.allCandles.push(sc);
-        if (this.allCandles.length > 1500) {
-          this.allCandles.shift();
-        }
+        addedNew = true;
+      }
+    }
+    if (addedNew) {
+      this.allCandles.sort((a, b) => a.time - b.time);
+      if (this.allCandles.length > 1500) {
+        this.allCandles = this.allCandles.slice(-1500);
       }
     }
   }
