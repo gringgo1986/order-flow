@@ -707,6 +707,57 @@ class BookmapRenderer {
   /* ══════════════════════════════════════════════════════════════════
      MAIN RENDER LOOP
      ══════════════════════════════════════════════════════════════════ */
+  /* ─── 24/7 Background Data Ingestion (Runs continuously even when viewing Cluster/Footprint) ─── */
+  ingestSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    this._latestSnapshot = snapshot;
+    if (snapshot.server_time_ms && typeof snapshot.server_time_ms === 'number') {
+      const skew = snapshot.server_time_ms - Date.now();
+      this._serverTimeOffset = (this._serverTimeOffset == null) ? skew : (this._serverTimeOffset * 0.95 + skew * 0.05);
+    }
+    const now = Date.now() + (this._serverTimeOffset || 0);
+    if (snapshot.last_price && Number.isFinite(snapshot.last_price)) {
+      this.lastKnownPrice = snapshot.last_price;
+      this._currentPrice = snapshot.last_price;
+    }
+    // 1. Ingest Heatmap Slices continuously in background
+    if (!this._heatmapHistoryBuffer) this._heatmapHistoryBuffer = [];
+    if (snapshot.heatmap && snapshot.heatmap.length) {
+      if (snapshot.heatmap.length >= 100) {
+        this._heatmapHistoryBuffer = [...snapshot.heatmap];
+      } else {
+        const lastTs = this._heatmapHistoryBuffer.length ? this._heatmapHistoryBuffer[this._heatmapHistoryBuffer.length - 1].timestamp : 0;
+        for (const snap of snapshot.heatmap) {
+          if (snap.timestamp > lastTs) {
+            this._heatmapHistoryBuffer.push(snap);
+          }
+        }
+        if (this._heatmapHistoryBuffer.length > 600) {
+          this._heatmapHistoryBuffer = this._heatmapHistoryBuffer.slice(-600);
+        }
+      }
+    }
+    // 2. Ingest Trades continuously in background
+    if (!this._tradesHistoryBuffer) this._tradesHistoryBuffer = [];
+    if (snapshot.trades && snapshot.trades.length) {
+      if (snapshot.trades.length >= 80 && this._tradesHistoryBuffer.length === 0) {
+        this._tradesHistoryBuffer = [...snapshot.trades];
+      } else {
+        const seenIds = new Set(this._tradesHistoryBuffer.map(t => t.id != null ? t.id : `${t.timestamp}_${t.price}`));
+        for (const tr of snapshot.trades) {
+          const tid = tr.id != null ? tr.id : `${tr.timestamp}_${tr.price}`;
+          if (!seenIds.has(tid)) {
+            this._tradesHistoryBuffer.push(tr);
+            seenIds.add(tid);
+          }
+        }
+      }
+      if (this._tradesHistoryBuffer.length > 2000) {
+        this._tradesHistoryBuffer = this._tradesHistoryBuffer.slice(-2000);
+      }
+    }
+  }
+
   render(snapshot) {
     if (!this.width || !this.height) return;
     const ctx = this.ctx;
