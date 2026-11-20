@@ -3329,6 +3329,8 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       let startSpan = 4.5;
       let startZoom = 1.0;
       let startCandleW = 10;
+      let startCols = 12;
+      let startFpBars = 10;
       let initialPinchDist = 0;
       let lastTapTime = 0;
       let twoFingerStartX = 0;
@@ -3342,20 +3344,73 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
         return Math.hypot(dx, dy);
       };
 
-      // 1. TOUCH START: Prevent browser page scrolling & initiate chart pan / pinch / double-tap
+      // 1. TOUCH START: Check On-Canvas Buttons FIRST, then initiate chart pan / pinch / double-tap
       canvas.addEventListener('touchstart', (e) => {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
+
+        // Auto-close Layers dropdown or mobile DOM drawer when user taps on the chart canvas
+        const layersMenu = document.getElementById('layersDropdownMenu');
+        if (layersMenu && layersMenu.style.display !== 'none') {
+          layersMenu.style.display = 'none';
+        }
+        const wsEl = document.querySelector('.main-workspace');
+        if (wsEl && wsEl.classList.contains('dom-forced-open') && window.innerWidth <= 900) {
+          wsEl.classList.remove('dom-forced-open');
+          wsEl.classList.add('dom-collapsed');
+          const domTab = document.getElementById('mobTabDom');
+          if (domTab) domTab.classList.remove('active-dom');
+        }
 
         const mod = getMod();
         const rect = canvas.getBoundingClientRect();
 
         if (e.touches.length === 1) {
           const t = e.touches[0];
-          isTouching = true;
-          isPinching = false;
           touchStartX = t.clientX - rect.left;
           touchStartY = t.clientY - rect.top;
+
+          if (mod) {
+            // A. Check Floating Mobile Quick Capsule (🎯 PUSAT | ➕ | ➖) Hitboxes FIRST!
+            if (mod.mobileHitboxes && mod.mobileHitboxes.length > 0) {
+              for (const hb of mod.mobileHitboxes) {
+                if (touchStartX >= hb.x - 4 && touchStartX <= hb.x + hb.w + 4 && touchStartY >= hb.y - 4 && touchStartY <= hb.y + hb.h + 4) {
+                  hb.action();
+                  if (navigator.vibrate) { try { navigator.vibrate(20); } catch (err) {} }
+                  if (this.latestSnapshot) { try { mod.render(this.latestSnapshot); } catch (err) {} }
+                  isTouching = false;
+                  return;
+                }
+              }
+            }
+            // B. Check Cluster / Candlestick Top HUD Pills Hitboxes
+            if (mod.cdToolbarHitboxes && mod.cdToolbarHitboxes.length > 0) {
+              for (const hb of mod.cdToolbarHitboxes) {
+                if (touchStartX >= hb.x && touchStartX <= hb.x + hb.w && touchStartY >= hb.y && touchStartY <= hb.y + hb.h) {
+                  if (hb.onClick) hb.onClick();
+                  if (navigator.vibrate) { try { navigator.vibrate(18); } catch (err) {} }
+                  if (this.latestSnapshot) { try { mod.render(this.latestSnapshot); } catch (err) {} }
+                  isTouching = false;
+                  return;
+                }
+              }
+            }
+            // C. Check Bookmap Top HUD Pills Hitboxes
+            if (mod.bmHudHitboxes && mod.bmHudHitboxes.length > 0) {
+              for (const hb of mod.bmHudHitboxes) {
+                if (touchStartX >= hb.x && touchStartX <= hb.x + hb.w && touchStartY >= hb.y && touchStartY <= hb.y + hb.h) {
+                  if (hb.onClick) hb.onClick();
+                  if (navigator.vibrate) { try { navigator.vibrate(18); } catch (err) {} }
+                  if (this.latestSnapshot) { try { mod.render(this.latestSnapshot); } catch (err) {} }
+                  isTouching = false;
+                  return;
+                }
+              }
+            }
+          }
+
+          isTouching = true;
+          isPinching = false;
 
           if (mod) {
             startPriceOffset = mod.priceOffset || 0;
@@ -3371,7 +3426,8 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
               mod._dragMode = (touchStartX < (mod.CHART_LEFT || 0) || touchStartX > (mod.CHART_RIGHT || canvas.width)) ? 'scale' : 'pan';
             } else {
               startBarOffset = mod.barOffset || 0;
-              startZoom = mod.viewMode === 'candlestick' ? (mod.csVerticalScale || 1.0) : (mod.verticalZoom || 1.0);
+              startZoom = mod.viewMode === 'candlestick' ? (mod.csVerticalScale || 1.0) : (mod.fpUserVerticalZoom || mod.verticalZoom || 1.0);
+              startCols = mod.cdVisibleCols || 12;
               mod._isDragging = true;
               mod._dragStartX = touchStartX;
               mod._dragStartY = touchStartY;
@@ -3381,12 +3437,13 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
 
               // Komponen 10: Touch Navigation Toolbar Panel & Draggable Blue Slider
               const navStripH = 30;
-              if (touchStartY >= mod.height - navStripH) {
+              if (mod.viewMode === 'clusterdelta' && touchStartY >= mod.height - navStripH) {
                 if (mod.navHitboxes && mod.navHitboxes.length > 0) {
                   for (const hb of mod.navHitboxes) {
                     if (touchStartX >= hb.x && touchStartX <= hb.x + hb.w) {
                       if (hb.onClick) hb.onClick(touchStartX, touchStartY);
                       if (this.latestSnapshot) { try { mod.render(this.latestSnapshot); } catch (err) {} }
+                      isTouching = false;
                       return;
                     }
                   }
@@ -3407,8 +3464,9 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
           // Double Tap (< 300ms) -> Center to Live Market Price
           const now = Date.now();
           if (now - lastTapTime < 300) {
-            if (mod && mod.centerVertical) {
-              mod.centerVertical();
+            if (mod) {
+              if (mod.resetZoom) mod.resetZoom();
+              else if (mod.centerVertical) mod.centerVertical();
               this.showToast('🎯 Carta Dipusatkan Semula');
             }
             lastTapTime = 0;
@@ -3416,8 +3474,6 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             return;
           }
           lastTapTime = now;
-
-          // Pure touch tracking without synthetic mousedown to avoid dual-drag jitter
 
         } else if (e.touches.length === 2) {
           isTouching = false;
@@ -3431,14 +3487,16 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             if (type === 'bookmap') {
               startSpan = mod.bmHalfSpan || 4.5;
             } else {
-              startZoom = mod.verticalZoom || 1.0;
+              startZoom = mod.fpUserVerticalZoom || mod.verticalZoom || 1.0;
               startCandleW = mod.candleWidth || 12;
+              startCols = mod.cdVisibleCols || 12;
+              startFpBars = mod.fpVisibleBars || 10;
             }
           }
         }
       }, { passive: false });
 
-      // 2. TOUCH MOVE: Silky Smooth 60fps pan and pinch-to-zoom
+      // 2. TOUCH MOVE: Silky Smooth 60fps pan and pinch-to-zoom across ALL modules
       canvas.addEventListener('touchmove', (e) => {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
@@ -3469,29 +3527,36 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
               mod.timeOffsetMs = Math.max(minForward, Math.min(maxBack, Math.round(startTimeOffset + dTime)));
             }
           } else {
-            // Footprint / ClusterDelta / Candlestick (Silky Smooth Damped Drag - Zero Event Collision)
+            // Footprint / ClusterDelta / Candlestick
             if (mod._dragMode === 'nav_slider') {
               if (mod._updateNavSliderFromCx) mod._updateNavSliderFromCx(curX);
             } else if (mod._dragMode === 'scale') {
-              const deltaScale = dy * 0.004;
+              const deltaScale = dy * 0.005;
               if (mod.viewMode === 'candlestick') {
                 mod.csVerticalScale = Math.max(0.4, Math.min(3.5, startZoom - deltaScale));
+              } else if (mod.viewMode === 'clusterdelta') {
+                const newRows = Math.round(startCols + dy * 0.08);
+                if (mod.setJalurCount) mod.setJalurCount(newRows);
               } else {
-                mod.verticalZoom = Math.max(0.4, Math.min(3.5, startZoom - deltaScale));
+                mod.fpUserVerticalZoom = Math.max(0.4, Math.min(3.5, startZoom - deltaScale));
+                mod.verticalZoom = mod.fpUserVerticalZoom;
               }
             } else {
-              const priceSpan = Math.max(3.0, (mod.maxPrice - mod.minPrice) || 12.0);
+              const priceSpan = Math.max(3.0, (mod.maxPrice - mod.minPrice) || 10.0);
               const chartH = Math.max(150, mod.height - 70);
-              const dPrice = (dy / chartH) * (priceSpan * 0.70);
+              const dPrice = (dy / chartH) * (priceSpan * 0.75);
               mod.priceOffset = Number((startPriceOffset + dPrice).toFixed(2));
 
-              const candleW = Math.max(12, mod.candleWidth || 20);
-              const dBars = Math.round(dx / (candleW * 0.70));
+              // Calculate actual bar width for Cluster vs Footprint so 1-finger horizontal pan is 1:1 responsive!
+              let effectiveBarW = Math.max(24, mod.candleWidth || 45);
+              if (mod.viewMode === 'clusterdelta') {
+                effectiveBarW = Math.max(16, (mod.width - 70) / Math.max(6, mod.cdVisibleCols || 12));
+              }
+              const dBars = Math.round(dx / (effectiveBarW * 0.75));
               mod.barOffset = Math.max(0, startBarOffset + dBars);
             }
           }
 
-          // Directly trigger fast smooth frame render without dispatching synthetic mouse events that conflict
           if (this.latestSnapshot) {
             try { mod.render(this.latestSnapshot); } catch (e) {}
           }
@@ -3499,22 +3564,29 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
         } else if (e.touches.length === 2 && isPinching && mod) {
           twoFingerCurX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
           twoFingerCurY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-          // Pinch-to-zoom calculation
           const currentDist = getPinchDistance(e.touches[0], e.touches[1]);
-          if (initialPinchDist > 5) {
+          if (initialPinchDist > 8) {
             const pinchRatio = currentDist / initialPinchDist;
 
             if (type === 'bookmap') {
               const newSpan = startSpan / pinchRatio;
               mod.bmHalfSpan = Math.max(1.5, Math.min(15.0, Number(newSpan.toFixed(2))));
+            } else if (mod.viewMode === 'clusterdelta') {
+              // Pinch out (pinchRatio > 1) -> fewer columns (bigger cells); Pinch in -> more columns
+              const targetCols = Math.round(startCols / pinchRatio);
+              if (mod.setJalurCount) mod.setJalurCount(targetCols);
+            } else if (mod.viewMode === 'candlestick') {
+              const newCandleW = startCandleW * pinchRatio;
+              mod.candleWidth = Math.max(4, Math.min(50, Math.round(newCandleW)));
             } else {
-              if (mod.viewMode === 'candlestick') {
-                const newCandleW = startCandleW * pinchRatio;
-                mod.candleWidth = Math.max(4, Math.min(50, Math.round(newCandleW)));
-              } else {
-                const newZoom = startZoom * pinchRatio;
-                mod.verticalZoom = Math.max(0.5, Math.min(3.0, Number(newZoom.toFixed(2))));
-              }
+              // Footprint [3]: Pinch out -> fewer bars (bigger candles) + taller vertical cells
+              const newZoom = startZoom * pinchRatio;
+              mod.fpUserVerticalZoom = Math.max(0.45, Math.min(3.2, Number(newZoom.toFixed(2))));
+              mod.verticalZoom = mod.fpUserVerticalZoom;
+              mod.fpVisibleBars = Math.max(4, Math.min(22, Math.round(startFpBars / pinchRatio)));
+            }
+            if (this.latestSnapshot) {
+              try { mod.render(this.latestSnapshot); } catch (e) {}
             }
           }
         }
