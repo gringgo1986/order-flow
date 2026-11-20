@@ -67,11 +67,15 @@ class App {
     this._setupDomResize();
     this._setupMobileModuleDock();
 
-    // Battery Saver Visibility Listener
+    // 24/7 Always-On Visibility Listener: Immediately sync full history & recenter on tab wakeup
     document.addEventListener('visibilitychange', () => {
       this.isPageHidden = document.hidden;
       if (!this.isPageHidden) {
         this.needsRedraw = true;
+        this.loadHistoricalCandles(this.currentTimeframe || 'M1');
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          this._connectWebSocket();
+        }
         window.dispatchEvent(new Event('resize'));
         if (this.latestSnapshot) {
           if (this.bookmap && (this.currentView === 'bookmap' || this.currentView === 'split')) {
@@ -1624,7 +1628,15 @@ class App {
           return;
         }
         this.latestSnapshot = snapshot;
-        // Battery Saver: throttle background rendering when tab/screen is hidden
+        // 24/7 Simultaneous Module Data Ingestion: ALL modules (Bookmap, Cluster, Footprint) ingest every tick in background!
+        if (this.bookmap && typeof this.bookmap.ingestSnapshot === 'function') {
+          try { this.bookmap.ingestSnapshot(snapshot); } catch (e) {}
+        }
+        if (this.footprint && snapshot.candles && typeof this.footprint.mergeLiveCandles === 'function') {
+          try { this.footprint.mergeLiveCandles(snapshot.candles); } catch (e) {}
+        }
+
+        // Battery Saver: throttle DOM/Canvas painting when tab is hidden, while data buffers continue 100% non-stop above!
         if (this.isPageHidden) {
           const now = Date.now();
           if (now - this._lastBgRenderTime < 2500) {
