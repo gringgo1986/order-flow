@@ -1830,3 +1830,56 @@ canvas, .chart-canvas, #tradingCanvas, #bookmapCanvas, #footprintCanvas, .dom-la
   user-select: none !important;
   -webkit-user-select: none !important;
 }
+
+/* ==================== V60.0 MOBILE ERGONOMIC OVERHAUL (CLEAN SINGLE DOCK & UNCLIPPED MENUS) ==================== */
+@media (max-width: 900px) {
+  /* 1. Eliminate duplicate floating module buttons that block the top-right & bottom-right of chart */
+  .mobile-quick-switcher,
+  .mobile-dom-fab {
+    display: none !important;
+  }
+
+  /* 2. Hide duplicate top-header view switchers on mobile phones (< 768px) since bottom thumb dock has all 5 tabs */
+  @media (max-width: 768px) {
+    header.app-header .view-switchers {
+      display: none !important;
+    }
+    header.app-header {
+      justify-content: space-between !important;
+    }
+    .brand-section {
+      max-width: none !important;
+    }
+  }
+
+  /* 3. Fix LAPISAN dropdown menu being clipped inside overflow-x:auto chart-toolbar on mobile */
+  #layersDropdownMenu.layers-menu {
+    position: fixed !important;
+    top: 82px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: 75vh !important;
+    overflow-y: auto !important;
+    z-index: 99999999 !important;
+    padding: 10px !important;
+    gap: 6px !important;
+    background: rgba(8, 13, 25, 0.98) !important;
+    border: 1.5px solid #38bdf8 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.95), 0 0 20px rgba(56, 189, 248, 0.25) !important;
+  }
+
+  #layersDropdownMenu .tool-btn {
+    min-height: 34px !important;
+    font-size: 11.5px !important;
+    padding: 6px 10px !important;
+  }
+
+  #layersDropdownMenu .snr-tf-toggle {
+    min-height: 30px !important;
+    padding: 4px 10px !important;
+    font-size: 11px !important;
+  }
+}
