@@ -100,6 +100,24 @@ async def startup_event():
     engine.initialize_mt5()
     # Start background tick polling loop
     asyncio.create_task(background_tick_stream())
+    # Start 24/7 Cloud Self-Ping Keep-Alive Daemon so server never sleeps when tabs are closed
+    asyncio.create_task(keep_alive_cloud_pinger())
+
+async def keep_alive_cloud_pinger():
+    """Pings external Render URL every 3 minutes 24/7 to prevent cloud container spin-down"""
+    import urllib.request
+    ext_url = os.environ.get("RENDER_EXTERNAL_URL", "https://gringgo-orderflow.enzonic.dev").rstrip("/")
+    targets = [f"{ext_url}/api/status", "https://gringgo-orderflow.enzonic.dev/api/status"]
+    while True:
+        await asyncio.sleep(150)
+        for url in targets:
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Gringgo24x7KeepAlive/1.0"})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    _ = resp.read()
+                break
+            except Exception:
+                pass
 
 async def background_tick_stream():
     """Background loop polling MT5 or simulator and broadcasting snapshots"""
