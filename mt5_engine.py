@@ -2988,7 +2988,7 @@ class OrderFlowEngine:
                         }
                         self.snr_valid_signals.append(sig)
                         self.bookmap_signals.append(sig)
-                        if len(self.bookmap_signals) > 35:
+                        if len(self.bookmap_signals) > 500:
                             self.bookmap_signals.pop(0)
 
             elif z["type"] == "SUPPORT":
@@ -3020,7 +3020,7 @@ class OrderFlowEngine:
                         }
                         self.snr_valid_signals.append(sig)
                         self.bookmap_signals.append(sig)
-                        if len(self.bookmap_signals) > 35:
+                        if len(self.bookmap_signals) > 500:
                             self.bookmap_signals.pop(0)
 
     def _evaluate_footprint_signals(self, p: float, now: float, now_ms: int, active_demand: Any, active_supply: Any):
@@ -3059,7 +3059,7 @@ class OrderFlowEngine:
                     "status": "ACTIVE"
                 }
                 self.bookmap_signals.append(sig)
-                if len(self.bookmap_signals) > 35:
+                if len(self.bookmap_signals) > 500:
                     self.bookmap_signals.pop(0)
                 self._last_bm_signal_time = now
                 self._last_bm_signal_dir = "BUY"
@@ -3091,7 +3091,7 @@ class OrderFlowEngine:
                     "status": "ACTIVE"
                 }
                 self.bookmap_signals.append(sig)
-                if len(self.bookmap_signals) > 35:
+                if len(self.bookmap_signals) > 500:
                     self.bookmap_signals.pop(0)
                 self._last_bm_signal_time = now
                 self._last_bm_signal_dir = "SELL"
@@ -3136,7 +3136,7 @@ class OrderFlowEngine:
                     "status": "ACTIVE"
                 }
                 self.bookmap_signals.append(sig)
-                if len(self.bookmap_signals) > 35:
+                if len(self.bookmap_signals) > 500:
                     self.bookmap_signals.pop(0)
                 self._last_bm_signal_time = now
                 self._last_bm_signal_dir = "BUY"
@@ -3168,7 +3168,7 @@ class OrderFlowEngine:
                     "status": "ACTIVE"
                 }
                 self.bookmap_signals.append(sig)
-                if len(self.bookmap_signals) > 35:
+                if len(self.bookmap_signals) > 500:
                     self.bookmap_signals.pop(0)
                 self._last_bm_signal_time = now
                 self._last_bm_signal_dir = "SELL"
@@ -3312,7 +3312,7 @@ class OrderFlowEngine:
                         "status": "ACTIVE"
                     }
                     self.bookmap_signals.append(sig)
-                    if len(self.bookmap_signals) > 35:
+                    if len(self.bookmap_signals) > 500:
                         self.bookmap_signals.pop(0)
                     self._last_bm_signal_time = now
                     self._last_bm_signal_dir = "BUY"
@@ -3358,7 +3358,7 @@ class OrderFlowEngine:
                         "status": "ACTIVE"
                     }
                     self.bookmap_signals.append(sig)
-                    if len(self.bookmap_signals) > 35:
+                    if len(self.bookmap_signals) > 500:
                         self.bookmap_signals.pop(0)
                     self._last_bm_signal_time = now
                     self._last_bm_signal_dir = "SELL"
@@ -3373,7 +3373,7 @@ class OrderFlowEngine:
                 with open(self.signals_storage_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, list) and len(data) > 0:
-                        self.bookmap_signals = data[-50:]
+                        self.bookmap_signals = data[-500:]
         except Exception:
             pass
 
@@ -3381,7 +3381,7 @@ class OrderFlowEngine:
         try:
             if hasattr(self, 'signals_storage_file'):
                 with open(self.signals_storage_file, "w", encoding="utf-8") as f:
-                    json.dump(self.bookmap_signals[-50:], f)
+                    json.dump(self.bookmap_signals[-500:], f)
         except Exception:
             pass
 
@@ -3867,7 +3867,7 @@ class OrderFlowEngine:
             "prop_firm_shield": self._evaluate_prop_firm_shield(),
             "bookmap_signals": self._evaluate_bookmap_signals(),
             "snr_valid_zones": self.snr_valid_zones[-6:],
-            "snr_valid_signals": self.snr_valid_signals[-35:],
+            "snr_valid_signals": self.snr_valid_signals[-500:],
             "order_book": {
                 "bids": self.order_book_bids,
                 "asks": self.order_book_asks
