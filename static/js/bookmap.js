@@ -391,6 +391,14 @@ class BookmapRenderer {
 
       // Ignore drag start if clicking top HUD bar
       if (cy <= this.TOP_PADDING) return;
+      if (this.mobileHitboxes && this.mobileHitboxes.length > 0) {
+        for (const hb of this.mobileHitboxes) {
+          if (cx >= hb.x && cx <= hb.x + hb.w && cy >= hb.y && cy <= hb.y + hb.h) {
+            hb.action();
+            return;
+          }
+        }
+      }
 
       // 1. Check if clicking on an active Stop Loss (SL) or Take Profit (TP) badge to drag
       if (this._positionHitboxes && this._positionHitboxes.length > 0) {
@@ -1036,8 +1044,80 @@ class BookmapRenderer {
     /* ── 13. Interactive Top Bookmap Pro HUD Header ── */
     try { this._drawTopHUD(ctx, snapshot); } catch (e) {}
 
-    /* ── 13. Interactive Tooltip ── */
+    /* ── 13B. Floating Quick Zoom & Center Capsule (🎯 PUSAT | ➕ | ➖) ── */
+    try { this._drawMobileToolbar(ctx); } catch (e) {}
+
+    /* ── 14. Interactive Tooltip ── */
     try { this._renderTooltip(); } catch (e) {}
+  }
+
+  _drawMobileToolbar(ctx) {
+    if (!this.width) return;
+    ctx.save();
+    this.mobileHitboxes = [];
+
+    const barW = 186;
+    const barH = 28;
+    const bx = Math.floor((this.CHART_LEFT + this.NOW_X - barW) / 2);
+    const by = this.CHART_BOTTOM - barH - 8;
+
+    ctx.fillStyle = 'rgba(10, 16, 30, 0.90)';
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(bx, by, barW, barH, 14) : ctx.rect(bx, by, barW, barH);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
+    const btn1W = 74;
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🎯 PUSAT', bx + btn1W / 2 + 4, by + barH / 2);
+
+    this.mobileHitboxes.push({
+      x: bx, y: by, w: btn1W + 5, h: barH,
+      action: () => {
+        this.resetZoom();
+        if (window.orderFlowApp && window.orderFlowApp.showToast) {
+          window.orderFlowApp.showToast('🎯 Bookmap Dipusatkan Semula');
+        }
+      }
+    });
+
+    ctx.strokeStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.moveTo(bx + btn1W + 8, by + 4);
+    ctx.lineTo(bx + btn1W + 8, by + barH - 4);
+    ctx.stroke();
+
+    const btn2X = bx + btn1W + 10;
+    const btn2W = 46;
+    ctx.fillStyle = '#00e676';
+    ctx.fillText('➕', btn2X + btn2W / 2, by + barH / 2);
+
+    this.mobileHitboxes.push({
+      x: btn2X, y: by, w: btn2W, h: barH,
+      action: () => { this.zoomIn(); }
+    });
+
+    ctx.beginPath();
+    ctx.moveTo(btn2X + btn2W, by + 4);
+    ctx.lineTo(btn2X + btn2W, by + barH - 4);
+    ctx.stroke();
+
+    const btn3X = btn2X + btn2W + 2;
+    const btn3W = 46;
+    ctx.fillStyle = '#ff6b8b';
+    ctx.fillText('➖', btn3X + btn3W / 2, by + barH / 2);
+
+    this.mobileHitboxes.push({
+      x: btn3X, y: by, w: btn3W, h: barH,
+      action: () => { this.zoomOut(); }
+    });
+
+    ctx.restore();
   }
 
   /* ─── Grid Lines, Time Markers & "NOW" Line Divider ────────────── */
