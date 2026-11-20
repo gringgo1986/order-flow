@@ -667,11 +667,13 @@ class FootprintRenderer {
   }
 
   setJalurCount(val) {
-    const clamped = Math.max(20, Math.min(50, Math.round(parseFloat(val) || 30)));
+    const isMob = Boolean(this.width && this.width < 650);
+    const minCols = isMob ? 6 : 16;
+    const clamped = Math.max(minCols, Math.min(50, Math.round(parseFloat(val) || (isMob ? 10 : 30))));
     this.cdVisibleCols = clamped;
-    this.cdMaxRows = clamped;
-    // Map 20..50 scale to 7..25 Footprint bars (20=7 bars Mikro, 30=13 bars Std, 50=25 bars Makro)
-    this.fpVisibleBars = Math.round(7 + ((clamped - 20) / 30) * 18);
+    this.cdMaxRows = isMob ? Math.max(16, Math.min(28, clamped + 10)) : clamped;
+    // Map scale to Footprint bars (4..25 bars)
+    this.fpVisibleBars = isMob ? Math.max(4, Math.min(14, Math.round(clamped * 0.55))) : Math.max(5, Math.round(7 + ((Math.max(20, clamped) - 20) / 30) * 18));
     const sl = document.getElementById('sliderClusterJalur');
     const lb = document.getElementById('lblClusterJalur');
     if (sl && parseInt(sl.value, 10) !== clamped) sl.value = String(clamped);
@@ -2812,6 +2814,11 @@ class FootprintRenderer {
     const topControlH = 0; // Zen Pro Mode: Removed duplicate trading buttons and HUD from inside canvas!
     const topTableH = 68;   // 4-row institutional telemetry header (Vol, Delta, Δ%/Div, Time)
     const topHeaderH = topControlH + topTableH; // 68px clean header
+    if (this.width && this.width < 600 && !this._mobClusterAutoSized) {
+      this._mobClusterAutoSized = true;
+      this.cdVisibleCols = 10;
+      this.cdMaxRows = 22;
+    }
     const bottomStripH = 26;
     const isProfileCollapsed = this.cdShowProfilePanel === false || this.width < 560;
     const volColW = isProfileCollapsed ? 0 : 84;
@@ -3766,7 +3773,7 @@ class FootprintRenderer {
           ctx.strokeRect(x, boxY, colW, boxH);
 
           // Teks Volum (Kiri) & Teks Delta (Kanan)
-          if (boxH >= 7.8 && colW >= 24) {
+          if (boxH >= 7.2 && colW >= 19) {
             const vStr = Math.max(1, Math.round(cl.total * 10)).toString();
             const dVal = Math.round(cl.delta * 10);
             const dStr = (dVal > 0 ? '+' : '') + dVal.toString();
@@ -4637,6 +4644,7 @@ class FootprintRenderer {
     // ── KOMPONEN 10: BOTTOM NAVIGATION TOOLBAR PANEL WITH DRAGGABLE BLUE SLIDER WINDOW ──
     const totalCandles = Math.max(1, (this.allCandles && this.allCandles.length) || (rawCandles && rawCandles.length) || 30);
     this._drawNavigationToolbar(ctx, chartW, rightPanelW, bottomStripH, processedCandles, totalCandles);
+    this._drawMobileToolbar(ctx);
 
     ctx.restore();
   }
@@ -6558,10 +6566,10 @@ class FootprintRenderer {
     ctx.save();
     this.mobileHitboxes = [];
 
-    const barW = 190;
-    const barH = 30;
+    const barW = 186;
+    const barH = 28;
     const bx = Math.floor((this.width - barW) / 2);
-    const by = this.height - barH - 8;
+    const by = (this.viewMode === 'clusterdelta') ? (this.height - barH - 32) : (this.height - barH - 8);
 
     // Glowing background capsule
     ctx.fillStyle = 'rgba(10, 16, 30, 0.92)';
