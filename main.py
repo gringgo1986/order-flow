@@ -20,7 +20,7 @@ try:
             if not parts or not parts[0]:
                 continue
             # Jangan timpa fail database dan fail keselamatan
-            if parts[0] in ["users.db", ".github_token"]:
+            if parts[0] in ["users.db", ".github_token", "signals_history.json"]:
                 continue
             target_path = base_dir.joinpath(*parts)
             if member.is_dir():
