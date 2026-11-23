@@ -106,18 +106,38 @@ async def startup_event():
     asyncio.create_task(keep_alive_cloud_pinger())
 
 async def keep_alive_cloud_pinger():
-    """Pings external Render URL every 3 minutes 24/7 to prevent cloud container spin-down"""
+    """Pings BOTH Enzonic and Render servers 24/7 and peer-syncs signals between both servers"""
     import urllib.request
-    ext_url = os.environ.get("RENDER_EXTERNAL_URL", "https://gringgo-orderflow.enzonic.dev").rstrip("/")
-    targets = [f"{ext_url}/api/status", "https://gringgo-orderflow.enzonic.dev/api/status"]
+    peers = [
+        "https://gringgo-orderflow.enzonic.dev",
+        "https://order-flow-whfl.onrender.com"
+    ]
+    ext_url = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
+    if ext_url and ext_url not in peers:
+        peers.append(ext_url)
+
     while True:
-        await asyncio.sleep(150)
-        for url in targets:
+        await asyncio.sleep(60)
+        for base_url in peers:
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Gringgo24x7KeepAlive/1.0"})
+                req = urllib.request.Request(f"{base_url}/api/signals", headers={"User-Agent": "Gringgo24x7PeerSync/1.0"})
                 with urllib.request.urlopen(req, timeout=8) as resp:
-                    _ = resp.read()
-                break
+                    raw = resp.read().decode("utf-8")
+                    data = json.loads(raw)
+                    peer_sigs = data.get("signals", [])
+                    if isinstance(peer_sigs, list) and peer_sigs:
+                        existing_ids = {s.get("id") for s in engine.bookmap_signals}
+                        added = False
+                        for ps in peer_sigs:
+                            if ps.get("id") and ps["id"] not in existing_ids:
+                                engine.bookmap_signals.append(ps)
+                                existing_ids.add(ps["id"])
+                                added = True
+                        if added:
+                            engine.bookmap_signals.sort(key=lambda x: x.get("timestamp", 0))
+                            if len(engine.bookmap_signals) > 500:
+                                engine.bookmap_signals = engine.bookmap_signals[-500:]
+                            engine._save_signals_to_disk()
             except Exception:
                 pass
 
@@ -602,9 +622,8 @@ for fname in ["bookmap.js", "footprint.js", "dom.js", "app.js", "lightweight-cha
     src = base_dir / fname
     dst = static_dir / "js" / fname
     if src.exists():
-        if not dst.exists() or src.stat().st_size != dst.stat().st_size:
-            try: shutil.copy2(src, dst)
-            except Exception: pass
+        try: shutil.copy2(src, dst)
+        except Exception: pass
     elif dst.exists() and not src.exists():
         try: shutil.copy2(dst, src)
         except Exception: pass
