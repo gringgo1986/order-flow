@@ -1412,7 +1412,7 @@ class BookmapRenderer {
         topAskWalls.forEach((w, idx) => drawSharkWallOverlay(w, true, idx));
         topBidWalls.forEach((w, idx) => drawSharkWallOverlay(w, false, idx));
 
-        // 2B. Render Ghost Indicator for Disappeared/Pulled Liquidity (Collision-Protected in RIGHT lane)
+        // 2B. Render Ghost Indicator for Disappeared/Pulled Liquidity inside PROJ lane (Right of NOW_X, zero bubble overlap)
         for (const gw of this._pulledGhostWalls) {
           const gy = this.priceToY(gw.p);
           if (gy >= this.CHART_TOP + 18 && gy <= this.CHART_BOTTOM - 18) {
@@ -1421,26 +1421,27 @@ class BookmapRenderer {
             ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
             ctx.lineWidth = 0.9;
             ctx.beginPath();
-            ctx.moveTo(Math.max(this.CHART_LEFT, this.NOW_X - 180), gy);
-            ctx.lineTo(this.NOW_X, gy);
+            ctx.moveTo(Math.max(this.CHART_LEFT, this.NOW_X - 90), gy);
+            ctx.lineTo(this.CHART_RIGHT, gy);
             ctx.stroke();
 
             ctx.font = 'bold 8px "JetBrains Mono", monospace';
-            const gTxt = `👻 HILANG -${gw.dropped}L @ $${gw.p.toFixed(2)}`;
-            const gtw = ctx.measureText(gTxt).width + 10;
-            const resolvedGy = this._resolveNonOverlappingY(gy, 14, 19, 'RIGHT');
-            const gx = this.NOW_X - gtw - 10;
+            const gTxt = `👻 HILANG -${gw.dropped}L`;
+            const maxProjW = Math.max(40, this.CHART_RIGHT - this.NOW_X - 6);
+            const gtw = Math.min(maxProjW, ctx.measureText(gTxt).width + 8);
+            const resolvedGy = this._resolveNonOverlappingY(gy, 14, 16, 'PROJ');
+            const gx = this.NOW_X + 3;
             const gby = resolvedGy - 7;
 
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
             ctx.fillRect(gx, gby, gtw, 14);
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.65)';
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.70)';
             ctx.lineWidth = 0.9;
             ctx.strokeRect(gx, gby, gtw, 14);
             ctx.fillStyle = '#cbd5e1';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText(gTxt, gx + 5, resolvedGy);
+            ctx.fillText(gTxt, gx + 4, resolvedGy);
             ctx.restore();
           }
         }
@@ -2467,34 +2468,25 @@ class BookmapRenderer {
       // In Zen mode, skip the bulky badge pill to keep candles completely clear
       if (this.bmZenMode) continue;
 
-      // Glowing Badge Pill with RIGHT Lane Anti-Collision Slotting
-      const badgeW = 215;
-      const badgeH = 16;
+      // Compact Trapped Traders Pill with RIGHT Lane Anti-Collision Slotting
+      const shortTrTxt = `🪤 ${isBuyerTrapped ? 'TRAPPED BUYERS' : 'TRAPPED SELLERS'} $${tr.price.toFixed(2)}`;
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      const badgeW = ctx.measureText(shortTrTxt).width + 12;
+      const badgeH = 15;
       const resolvedY = this._resolveNonOverlappingY(rawY, badgeH, 20, 'RIGHT');
-      const bx = this.NOW_X - badgeW - 14;
+      const bx = this.NOW_X - badgeW - 10;
       const by = resolvedY - (badgeH / 2);
-
-      // Connecting lead-line if offset vertically
-      if (Math.abs(resolvedY - rawY) > 4) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        ctx.moveTo(bx + badgeW, by + badgeH / 2);
-        ctx.lineTo(this.NOW_X - 4, rawY);
-        ctx.stroke();
-      }
 
       ctx.fillStyle = bgCol;
       ctx.fillRect(bx, by, badgeW, badgeH);
       ctx.strokeStyle = col;
-      ctx.lineWidth = 1.1;
+      ctx.lineWidth = 1.0;
       ctx.strokeRect(bx, by, badgeW, badgeH);
 
       ctx.fillStyle = col;
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${tr.badge}: @ $${tr.price.toFixed(2)} [${tr.action}]`, bx + 6, resolvedY);
+      ctx.fillText(shortTrTxt, bx + 6, resolvedY);
 
       // Trigger Voice Alert if freshly detected (< 1.5s)
       if (now - tr.timestamp < 1500) {
@@ -2649,68 +2641,11 @@ class BookmapRenderer {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText(text, bx + 4, resolvedLvY);
-      } else if (lv.isHtf) {
-        // Track major off-screen HTF levels (1D, H4, H1)
-        const primaryLabel = lv.labels[0] || 'LEVEL';
-        if (y < this.CHART_TOP && offScreenAboveCount < 2) {
-          const offTxt = `▲ ${primaryLabel.replace(/[^A-Za-z0-9 ]/g, '').trim()} $${lv.price.toFixed(2)}`;
-          ctx.font = 'bold 8px "JetBrains Mono", monospace';
-          const otw = ctx.measureText(offTxt).width + 10;
-          const ox = this.CHART_LEFT + 10 + (offScreenAboveCount * 130);
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
-          ctx.fillRect(ox, this.CHART_TOP + 2, otw, 13);
-          ctx.strokeStyle = lv.col;
-          ctx.lineWidth = 0.8;
-          ctx.strokeRect(ox, this.CHART_TOP + 2, otw, 13);
-          ctx.fillStyle = lv.col;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(offTxt, ox + 4, this.CHART_TOP + 8.5);
-          offScreenAboveCount++;
-        } else if (y > this.CHART_BOTTOM && offScreenBelowCount < 2) {
-          const offTxt = `▼ ${primaryLabel.replace(/[^A-Za-z0-9 ]/g, '').trim()} $${lv.price.toFixed(2)}`;
-          ctx.font = 'bold 8px "JetBrains Mono", monospace';
-          const otw = ctx.measureText(offTxt).width + 10;
-          const ox = this.CHART_LEFT + 10 + (offScreenBelowCount * 130);
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
-          ctx.fillRect(ox, this.CHART_BOTTOM - 15, otw, 13);
-          ctx.strokeStyle = lv.col;
-          ctx.lineWidth = 0.8;
-          ctx.strokeRect(ox, this.CHART_BOTTOM - 15, otw, 13);
-          ctx.fillStyle = lv.col;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(offTxt, ox + 4, this.CHART_BOTTOM - 8.5);
-          offScreenBelowCount++;
-        }
       }
     }
 
-    // Section B: Draw Sweep Reversal vs Normal Breakout Alert Banner (< 45s old, Protected in CENTER lane)
-    const sw = sessions.sweep_alert;
-    if (!this.bmZenMode && sw && (Date.now() - sw.timestamp < 45000)) {
-      const sy = this.priceToY(sw.level_price);
-      if (sy >= this.CHART_TOP + 16 && sy <= this.CHART_BOTTOM - 16) {
-        const isBreakout = sw.is_sweep === false;
-        const isBull = sw.bias === 'BUY' || sw.bias === 'BREAKOUT_UP';
-        const col = isBreakout ? '#fbbf24' : (isBull ? '#00e676' : '#ff3366');
-        const actionTxt = isBreakout ? 'BREAKOUT BIASA' : `POTENSI REVERSAL ${sw.bias}`;
-        const txt = `${sw.badge} → ${actionTxt}`;
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        const w = ctx.measureText(txt).width + 14;
-        const x = this.CHART_LEFT + 205;
-        const resolvedSwY = this._resolveNonOverlappingY(sy, 18, 22, 'CENTER');
-        ctx.fillStyle = 'rgba(10, 14, 26, 0.94)';
-        ctx.fillRect(x, resolvedSwY - 9, w, 18);
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 1.3;
-        ctx.strokeRect(x, resolvedSwY - 9, w, 18);
-        ctx.fillStyle = col;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(txt, x + 7, resolvedSwY);
-      }
-    }
+    // Section B: Sweep/Breakout Alert is already displayed in the top header bar (#sweepLevelBanner).
+    // Skipping duplicate middle-of-chart banner so candlesticks remain 100% unobstructed.
 
     ctx.restore();
   }
@@ -2866,15 +2801,14 @@ class BookmapRenderer {
       // In Zen mode, skip bulky badge pill to preserve clean heatmap and candles
       if (this.bmZenMode) continue;
 
-      // Compact Iceberg Pill with RIGHT Lane Anti-Collision Slotting
+      // Compact Potential Iceberg Pill with RIGHT Lane Anti-Collision Slotting
       const badgeH = 15;
       const resolvedY = this._resolveNonOverlappingY(y, badgeH, 20, 'RIGHT');
       const confPct = ic.confidence || 78;
-      const hitsCnt = ic.hits || reloadCount;
-      const txt = `🧊 POTENTIAL ICEBERG ${ic.bias} $${ic.price.toFixed(2)} [${confPct}% | ${hitsCnt}x Isian, ${ic.absorbed_vol}L]`;
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      const txt = `🧊 POT. ICE ${ic.bias} $${ic.price.toFixed(2)} (${Math.round(ic.absorbed_vol || 25)}L•${confPct}%)`;
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
       const tw = ctx.measureText(txt).width + 12;
-      const bx = this.NOW_X - tw - 14;
+      const bx = this.NOW_X - tw - 10;
       const by = resolvedY - 7.5;
 
       ctx.fillStyle = 'rgba(6, 12, 24, 0.94)';
@@ -3130,10 +3064,10 @@ class BookmapRenderer {
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           const bw = ctx.measureText(mainText).width + 12;
           const bh = 16;
-          const bx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - bw - 4, sigX - bw / 2));
-          const rawBy = isBuy ? (sigY + 18) : (sigY - bh - 18);
-          const resolvedBy = this._resolveNonOverlappingY(rawBy, bh, 22, 'CENTER');
-          const by = resolvedBy;
+          const bx = Math.max(this.CHART_LEFT + 4, Math.min(this.NOW_X - bw - 10, sigX - bw / 2));
+          const rawCenterY = isBuy ? (sigY + 22) : (sigY - 22);
+          const resolvedCenterY = this._resolveNonOverlappingY(rawCenterY, bh, 22, 'RIGHT');
+          const by = resolvedCenterY - bh / 2;
 
           ctx.fillStyle = bgCol;
           ctx.fillRect(bx, by, bw, bh);
@@ -3164,42 +3098,7 @@ class BookmapRenderer {
       }
     }
 
-    // 5. Institutional Order Flow Radar Status Strip (Top-Left under HUD)
-    const activeSig = this._bmSignalsHistory.slice(-1)[0];
-    let radarText = '⚖️ ZON NEUTRAL (CHOP) — TIADA SETUP (MENANTI HARGA KE ZON SNR & DINDING KECAIRAN)';
-    let radarCol = '#94a3b8';
-    let radarBg = 'rgba(8, 15, 26, 0.90)';
-
-    if (activeSig && (now - activeSig.time < 90000)) {
-      const isBuy = activeSig.dir === 'BUY';
-      radarCol = isBuy ? '#00e676' : '#ff3366';
-      radarBg = isBuy ? 'rgba(5, 30, 16, 0.94)' : 'rgba(38, 8, 16, 0.94)';
-      radarText = `🎯 [BOOKMAP] ${activeSig.dir} [${activeSig.zoneName}] @ $${activeSig.price.toFixed(2)} | SL: $${activeSig.sl.toFixed(2)} | TP1: $${activeSig.tp1.toFixed(2)} | TP2: $${activeSig.tp2.toFixed(2)}`;
-    } else if (activeDemand) {
-      radarText = `🟢 ZON DEMAND: ${activeDemand.name} ($${activeDemand.p.toFixed(2)}) + DINDING BIDS (${maxBidWall.toFixed(0)}L) — MEMERIKSA ABSORPTION BUY...`;
-      radarCol = '#00e676';
-      radarBg = 'rgba(5, 30, 16, 0.90)';
-    } else if (activeSupply) {
-      radarText = `🔴 ZON SUPPLY: ${activeSupply.name} ($${activeSupply.p.toFixed(2)}) + DINDING ASKS (${maxAskWall.toFixed(0)}L) — MEMERIKSA ABSORPTION SELL...`;
-      radarCol = '#ff3366';
-      radarBg = 'rgba(38, 8, 16, 0.90)';
-    }
-
-    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-    const rw = ctx.measureText(radarText).width + 14;
-    const rx = this.CHART_LEFT + 8;
-    const ry = this.CHART_TOP + 8;
-
-    ctx.fillStyle = radarBg;
-    ctx.fillRect(rx, ry, rw, 17);
-    ctx.strokeStyle = radarCol;
-    ctx.lineWidth = 0.9;
-    ctx.strokeRect(rx, ry, rw, 17);
-
-    ctx.fillStyle = radarCol;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(radarText, rx + 7, ry + 8.5);
+    // Top-left 420px duplicate radar banner removed so top-left chart area remains 100% clean.
     ctx.restore();
   }
 
@@ -3260,30 +3159,7 @@ class BookmapRenderer {
       ctx.textAlign = 'center';
       ctx.fillText(`⌖ $${cursorPrice.toFixed(2)}`, this.CHART_RIGHT + this.COB_WIDTH / 2, this.mouseY + 3.5);
 
-      // Inspect Resting Order Book Depth at Cursor Price
-      if (!this.hoverTrade && orderBook) {
-        const bVol = (orderBook.bids && orderBook.bids[snappedP]) || 0;
-        const aVol = (orderBook.asks && orderBook.asks[snappedP]) || 0;
-        const restVol = Math.max(bVol, aVol);
-        if (restVol > 0) {
-          const isBid = bVol >= aVol;
-          const col = isBid ? '#00e676' : '#ff4d6d';
-          const pillTxt = `${isBid ? 'BID' : 'ASK'} @$${snappedP}: ${restVol.toFixed(1)}L`;
-          ctx.font = 'bold 9px "JetBrains Mono", monospace';
-          const pw = ctx.measureText(pillTxt).width + 12;
-          const px = Math.min(this.CHART_RIGHT - pw - 6, this.mouseX + 12);
-          const py = Math.max(this.CHART_TOP + 6, this.mouseY - 22);
-
-          ctx.fillStyle = 'rgba(6, 12, 24, 0.92)';
-          ctx.fillRect(px, py, pw, 16);
-          ctx.strokeStyle = col;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(px, py, pw, 16);
-          ctx.fillStyle = col;
-          ctx.textAlign = 'left';
-          ctx.fillText(pillTxt, px + 6, py + 11.5);
-        }
-      }
+      // Cursor price is already shown on the Left & Right price axes (⌖ $XXXX.XX); middle-of-chart floating pill removed.
       ctx.restore();
     }
   }
@@ -3775,28 +3651,8 @@ class BookmapRenderer {
   /* ─── Interactive Top Bookmap Pro HUD Header & Imbalance Gauges ─ */
   _drawTopHUD(ctx, snapshot) {
     this.bmHudHitboxes = [];
-    // Clean Canvas: Row 3 HUD buttons removed to eliminate visual clutter.
-    // If user panned the chart away from live price, display a subtle floating center button:
-    if (Math.abs(this.priceOffset || 0) > 0.05 || Math.abs(this.timeOffsetMs || 0) >= 1000) {
-      const liveP = snapshot.last_price || snapshot.bid || 0;
-      if (liveP > 0) {
-        ctx.save();
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        const txt = `🎯 Pusatkan Semula ($${liveP.toFixed(2)})`;
-        const w = ctx.measureText(txt).width + 16;
-        const x = this.CHART_LEFT + 8;
-        const y = 8;
-        const h = 20;
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.90)';
-        ctx.fillRect(x, y, w, h);
-        ctx.fillStyle = '#050a14';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(txt, x + w / 2, y + h / 2);
-        this.bmHudHitboxes.push({ x, y, w, h, onClick: () => { this.centerVertical(); } });
-        ctx.restore();
-      }
-    }
+    // Top-left "Pusatkan Semula" duplicate button removed because the permanent
+    // bottom-center "🎯 PUSAT | + | -" dock handles centering cleanly without covering top-left chart area.
   }
 
   /* ─── Interactive Tooltip on Hover ────────────────────────────── */
