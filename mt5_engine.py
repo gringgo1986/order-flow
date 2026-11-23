@@ -82,6 +82,8 @@ class OrderFlowEngine:
         self.bookmap_signals: List[Dict[str, Any]] = []
         self.snr_valid_zones: List[Dict[str, Any]] = []
         self.snr_valid_signals: List[Dict[str, Any]] = []
+        self.signals_storage_file = str(Path(__file__).parent / "signals_history.json")
+        self._load_signals_from_disk()
         self._last_snr_valid_time: float = 0.0
         self._last_bm_signal_time = 0.0
         self._last_bm_signal_dir = None
