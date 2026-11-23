@@ -271,6 +271,8 @@ def authenticate(username: str, password: str) -> Tuple[bool, Optional[Dict[str,
 def create_session(user_id: int, duration_days: int = 14) -> str:
     conn = get_connection()
     c = conn.cursor()
+    # Strict Single-Device Lock: Invalidate all previous sessions for this user_id
+    c.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
     session_id = secrets.token_urlsafe(32)
     now = datetime.datetime.utcnow()
     exp = now + datetime.timedelta(days=duration_days)
