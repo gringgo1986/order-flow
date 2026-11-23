@@ -50,8 +50,18 @@ class App {
     if (this.footprint) {
       this.footprint.onReplayUpdate = () => this._updateReplayHUD();
     }
-    // Pre-load deep 1,000 historical candles
-    this.loadHistoricalCandles();
+    // Restore user's locked timeframe from localStorage so it never resets to M1 on tab switch or refresh
+    this.currentTimeframe = localStorage.getItem('gringgo_preferred_tf') || 'M1';
+    this._lastTfSwitchTime = Date.now();
+    document.querySelectorAll('.tf-btn').forEach(b => {
+      if (b.dataset.tf === this.currentTimeframe) b.classList.add('active');
+      else b.classList.remove('active');
+    });
+    if (this.bookmap && this.bookmap.setTimeframe) this.bookmap.setTimeframe(this.currentTimeframe);
+    if (this.footprint && this.footprint.setTimeframe) this.footprint.setTimeframe(this.currentTimeframe);
+
+    // Pre-load deep 1,000 historical candles for user's locked timeframe
+    this.loadHistoricalCandles(this.currentTimeframe);
     // Initialize user authentication & admin status
     this.initAuthAndAdmin();
 
@@ -1021,6 +1031,9 @@ class App {
         document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const tf = btn.dataset.tf;
+        this.currentTimeframe = tf;
+        this._lastTfSwitchTime = Date.now();
+        try { localStorage.setItem('gringgo_preferred_tf', tf); } catch (e) {}
         
         // Update Bookmap & Footprint local view
         if (this.bookmap && this.bookmap.setTimeframe) {
@@ -1619,6 +1632,13 @@ class App {
     this.ws.onmessage = (event) => {
       try {
         const snapshot = JSON.parse(event.data);
+        if (snapshot && snapshot.type === 'session_kicked') {
+          this._isSessionKicked = true;
+          try { localStorage.removeItem('session_id'); } catch (e) {}
+          try { if (this.ws) this.ws.close(); } catch (e) {}
+          window.location.href = '/login?msg=kicked_other_device';
+          return;
+        }
         if (snapshot && snapshot.type === 'pong' && snapshot.ts) {
           const rtt = Math.max(1, Date.now() - snapshot.ts);
           if (this.elTickLatency) {
@@ -1653,6 +1673,7 @@ class App {
 
     this.ws.onclose = () => {
       if (this._pingInterval) clearInterval(this._pingInterval);
+      if (this._isSessionKicked) return;
       console.log('[WS] Disconnected, retrying in 2s...');
       const banner = document.getElementById('reconnectBanner');
       if (banner) banner.style.display = 'flex';
@@ -1834,12 +1855,19 @@ class App {
       this.btnToggleNewsShield.title = ns.headline || 'Pelindung Berita USD';
     }
 
-    // Sync Timeframe if present
-    if (s.timeframe) {
-      document.querySelectorAll('.tf-btn').forEach(b => {
-        if (b.dataset.tf === s.timeframe) b.classList.add('active');
-        else b.classList.remove('active');
-      });
+    // Keep user's locked timeframe authoritative (never let server default M1 overwrite user's chosen TF)
+    const lockedTf = this.currentTimeframe || localStorage.getItem('gringgo_preferred_tf') || 'M1';
+    document.querySelectorAll('.tf-btn').forEach(b => {
+      if (b.dataset.tf === lockedTf) b.classList.add('active');
+      else b.classList.remove('active');
+    });
+    if (s.timeframe && s.timeframe !== lockedTf && (Date.now() - (this._lastTfSwitchTime || 0) > 3500)) {
+      this._lastTfSwitchTime = Date.now();
+      fetch('/api/timeframe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeframe: lockedTf })
+      }).then(() => this.loadHistoricalCandles(lockedTf)).catch(() => {});
     }
 
     // Unified Live Feed Status Badge & Source Switcher
@@ -2871,6 +2899,24 @@ class App {
           if (u.role === 'admin') {
             setTimeout(() => this.openAdminModal(), 250);
           }
+        }
+
+        // Single-Device Guard Heartbeat: Check session validity every 10s
+        if (!this._singleDeviceGuardTimer) {
+          this._singleDeviceGuardTimer = setInterval(async () => {
+            if (this._isSessionKicked) return;
+            try {
+              const curToken = localStorage.getItem('session_id');
+              const h = curToken ? { 'X-Session-ID': curToken } : {};
+              const checkRes = await fetch('/api/me', { headers: h });
+              if (checkRes.status === 401) {
+                this._isSessionKicked = true;
+                try { localStorage.removeItem('session_id'); } catch (e) {}
+                try { if (this.ws) this.ws.close(); } catch (e) {}
+                window.location.href = '/login?msg=kicked_other_device';
+              }
+            } catch (err) {}
+          }, 10000);
         }
       }
     } catch (e) {
@@ -3935,39 +3981,29 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     } catch (e) {}
   }
 
-  addSignal({ id, type, direction, entryPrice, slPrice, tpPrice, tp1, tp2, tp3, tp4, tp5, zone, slPips = 50, tpPips = 50 }) {
+  addSignal({ id, type, direction, entryPrice, slPrice, tpPrice, tp1, tp2, tp3, tp4, tp5, zone, timestamp, status, resultPips, highestTPTier, isBEActive, fromBackend = false, slPips = 50, tpPips = 50 }) {
     if (!entryPrice || entryPrice <= 0) return;
     const now = Date.now();
+    const sigTs = (timestamp && timestamp > 1000000000) ? (timestamp < 10000000000 ? timestamp * 1000 : timestamp) : now;
     const sigId = id || `SIG-${now.toString().slice(-4)}`;
 
-    // Anti-duplication guard
+    // Anti-duplication guard (by ID or identical price+dir within 45s)
     if (this.signalsList && this.signalsList.some(s => s.id === sigId)) return;
 
-    // Anti-Hedging & Anti-Spam Guard:
     const newDir = direction.toUpperCase();
     const cleanZone = (zone || type || '').replace(/^[^\w\s]+/, '').trim();
-    if (this.signalsList && this.signalsList.length > 0) {
-      // 1. Single Active Direction Lock (Anti-Hedging)
-      // Block opposing signal if there is an active signal running in the opposite direction
-      const hasOpposingActive = this.signalsList.some(s => {
-        return s.direction !== newDir && (s.status === 'ACTIVE' || s.status === 'BE_HIT');
-      });
-      if (hasOpposingActive) return;
-
-      // 2. One Active Signal Per Zone Lockout
-      const isDuplicateZone = this.signalsList.some(s => {
-        if (s.direction !== newDir) return false;
+    if (!fromBackend && this.signalsList && this.signalsList.length > 0) {
+      // Only guard against fresh signals in the last 90 seconds so old ACTIVE signals NEVER deadlock the 500-signal journal
+      const isDuplicateRecent = this.signalsList.some(s => {
+        if (!s.timestamp || Math.abs(sigTs - s.timestamp) > 90000) return false;
+        if (s.direction !== newDir) return (s.status === 'ACTIVE' && Math.abs(sigTs - s.timestamp) < 45000);
         const existZone = (s.zone || s.type || '').replace(/^[^\w\s]+/, '').trim();
-        const sameZone = existZone && cleanZone && (existZone === cleanZone || existZone.includes(cleanZone) || cleanZone.includes(existZone));
-        if (!sameZone) return false;
-        const isActive = s.status === 'ACTIVE' || s.status === 'BE_HIT';
-        const isRecent = s.timestamp && (now - s.timestamp < 240000);
-        return isActive || isRecent;
+        return existZone && cleanZone && (existZone === cleanZone || existZone.includes(cleanZone));
       });
-      if (isDuplicateZone) return;
+      if (isDuplicateRecent) return;
     }
 
-    const isBuy = direction.toUpperCase() === 'BUY';
+    const isBuy = newDir === 'BUY';
     const finalSl = (slPrice && slPrice > 0) ? slPrice : +(isBuy ? entryPrice - 5.00 : entryPrice + 5.00).toFixed(2);
     const finalTp1 = tp1 || tpPrice || +(isBuy ? entryPrice + 5.00 : entryPrice - 5.00).toFixed(2);
     const finalTp2 = tp2 || +(isBuy ? entryPrice + 10.00 : entryPrice - 10.00).toFixed(2);
@@ -3975,19 +4011,44 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     const finalTp4 = tp4 || +(isBuy ? entryPrice + 20.00 : entryPrice - 20.00).toFixed(2);
     const finalTp5 = tp5 || +(isBuy ? entryPrice + 25.00 : entryPrice - 25.00).toFixed(2);
 
-    const dNow = new Date(now);
+    const dNow = new Date(sigTs);
     const pad = (n) => String(n).padStart(2, '0');
     const curDateStr = `${pad(dNow.getDate())}/${pad(dNow.getMonth() + 1)}/${dNow.getFullYear()}`;
     const curTimeStr = dNow.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 
+    // Normalize backend status ('TP1_HIT', 'SL_HIT', 'BE_HIT') to journal UI status ('WIN (TP1)', 'LOSS', 'BE', 'ACTIVE')
+    let normStatus = 'ACTIVE';
+    let normTier = highestTPTier || 0;
+    let normPips = typeof resultPips === 'number' ? resultPips : 0.0;
+    let normClosePrice = null;
+    if (status && typeof status === 'string') {
+      if (status.startsWith('TP') && status.endsWith('_HIT')) {
+        const tNum = parseInt(status.replace('TP', '').replace('_HIT', ''), 10) || 1;
+        normTier = Math.max(normTier, tNum);
+        normStatus = normTier >= 20 ? 'WIN (TP20 - 1000p JACKPOT)' : `WIN (TP${normTier})`;
+        normPips = normTier * 50.0;
+        normClosePrice = +(isBuy ? entryPrice + (normTier * 5.0) : entryPrice - (normTier * 5.0)).toFixed(2);
+      } else if (status.startsWith('WIN')) {
+        normStatus = status;
+      } else if (status === 'SL_HIT' || status === 'LOSS') {
+        normStatus = 'LOSS';
+        normPips = -50.0;
+        normClosePrice = parseFloat(finalSl);
+      } else if (status === 'BE_HIT' || status === 'BE') {
+        normStatus = 'BE';
+        normPips = 0.0;
+        normClosePrice = parseFloat(entryPrice.toFixed(2));
+      }
+    }
+
     const newSig = {
       id: sigId,
-      timestamp: now,
+      timestamp: sigTs,
       dateStr: curDateStr,
       timeStr: curTimeStr,
       dateTimeStr: `${curDateStr} ${curTimeStr}`,
       type: type || '🎯 Quad-Confluence Signal',
-      direction: direction.toUpperCase(),
+      direction: newDir,
       entryPrice: parseFloat(entryPrice.toFixed(2)),
       slPrice: parseFloat(finalSl),
       tpPrice: parseFloat(finalTp1),
@@ -3997,16 +4058,19 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       tp4: parseFloat(finalTp4),
       tp5: parseFloat(finalTp5),
       zone: zone || type || '',
-      status: 'ACTIVE',
-      resultPips: 0.0,
+      status: normStatus,
+      highestTPTier: normTier,
+      isBEActive: !!isBEActive || normTier >= 1 || normStatus === 'BE',
+      resultPips: normPips,
       floatingPips: 0.0,
-      closedAt: null,
-      closePrice: null
+      closedAt: normStatus !== 'ACTIVE' ? sigTs : null,
+      closePrice: normClosePrice
     };
 
     if (!this.signalsList) this.signalsList = [];
     this.signalsList.unshift(newSig);
-    if (this.signalsList.length > 200) this.signalsList = this.signalsList.slice(0, 200);
+    this.signalsList.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    if (this.signalsList.length > 500) this.signalsList = this.signalsList.slice(0, 500);
     this._saveSignals();
     this._renderSignalsUI();
     this.showToast(`📡 Isyarat Baharu: ${newSig.direction} @ $${newSig.entryPrice.toFixed(2)} (SL: $${newSig.slPrice.toFixed(2)}, TP: $${newSig.tpPrice.toFixed(2)})`);
@@ -4025,7 +4089,7 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
         }
         if (!this.signalsList.some(sig => sig.id === bs.id)) {
           let sigType = bs.type;
-          if (!sigType || ['ICEBERG BID ABSORPTION', 'TRAPPED SELLERS AT LOW', 'ICEBERG ASK ABSORPTION', 'TRAPPED BUYERS AT HIGH', 'BULLISH CVD DIVERGENCE', 'BEARISH CVD DIVERGENCE', 'LIQUIDITY RAID & SWEEP'].includes(sigType) || (!sigType.includes('[BOOKMAP]') && !sigType.includes('[SNR VALID]'))) {
+          if (!sigType || ['ICEBERG BID ABSORPTION', 'TRAPPED SELLERS AT LOW', 'ICEBERG ASK ABSORPTION', 'TRAPPED BUYERS AT HIGH', 'BULLISH CVD DIVERGENCE', 'BEARISH CVD DIVERGENCE', 'LIQUIDITY RAID & SWEEP'].includes(sigType) || (!sigType.includes('[BOOKMAP]') && !sigType.includes('[SNR VALID]') && !sigType.includes('[FOOTPRINT]') && !sigType.includes('[CLUSTER]') && !sigType.includes('[KONFLUENS'))) {
             if (bs.zone) {
               sigType = `🎯 [BOOKMAP] ${bs.zone}`;
             } else if (sigType) {
@@ -4049,6 +4113,12 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             tp4: bs.tp4,
             tp5: bs.tp5,
             zone: bs.zone,
+            timestamp: bs.timestamp,
+            status: bs.status,
+            resultPips: bs.result_pips,
+            highestTPTier: bs.highest_tp_tier,
+            isBEActive: bs.is_be_active,
+            fromBackend: true,
             slPips: 50,
             tpPips: 50
           });
@@ -4150,8 +4220,8 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     });
 
     const badgeStr = `${wins}W / ${losses}L`;
-    if (badgeHdr) badgeHdr.textContent = `[${total}] (${badgeStr})`;
-    if (badgeDock) badgeDock.textContent = `${total} (${badgeStr})`;
+    if (badgeHdr) badgeHdr.textContent = `[${total}/500] (${badgeStr})`;
+    if (badgeDock) badgeDock.textContent = `${total}/500 (${badgeStr})`;
 
     if (txtWinRate) {
       txtWinRate.textContent = `${winRate}%`;
