@@ -1222,10 +1222,8 @@ class FootprintRenderer {
     // 2.8. Top Footprint Control Strip HUD
     this._drawFootprintTopHUD(ctx, snapshot);
 
-    // 2.9. Mobile Floating Touch Quick Toolbar (🎯 Pusat, ➕ Zoom, ➖ Zoom)
-    if (this.width < 768) {
-      this._drawMobileToolbar(ctx);
-    }
+    // 2.9. Floating Quick Zoom & Center Capsule (🎯 Pusat, ➕ Zoom, ➖ Zoom)
+    this._drawMobileToolbar(ctx);
 
     // 3. Hover Tooltip
     this._handleHoverTooltip();
@@ -1245,6 +1243,7 @@ class FootprintRenderer {
     const step = this.clusterStep;
     const startPrice = Math.floor(this.minPrice / step) * step;
 
+    let lastDrawnAxisY = -999;
     for (let p = startPrice; p <= this.maxPrice + step; p += step) {
       const y = this.priceToY(p);
       if (y < 20 || y > this.height - 70) continue;
@@ -1255,8 +1254,12 @@ class FootprintRenderer {
       ctx.lineTo(this.width - 70, y);
       ctx.stroke();
 
-      ctx.fillStyle = '#64748b';
-      ctx.fillText(p.toFixed(2), this.width - 8, y + 4);
+      // Anti-overlap guard: Ensure at least 17px vertical clearance between right-axis price numbers!
+      if (Math.abs(y - lastDrawnAxisY) >= 17) {
+        ctx.fillStyle = '#64748b';
+        ctx.fillText(p.toFixed(2), this.width - 8, y + 4);
+        lastDrawnAxisY = y;
+      }
     }
 
     // Live Current Price Neon Laser Line & Glowing Right-Axis Badge
@@ -1353,6 +1356,7 @@ class FootprintRenderer {
     }
 
     const drawnTagSlots = [];
+    this._drawnLeftTagSlots = drawnTagSlots;
     for (const lv of consolidated) {
       const y = this.priceToY(lv.price);
       if (y < 22 || y > this.height - 75) continue;
@@ -1427,19 +1431,27 @@ class FootprintRenderer {
           ctx.stroke();
           ctx.restore();
 
-          const dpocTxt = `⭐ dPOC Sesi $${dpoc.toFixed(2)}`;
+          const dpocTxt = `⭐ dPOC $${dpoc.toFixed(2)}`;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-          const dw = ctx.measureText(dpocTxt).width + 10;
+          const dw = ctx.measureText(dpocTxt).width + 8;
+          let dpocTagY = py;
+          let dpocTries = 0;
+          const slots = this._drawnLeftTagSlots || [];
+          while (slots.some(sy => Math.abs(sy - dpocTagY) < 15) && dpocTries < 5) {
+            dpocTagY += 15;
+            dpocTries++;
+          }
+          slots.push(dpocTagY);
           ctx.fillStyle = 'rgba(8, 14, 26, 0.95)';
-          ctx.fillRect(8, py - 8, dw, 15);
+          ctx.fillRect(8, dpocTagY - 8, dw, 15);
           ctx.strokeStyle = '#ffd60a';
           ctx.lineWidth = 0.9;
-          ctx.strokeRect(8, py - 8, dw, 15);
+          ctx.strokeRect(8, dpocTagY - 8, dw, 15);
 
           ctx.fillStyle = '#ffd60a';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(dpocTxt, 13, py);
+          ctx.fillText(dpocTxt, 12, dpocTagY);
         }
       }
     }
@@ -2843,7 +2855,8 @@ class FootprintRenderer {
       highest = lastPrice + 5.0;
     }
 
-    const targetMaxRows = Math.max(20, Math.min(50, this.cdMaxRows || 30));
+    const maxComfortableRows = Math.max(18, Math.min(28, Math.floor(chartH / 14.5)));
+    const targetMaxRows = Math.max(18, Math.min(maxComfortableRows, this.cdMaxRows || 26));
     const targetMid = (lowest + highest) / 2.0;
 
     // Hysteresis Deadband: Mencegah carta melompat ke atas/bawah pada getaran harga kecil
