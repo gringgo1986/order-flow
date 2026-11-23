@@ -775,6 +775,8 @@
         document.getElementById('memberErrorAlert').style.borderColor = '#10b981';
         document.getElementById('memberErrorAlert').style.color = '#34d399';
         document.getElementById('memberErrorAlert').style.background = 'rgba(16,185,129,0.12)';
+      } else if (urlParams.get('msg') === 'kicked_other_device') {
+        showMemberError('🔒 Sesi Ditamatkan: Akaun anda telah log masuk pada peranti lain. Hanya 1 peranti dibenarkan pada satu-satu masa.');
       } else if (urlParams.get('error') === 'admin_required') {
         switchPortalTab('admin');
         showAdminError('🔒 Sila log masuk sebagai Admin untuk mengakses bahagian ini.');
