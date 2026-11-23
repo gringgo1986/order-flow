@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 """
 MT5 Engine & Liquidity Bookmap Processor for XAUUSD
