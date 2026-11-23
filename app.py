@@ -30,8 +30,10 @@ async def add_no_cache_headers(request, call_next):
 # Instantiate Order Flow Engine
 engine = OrderFlowEngine(symbol="XAUUSD.m")
 
-# Connected WebSocket clients
+# Connected WebSocket clients & Single-Device Session Registry
 connected_clients = set()
+client_sessions: Dict[Any, Dict[str, Any]] = {}
+_last_session_audit_ts = 0.0
 
 # Models
 # Authentication Request Models
@@ -131,17 +133,35 @@ async def background_tick_stream():
                 pass
 
             if connected_clients:
+                global _last_session_audit_ts
+                now_ts = time.time()
+                do_audit = (now_ts - _last_session_audit_ts >= 3.0)
+                if do_audit:
+                    _last_session_audit_ts = now_ts
+
                 snapshot = engine.get_full_snapshot(initial=False)
                 # High-Concurrency Optimization: Serialize JSON once for all 30+ simultaneous clients
                 payload_text = json.dumps(snapshot)
                 dead_clients = set()
-                for client in connected_clients:
+                for client in list(connected_clients):
                     try:
+                        if do_audit:
+                            c_meta = client_sessions.get(client)
+                            if c_meta and c_meta.get("session_id"):
+                                valid_u = auth_db.validate_session(c_meta["session_id"])
+                                if not valid_u:
+                                    await client.send_text(json.dumps({
+                                        "type": "session_kicked",
+                                        "message": "⚠️ Akaun anda telah log masuk pada peranti lain. Sesi pada peranti ini ditamatkan (Had: 1 Peranti Sahaja)."
+                                    }))
+                                    dead_clients.add(client)
+                                    continue
                         await client.send_text(payload_text)
                     except Exception:
                         dead_clients.add(client)
                 for dead in dead_clients:
-                    connected_clients.remove(dead)
+                    connected_clients.discard(dead)
+                    client_sessions.pop(dead, None)
         except Exception as e:
             print(f"[Loop Error] {e}")
             
@@ -324,19 +344,45 @@ def admin_upload_restore(req: RestoreBackupRequest, request: Request):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # Authenticate WebSocket connection
-    session_id = websocket.cookies.get("session_id")
-    user = auth_db.validate_session(session_id) if session_id else None
-    if not user:
-        token = websocket.query_params.get("token")
-        if token:
-            user = auth_db.validate_session(token)
-    if not user:
-        # Graceful fallback to ensure WebSocket feed never freezes on stale session tokens
-        user = {"username": "member", "role": "member"}
+    # Authenticate WebSocket connection & enforce Single-Device Session Lock
+    cookie_sid = websocket.cookies.get("session_id")
+    query_sid = websocket.query_params.get("token")
+    active_sid = cookie_sid or query_sid or ""
+    user = auth_db.validate_session(active_sid) if active_sid else None
+    if not user and query_sid and query_sid != active_sid:
+        user = auth_db.validate_session(query_sid)
+        if user:
+            active_sid = query_sid
 
     await websocket.accept()
+
+    if not user:
+        # Session was invalidated by another device login or expired
+        try:
+            await websocket.send_json({
+                "type": "session_kicked",
+                "message": "⚠️ Sesi tidak sah atau akaun anda telah log masuk pada peranti lain."
+            })
+            await websocket.close()
+        except Exception:
+            pass
+        return
+
+    # Kick any lingering WebSocket connection for the same user_id that has an older session_id
+    for existing_ws, meta in list(client_sessions.items()):
+        if meta.get("user_id") == user.get("id") and meta.get("session_id") != active_sid:
+            try:
+                await existing_ws.send_json({
+                    "type": "session_kicked",
+                    "message": "⚠️ Akaun anda telah log masuk pada peranti baharu. Sesi pada peranti ini ditamatkan (Had: 1 Peranti Sahaja)."
+                })
+            except Exception:
+                pass
+            connected_clients.discard(existing_ws)
+            client_sessions.pop(existing_ws, None)
+
     connected_clients.add(websocket)
+    client_sessions[websocket] = {"user_id": user.get("id"), "session_id": active_sid}
     try:
         # Send initial full state immediately
         await websocket.send_json(engine.get_full_snapshot(initial=True))
@@ -351,8 +397,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 pass
     except WebSocketDisconnect:
         connected_clients.discard(websocket)
+        client_sessions.pop(websocket, None)
     except Exception:
         connected_clients.discard(websocket)
+        client_sessions.pop(websocket, None)
 
 @app.post("/api/trade")
 def trade_endpoint(req: TradeRequest):
