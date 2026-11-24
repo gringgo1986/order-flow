@@ -672,6 +672,37 @@ def index(request: Request):
     return {"status": "error", "message": "index.html not found"}
 
 
+
+# ─── Hugging Face Spaces (/gradio_api/*) Direct FastAPI Route Aliases ───
+@app.get("/gradio_api/terminal")
+@app.get("/static/terminal")
+def hf_terminal_index(request: Request):
+    candidates = [
+        static_dir / "index.html",
+        base_dir / "index.html",
+        Path("/app/static/index.html"),
+        Path("/app/index.html"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return FileResponse(str(c))
+    return RedirectResponse(url="/login")
+
+@app.websocket("/gradio_api/ws")
+async def hf_websocket_endpoint(websocket: WebSocket):
+    await websocket_endpoint(websocket)
+
+# Duplicate all /api/* routes under /gradio_api/api/* so Hugging Face Gradio 6 proxy forwards all GET/POST/PUT/DELETE directly to Uvicorn
+for _r in list(app.router.routes):
+    _p = getattr(_r, "path", "")
+    if _p.startswith("/api/") and hasattr(_r, "endpoint") and hasattr(_r, "methods"):
+        app.add_api_route(
+            "/gradio_api" + _p,
+            _r.endpoint,
+            methods=list(_r.methods),
+            response_model=getattr(_r, "response_model", None)
+        )
+
 # Mount dummy Gradio @spaces.GPU interface at /hf-gpu-check so Hugging Face ZeroGPU Free container passes startup verification
 try:
     import spaces
