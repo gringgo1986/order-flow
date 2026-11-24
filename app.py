@@ -110,7 +110,8 @@ async def keep_alive_cloud_pinger():
     import urllib.request
     peers = [
         "https://gringgo-orderflow.enzonic.dev",
-        "https://order-flow-whfl.onrender.com"
+        "https://order-flow-whfl.onrender.com",
+        "https://gringgo-gringgo-orderflow.hf.space"
     ]
     ext_url = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
     if ext_url and ext_url not in peers:
@@ -220,7 +221,7 @@ def login_page(request: Request):
     return {"status": "error", "message": "login.html not found"}
 
 @app.post("/api/login")
-def api_login(req: LoginRequest):
+def api_login(req: LoginRequest, request: Request):
     ok, user, err = auth_db.authenticate(req.username, req.password)
     if not ok:
         raise HTTPException(status_code=401, detail=err or "ID atau Kata Laluan tidak sah.")
@@ -231,12 +232,14 @@ def api_login(req: LoginRequest):
         "user": user,
         "session_id": session_id
     })
+    is_https = (request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https")
     res.set_cookie(
         key="session_id",
         value=session_id,
         max_age=86400 * 14,
         httponly=True,
-        samesite="lax",
+        samesite="none" if is_https else "lax",
+        secure=True if is_https else False,
         path="/"
     )
     return res
