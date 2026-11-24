@@ -235,7 +235,17 @@ def authenticate(username: str, password: str) -> Tuple[bool, Optional[Dict[str,
     row = c.fetchone()
     if not row:
         conn.close()
-        return False, None, "ID Pengguna tidak ditemui. Sila semak semula."
+        # Try pulling latest users from Supabase Cloud DB in case user was just created on another server
+        sb_users = _load_users_from_supabase()
+        if sb_users:
+            restore_from_dict_list(sb_users)
+            conn = get_connection()
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username.strip(),))
+            row = c.fetchone()
+        if not row:
+            conn.close()
+            return False, None, "ID Pengguna tidak ditemui. Sila semak semula."
 
     user = dict(row)
     if not verify_password(password, user["password_hash"]):
