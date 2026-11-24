@@ -432,6 +432,22 @@
       font-family: var(--font-mono);
     }
   </style>
+  <script>
+    if (window.location.hostname.endsWith('.hf.space')) {
+      const _origFetch = window.fetch.bind(window);
+      window.fetch = function(input, init) {
+        if (typeof input === 'string' && input.startsWith('/api/')) {
+          input = '/gradio_api' + input;
+        }
+        const token = localStorage.getItem('session_id');
+        if (token) {
+          init = init || {};
+          init.headers = Object.assign({}, init.headers || {}, { 'X-Session-ID': token });
+        }
+        return _origFetch(input, init);
+      };
+    }
+  </script>
 </head>
 <body>
 
@@ -818,7 +834,7 @@
           if (data.session_id) localStorage.setItem('session_id', data.session_id);
           btn.innerHTML = '<span>✅ Akses Diterima! Membuka Terminal...</span>';
           btn.style.background = '#10b981';
-          setTimeout(() => { window.location.href = '/'; }, 350);
+          setTimeout(() => { window.location.href = window.location.hostname.endsWith('.hf.space') ? '/gradio_api/terminal' : '/'; }, 350);
         } else {
           showMemberError(data.detail || data.message || 'ID atau Kata Laluan tidak sah.');
           btn.disabled = false;
