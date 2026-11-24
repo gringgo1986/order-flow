@@ -1,3 +1,21 @@
+// Hugging Face Spaces (.hf.space) Automatic API & WebSocket Proxy Adapter
+(function() {
+  if (typeof window !== 'undefined' && window.location && window.location.hostname.endsWith('.hf.space')) {
+    const origFetch = window.fetch.bind(window);
+    window.fetch = function(input, init) {
+      if (typeof input === 'string' && input.startsWith('/api/')) {
+        input = '/gradio_api' + input;
+      }
+      const token = localStorage.getItem('session_id');
+      if (token) {
+        init = init || {};
+        init.headers = Object.assign({}, init.headers || {}, { 'X-Session-ID': token });
+      }
+      return origFetch(input, init);
+    };
+  }
+})();
+
 /**
  * Main Application Orchestrator
  * Handles WebSocket feed, UI state, Bookmap, Footprint, DOM Ladder, and Order Execution
@@ -1620,7 +1638,8 @@ class App {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const token = localStorage.getItem('session_id') || '';
     const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
-    const wsUrl = `${protocol}//${window.location.host}/ws${tokenQuery}`;
+    const wsPath = window.location.hostname.endsWith('.hf.space') ? '/gradio_api/ws' : '/ws';
+    const wsUrl = `${protocol}//${window.location.host}${wsPath}${tokenQuery}`;
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
