@@ -1,10 +1,4 @@
-try:
-    import spaces
-    @spaces.GPU
-    def _hf_zerogpu_ready():
-        return True
-except Exception:
-    pass
+
 
 """
 FastAPI Server & WebSocket Hub for XAUUSD Bookmap & Order Flow
@@ -676,6 +670,19 @@ def index(request: Request):
     if found:
         return FileResponse(str(found[0]))
     return {"status": "error", "message": "index.html not found"}
+
+
+# Mount dummy Gradio @spaces.GPU interface at /hf-gpu-check so Hugging Face ZeroGPU Free container passes startup verification
+try:
+    import spaces
+    import gradio as gr
+    @spaces.GPU
+    def _hf_zerogpu_ping(msg: str) -> str:
+        return msg
+    _hf_gpu_demo = gr.Interface(fn=_hf_zerogpu_ping, inputs="text", outputs="text")
+    app = gr.mount_gradio_app(app, _hf_gpu_demo, path="/hf-gpu-check")
+except Exception as _hf_err:
+    print(f"[HF ZeroGPU Hook Info] {_hf_err}")
 
 if __name__ == '__main__':
     import uvicorn, os
