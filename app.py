@@ -1,3 +1,11 @@
+try:
+    import spaces
+    @spaces.GPU
+    def _hf_zerogpu_ready():
+        return True
+except Exception:
+    pass
+
 """
 FastAPI Server & WebSocket Hub for XAUUSD Bookmap & Order Flow
 """
