@@ -36,6 +36,10 @@ engine = OrderFlowEngine(symbol="XAUUSD.m")
 connected_clients = set()
 client_sessions: Dict[Any, Dict[str, Any]] = {}
 _last_session_audit_ts = 0.0
+_local_state_updated_at = 0.0
+_local_signals_reset_ts = 0.0
+_last_github_commit_sha = ""
+
 
 # Models
 # Authentication Request Models
@@ -108,30 +112,59 @@ async def startup_event():
     asyncio.create_task(keep_alive_cloud_pinger())
 
 async def keep_alive_cloud_pinger():
-    """Pings BOTH Enzonic and Render servers 24/7 and peer-syncs signals between both servers"""
+    """
+    24/7 3-Way Mesh Sync & GitHub Live Hot-Reload Daemon:
+    Synchronizes all 3 servers (Enzonic, Render, Hugging Face) every 20s and hot-pulls GitHub updates every 60s.
+    """
     import urllib.request
-    peers = [
-        "https://gringgo-orderflow.enzonic.dev",
-        "https://order-flow-whfl.onrender.com",
-        "https://gringgo-gringgo-orderflow.hf.space"
-    ]
-    ext_url = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
-    if ext_url and ext_url not in peers:
-        peers.append(ext_url)
+    import io
+    import zipfile
+    global _local_state_updated_at, _local_signals_reset_ts, _last_github_commit_sha
 
+    peers = [
+        "https://gringgo-orderflow.enzonic.dev/api/peer_state",
+        "https://order-flow-whfl.onrender.com/api/peer_state",
+        "https://gringgo-gringgo-orderflow.hf.space/gradio_api/api/peer_state"
+    ]
+    cycle = 0
     while True:
-        await asyncio.sleep(60)
-        for base_url in peers:
+        await asyncio.sleep(20)
+        cycle += 1
+
+        # 1. 3-WAY MESH PEER SYNC (Signals, Reset Events, Timeframe, News Shield, Users)
+        for peer_url in peers:
             try:
-                req = urllib.request.Request(f"{base_url}/api/signals", headers={"User-Agent": "Gringgo24x7PeerSync/1.0"})
-                with urllib.request.urlopen(req, timeout=8) as resp:
-                    raw = resp.read().decode("utf-8")
-                    data = json.loads(raw)
+                req = urllib.request.Request(peer_url, headers={"User-Agent": "GringgoTriMeshSync/1.0"})
+                with urllib.request.urlopen(req, timeout=7) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    if not isinstance(data, dict) or data.get("status") != "success":
+                        continue
+
+                    # A. Sync Signal Reset across all 3 servers
+                    peer_reset_ts = float(data.get("signals_reset_ts") or 0.0)
+                    if peer_reset_ts > _local_signals_reset_ts + 1.0:
+                        _local_signals_reset_ts = peer_reset_ts
+                        engine.reset_all_signals()
+
+                    # B. Sync Settings (Timeframe & News Filter) if peer was updated more recently
+                    peer_upd_ts = float(data.get("state_updated_at") or 0.0)
+                    if peer_upd_ts > _local_state_updated_at + 1.0:
+                        _local_state_updated_at = peer_upd_ts
+                        peer_tf = data.get("timeframe")
+                        if peer_tf and peer_tf != engine.timeframe:
+                            engine.set_timeframe(peer_tf)
+                        if "news_filter_enabled" in data:
+                            engine.news_filter_enabled = bool(data["news_filter_enabled"])
+
+                    # C. Merge 500 Signals across all 3 servers
                     peer_sigs = data.get("signals", [])
                     if isinstance(peer_sigs, list) and peer_sigs:
                         existing_ids = {s.get("id") for s in engine.bookmap_signals}
                         added = False
                         for ps in peer_sigs:
+                            ps_ts = float(ps.get("timestamp") or 0.0)
+                            if ps_ts <= _local_signals_reset_ts:
+                                continue
                             if ps.get("id") and ps["id"] not in existing_ids:
                                 engine.bookmap_signals.append(ps)
                                 existing_ids.add(ps["id"])
@@ -143,6 +176,50 @@ async def keep_alive_cloud_pinger():
                             engine._save_signals_to_disk()
             except Exception:
                 pass
+
+        # 2. Every ~60 seconds (every 3rd cycle): Sync Users from Supabase & Hot-Pull Latest GitHub Static/UI Changes
+        if cycle % 3 == 0:
+            try:
+                sb_users = auth_db._load_users_from_supabase()
+                if sb_users:
+                    auth_db.restore_from_dict_list(sb_users)
+            except Exception:
+                pass
+
+            try:
+                sha_req = urllib.request.Request(
+                    "https://api.github.com/repos/gringgo1986/order-flow/commits/main",
+                    headers={"User-Agent": "GringgoAutoHotReload/1.0", "Accept": "application/vnd.github.v3+json"}
+                )
+                with urllib.request.urlopen(sha_req, timeout=8) as sresp:
+                    c_info = json.loads(sresp.read().decode("utf-8"))
+                    latest_sha = c_info.get("sha", "")
+                if latest_sha and latest_sha != _last_github_commit_sha:
+                    if _last_github_commit_sha != "":
+                        # New commit pushed to GitHub! Hot-update static/HTML/JS/CSS files across all 3 live servers immediately
+                        zip_url = "https://github.com/gringgo1986/order-flow/archive/refs/heads/main.zip"
+                        zreq = urllib.request.Request(zip_url, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(zreq, timeout=20) as zresp:
+                            z = zipfile.ZipFile(io.BytesIO(zresp.read()))
+                            bdir = Path(__file__).parent
+                            for member in z.infolist():
+                                parts = member.filename.split("/")[1:]
+                                if not parts or not parts[0]:
+                                    continue
+                                if parts[0] in ["README.md", "users.db", ".github_token", "signals_history.json", "app.py"]:
+                                    continue
+                                tpath = bdir.joinpath(*parts)
+                                if member.is_dir():
+                                    tpath.mkdir(parents=True, exist_ok=True)
+                                else:
+                                    tpath.parent.mkdir(parents=True, exist_ok=True)
+                                    with open(tpath, "wb") as df:
+                                        df.write(z.open(member).read())
+                        print(f"[Hot-Reload] Berjaya menyelaraskan fail terkini dari GitHub ({latest_sha[:7]})!")
+                    _last_github_commit_sha = latest_sha
+            except Exception:
+                pass
+
 
 async def background_tick_stream():
     """Background loop polling MT5 or simulator and broadcasting snapshots"""
@@ -497,6 +574,8 @@ def update_sltp_endpoint(req: UpdateSLTPRequest):
 
 @app.post("/api/timeframe")
 def timeframe_endpoint(req: TimeframeRequest):
+    global _local_state_updated_at
+    _local_state_updated_at = time.time()
     result = engine.set_timeframe(req.timeframe)
     return result
 
@@ -513,8 +592,22 @@ def get_all_signals_endpoint():
 
 @app.post("/api/reset_signals")
 def reset_signals_endpoint():
+    global _local_state_updated_at, _local_signals_reset_ts
+    _local_state_updated_at = time.time()
+    _local_signals_reset_ts = _local_state_updated_at
     engine.reset_all_signals()
-    return {"status": "success", "message": "Semua rekod isyarat dan zon penyejukan telah diset semula ke sifar"}
+    return {"status": "success", "message": "Semua rekod isyarat dan zon penyejukan telah diset semula ke sifar di ketiga-tiga pelayan"}
+
+@app.get("/api/peer_state")
+def get_peer_state_endpoint():
+    return {
+        "status": "success",
+        "state_updated_at": _local_state_updated_at,
+        "signals_reset_ts": _local_signals_reset_ts,
+        "timeframe": engine.timeframe,
+        "news_filter_enabled": getattr(engine, "news_filter_enabled", True),
+        "signals": engine.bookmap_signals[-500:]
+    }
 
 @app.get("/api/history")
 def history_endpoint(limit: int = 1000, tf: str = None):
