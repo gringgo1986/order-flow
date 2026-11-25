@@ -111,23 +111,154 @@ async def startup_event():
     # Start 24/7 Cloud Self-Ping Keep-Alive Daemon so server never sleeps when tabs are closed
     asyncio.create_task(keep_alive_cloud_pinger())
 
-async def keep_alive_cloud_pinger():
-    """
-    24/7 4-Server Unified Chart & Signal Synchronization Daemon (v75.0):
-    Ensures Hostless Cloud, Render, Enzonic, and Hugging Face display 100% IDENTICAL chart candles,
-    Footprint, Cluster, Bookmap bubbles, DOM walls, CVD, SNR levels, and 500 Signals.
-    """
+def _run_peer_and_github_sync_Cycle(cycle: int, is_hostless_master: bool, master_urls: list, all_peers: list):
+    """Runs in a background worker thread via asyncio.to_thread so urllib NEVER blocks the main WebSocket event loop!"""
     import urllib.request
     import io
     import zipfile
     global _local_state_updated_at, _local_signals_reset_ts, _last_github_commit_sha
 
-    # Detect which server this instance is
+    # 1. Secondary servers pull authoritative Chart State from Master without blocking main event loop
+    if not is_hostless_master:
+        for m_url in master_urls:
+            try:
+                req = urllib.request.Request(m_url, headers={"User-Agent": "GringgoChartMasterSync/1.0"})
+                with urllib.request.urlopen(req, timeout=2.5) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    if not isinstance(data, dict) or data.get("status") != "success":
+                        continue
+
+                    if data.get("last_price"):
+                        engine.last_price = float(data["last_price"])
+                        engine.current_bid = float(data.get("bid") or engine.last_price)
+                        engine.current_ask = float(data.get("ask") or engine.last_price)
+                        engine.spread = float(data.get("spread") or 0.65)
+                    if data.get("cvd") is not None:
+                        engine.cvd = float(data["cvd"])
+                    if data.get("current_vwap"):
+                        engine.current_vwap = float(data["current_vwap"])
+
+                    if isinstance(data.get("sessions_data"), dict):
+                        engine.sessions_data = data["sessions_data"]
+                    if isinstance(data.get("session_vp_summary"), dict) and data["session_vp_summary"]:
+                        engine.session_vp_summary = data["session_vp_summary"]
+
+                    m_candles = data.get("candles")
+                    if isinstance(m_candles, list) and len(m_candles) > 0:
+                        by_time = {c["time"]: c for c in engine.candles if isinstance(c, dict) and "time" in c}
+                        for mc in m_candles:
+                            if isinstance(mc, dict) and "time" in mc:
+                                by_time[mc["time"]] = mc
+                        merged_c = [by_time[k] for k in sorted(by_time.keys())]
+                        if data.get("current_candle") and isinstance(data["current_candle"], dict):
+                            cur_t = data["current_candle"].get("time")
+                            merged_c = [c for c in merged_c if c.get("time") != cur_t]
+                            engine.current_candle = data["current_candle"]
+                        engine.candles = merged_c[-1000:]
+
+                    if isinstance(data.get("order_book_bids"), dict) and data["order_book_bids"]:
+                        engine.order_book_bids = {float(k): float(v) for k, v in data["order_book_bids"].items()}
+                    if isinstance(data.get("order_book_asks"), dict) and data["order_book_asks"]:
+                        engine.order_book_asks = {float(k): float(v) for k, v in data["order_book_asks"].items()}
+                    if isinstance(data.get("recent_trades"), list) and data["recent_trades"]:
+                        engine.recent_trades = data["recent_trades"]
+                    break
+            except Exception:
+                continue
+
+    # 2. Every ~24 seconds (every 4th cycle): 4-Way Mesh Sync for Signals, Reset Events & Settings
+    if cycle % 4 == 0:
+        for peer_url in all_peers:
+            try:
+                req = urllib.request.Request(peer_url, headers={"User-Agent": "GringgoTriMeshSync/1.0"})
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    if not isinstance(data, dict) or data.get("status") != "success":
+                        continue
+
+                    peer_reset_ts = float(data.get("signals_reset_ts") or 0.0)
+                    if peer_reset_ts > _local_signals_reset_ts + 1.0:
+                        _local_signals_reset_ts = peer_reset_ts
+                        engine.reset_all_signals()
+
+                    peer_upd_ts = float(data.get("state_updated_at") or 0.0)
+                    if peer_upd_ts > _local_state_updated_at + 1.0:
+                        _local_state_updated_at = peer_upd_ts
+                        peer_tf = data.get("timeframe")
+                        if peer_tf and peer_tf != engine.timeframe:
+                            engine.set_timeframe(peer_tf)
+                        if "news_filter_enabled" in data:
+                            engine.news_filter_enabled = bool(data["news_filter_enabled"])
+
+                    peer_sigs = data.get("signals", [])
+                    if isinstance(peer_sigs, list) and peer_sigs:
+                        existing_ids = {s.get("id") for s in engine.bookmap_signals}
+                        added = False
+                        for ps in peer_sigs:
+                            ps_ts = float(ps.get("timestamp") or 0.0)
+                            if ps_ts <= _local_signals_reset_ts:
+                                continue
+                            if ps.get("id") and ps["id"] not in existing_ids:
+                                engine.bookmap_signals.append(ps)
+                                existing_ids.add(ps["id"])
+                                added = True
+                        if added:
+                            engine.bookmap_signals.sort(key=lambda x: x.get("timestamp", 0))
+                            if len(engine.bookmap_signals) > 500:
+                                engine.bookmap_signals = engine.bookmap_signals[-500:]
+                            engine._save_signals_to_disk()
+            except Exception:
+                pass
+
+    # 3. Every ~60 seconds (every 10th cycle): Sync Users from Supabase & Hot-Pull Latest GitHub Static/UI Changes
+    if cycle % 10 == 0:
+        try:
+            sb_users = auth_db._load_users_from_supabase()
+            if sb_users:
+                auth_db.restore_from_dict_list(sb_users)
+        except Exception:
+            pass
+
+        if os.access(str(Path(__file__).parent), os.W_OK):
+            try:
+                sha_req = urllib.request.Request(
+                    "https://api.github.com/repos/gringgo1986/order-flow/commits/main",
+                    headers={"User-Agent": "GringgoAutoHotReload/1.0", "Accept": "application/vnd.github.v3+json"}
+                )
+                with urllib.request.urlopen(sha_req, timeout=5) as sresp:
+                    c_info = json.loads(sresp.read().decode("utf-8"))
+                    latest_sha = c_info.get("sha", "")
+                if latest_sha and latest_sha != _last_github_commit_sha:
+                    if _last_github_commit_sha != "":
+                        zip_url = "https://github.com/gringgo1986/order-flow/archive/refs/heads/main.zip"
+                        zreq = urllib.request.Request(zip_url, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(zreq, timeout=15) as zresp:
+                            z = zipfile.ZipFile(io.BytesIO(zresp.read()))
+                            bdir = Path(__file__).parent
+                            for member in z.infolist():
+                                parts = member.filename.split("/")[1:]
+                                if not parts or not parts[0]:
+                                    continue
+                                if parts[0] in ["README.md", "users.db", ".github_token", "signals_history.json", "app.py"]:
+                                    continue
+                                tpath = bdir.joinpath(*parts)
+                                if member.is_dir():
+                                    tpath.mkdir(parents=True, exist_ok=True)
+                                else:
+                                    tpath.parent.mkdir(parents=True, exist_ok=True)
+                                    with open(tpath, "wb") as df:
+                                        df.write(z.open(member).read())
+                        print(f"[Hot-Reload] Berjaya menyelaraskan fail terkini dari GitHub ({latest_sha[:7]})!")
+                    _last_github_commit_sha = latest_sha
+            except Exception:
+                pass
+
+async def keep_alive_cloud_pinger():
+    """Non-blocking 24/7 background daemon using asyncio.to_thread so WebSockets stream at full 60 FPS"""
     is_hostless_master = (
         os.environ.get("HOSTLESS_APP_NAME") is not None
         or not os.access(str(Path(__file__).parent), os.W_OK)
     )
-
     master_urls = [
         "https://gringgorderflow.hostless.app/api/peer_state",
         "https://order-flow-whfl.onrender.com/api/peer_state",
@@ -138,151 +269,14 @@ async def keep_alive_cloud_pinger():
         "https://gringgo-orderflow.enzonic.dev/api/peer_state",
         "https://gringgo-gringgo-orderflow.hf.space/gradio_api/gof/peer_state"
     ]
-
     cycle = 0
     while True:
-        await asyncio.sleep(4)
+        await asyncio.sleep(6)
         cycle += 1
-
-        # 1. Every 4 seconds: Secondary servers pull authoritative Chart State from Master (Hostless Cloud -> Render fallback)
-        if not is_hostless_master:
-            for m_url in master_urls:
-                try:
-                    req = urllib.request.Request(m_url, headers={"User-Agent": "GringgoChartMasterSync/1.0"})
-                    with urllib.request.urlopen(req, timeout=3.5) as resp:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        if not isinstance(data, dict) or data.get("status") != "success":
-                            continue
-
-                        # Mirror Live Price, Bid, Ask, Spread, CVD & VWAP
-                        if data.get("last_price"):
-                            engine.last_price = float(data["last_price"])
-                            engine.current_bid = float(data.get("bid") or engine.last_price)
-                            engine.current_ask = float(data.get("ask") or engine.last_price)
-                            engine.spread = float(data.get("spread") or 0.65)
-                        if data.get("cvd") is not None:
-                            engine.cvd = float(data["cvd"])
-                        if data.get("current_vwap"):
-                            engine.current_vwap = float(data["current_vwap"])
-
-                        # Mirror Sessions SNR & Session Volume Profile (dPOC, VAH, VAL)
-                        if isinstance(data.get("sessions_data"), dict):
-                            engine.sessions_data = data["sessions_data"]
-                        if isinstance(data.get("session_vp_summary"), dict) and data["session_vp_summary"]:
-                            engine.session_vp_summary = data["session_vp_summary"]
-
-                        # Mirror Candles & Current Candle (Footprint + Cluster + Candlestick 100% Identical)
-                        m_candles = data.get("candles")
-                        if isinstance(m_candles, list) and len(m_candles) > 0:
-                            by_time = {c["time"]: c for c in engine.candles if isinstance(c, dict) and "time" in c}
-                            for mc in m_candles:
-                                if isinstance(mc, dict) and "time" in mc:
-                                    by_time[mc["time"]] = mc
-                            merged_c = [by_time[k] for k in sorted(by_time.keys())]
-                            if data.get("current_candle") and isinstance(data["current_candle"], dict):
-                                cur_t = data["current_candle"].get("time")
-                                merged_c = [c for c in merged_c if c.get("time") != cur_t]
-                                engine.current_candle = data["current_candle"]
-                            engine.candles = merged_c[-1000:]
-
-                        # Mirror Bookmap Order Book Depth & Recent Trade Bubbles
-                        if isinstance(data.get("order_book_bids"), dict) and data["order_book_bids"]:
-                            engine.order_book_bids = {float(k): float(v) for k, v in data["order_book_bids"].items()}
-                        if isinstance(data.get("order_book_asks"), dict) and data["order_book_asks"]:
-                            engine.order_book_asks = {float(k): float(v) for k, v in data["order_book_asks"].items()}
-                        if isinstance(data.get("recent_trades"), list) and data["recent_trades"]:
-                            engine.recent_trades = data["recent_trades"]
-
-                        break  # Successfully synced with Primary Master
-                except Exception:
-                    continue
-
-        # 2. Every 20 seconds (every 5th cycle): 4-Way Mesh Sync for Signals, Reset Events, Settings & Keep-Alive Ping
-        if cycle % 5 == 0:
-            for peer_url in all_peers:
-                try:
-                    req = urllib.request.Request(peer_url, headers={"User-Agent": "GringgoTriMeshSync/1.0"})
-                    with urllib.request.urlopen(req, timeout=6) as resp:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        if not isinstance(data, dict) or data.get("status") != "success":
-                            continue
-
-                        peer_reset_ts = float(data.get("signals_reset_ts") or 0.0)
-                        if peer_reset_ts > _local_signals_reset_ts + 1.0:
-                            _local_signals_reset_ts = peer_reset_ts
-                            engine.reset_all_signals()
-
-                        peer_upd_ts = float(data.get("state_updated_at") or 0.0)
-                        if peer_upd_ts > _local_state_updated_at + 1.0:
-                            _local_state_updated_at = peer_upd_ts
-                            peer_tf = data.get("timeframe")
-                            if peer_tf and peer_tf != engine.timeframe:
-                                engine.set_timeframe(peer_tf)
-                            if "news_filter_enabled" in data:
-                                engine.news_filter_enabled = bool(data["news_filter_enabled"])
-
-                        peer_sigs = data.get("signals", [])
-                        if isinstance(peer_sigs, list) and peer_sigs:
-                            existing_ids = {s.get("id") for s in engine.bookmap_signals}
-                            added = False
-                            for ps in peer_sigs:
-                                ps_ts = float(ps.get("timestamp") or 0.0)
-                                if ps_ts <= _local_signals_reset_ts:
-                                    continue
-                                if ps.get("id") and ps["id"] not in existing_ids:
-                                    engine.bookmap_signals.append(ps)
-                                    existing_ids.add(ps["id"])
-                                    added = True
-                            if added:
-                                engine.bookmap_signals.sort(key=lambda x: x.get("timestamp", 0))
-                                if len(engine.bookmap_signals) > 500:
-                                    engine.bookmap_signals = engine.bookmap_signals[-500:]
-                                engine._save_signals_to_disk()
-                except Exception:
-                    pass
-
-        # 3. Every 60 seconds (every 15th cycle): Sync Users from Supabase & Hot-Pull Latest GitHub Static/UI Changes
-        if cycle % 15 == 0:
-            try:
-                sb_users = auth_db._load_users_from_supabase()
-                if sb_users:
-                    auth_db.restore_from_dict_list(sb_users)
-            except Exception:
-                pass
-
-            if os.access(str(Path(__file__).parent), os.W_OK):
-                try:
-                    sha_req = urllib.request.Request(
-                        "https://api.github.com/repos/gringgo1986/order-flow/commits/main",
-                        headers={"User-Agent": "GringgoAutoHotReload/1.0", "Accept": "application/vnd.github.v3+json"}
-                    )
-                    with urllib.request.urlopen(sha_req, timeout=8) as sresp:
-                        c_info = json.loads(sresp.read().decode("utf-8"))
-                        latest_sha = c_info.get("sha", "")
-                    if latest_sha and latest_sha != _last_github_commit_sha:
-                        if _last_github_commit_sha != "":
-                            zip_url = "https://github.com/gringgo1986/order-flow/archive/refs/heads/main.zip"
-                            zreq = urllib.request.Request(zip_url, headers={"User-Agent": "Mozilla/5.0"})
-                            with urllib.request.urlopen(zreq, timeout=20) as zresp:
-                                z = zipfile.ZipFile(io.BytesIO(zresp.read()))
-                                bdir = Path(__file__).parent
-                                for member in z.infolist():
-                                    parts = member.filename.split("/")[1:]
-                                    if not parts or not parts[0]:
-                                        continue
-                                    if parts[0] in ["README.md", "users.db", ".github_token", "signals_history.json", "app.py"]:
-                                        continue
-                                    tpath = bdir.joinpath(*parts)
-                                    if member.is_dir():
-                                        tpath.mkdir(parents=True, exist_ok=True)
-                                    else:
-                                        tpath.parent.mkdir(parents=True, exist_ok=True)
-                                        with open(tpath, "wb") as df:
-                                            df.write(z.open(member).read())
-                            print(f"[Hot-Reload] Berjaya menyelaraskan fail terkini dari GitHub ({latest_sha[:7]})!")
-                        _last_github_commit_sha = latest_sha
-                except Exception:
-                    pass
+        try:
+            await asyncio.to_thread(_run_peer_and_github_sync_Cycle, cycle, is_hostless_master, master_urls, all_peers)
+        except Exception:
+            pass
 
 
 async def background_tick_stream():
