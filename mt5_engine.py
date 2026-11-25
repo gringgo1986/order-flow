@@ -305,7 +305,7 @@ class OrderFlowEngine:
                     self._live_l2_bids = l2_bids
                     self._live_l2_asks = l2_asks
         except Exception:
-            pass
+            self._l2_fail_count = getattr(self, "_l2_fail_count", 0) + 1
 
     def _swissquote_poller_loop(self):
         """Dedicated high-speed multi-source feed engine (Swissquote + Binance Spot Gold L2 + Organic Stream)"""
@@ -359,7 +359,8 @@ class OrderFlowEngine:
                         src = "organic_live"
 
                     if bid > 0 and ask > 0:
-                        self._poll_live_l2_depth_and_trades((bid + ask) * 0.5)
+                        if getattr(self, "_l2_fail_count", 0) < 2:
+                            self._poll_live_l2_depth_and_trades((bid + ask) * 0.5)
                         vol = self._calculate_tick_velocity_volume(bid, ask, 1.0)
                         self.is_connected = True
                         self.current_bid = bid
@@ -370,7 +371,7 @@ class OrderFlowEngine:
                         self.swissquote_status = f"LIVE_{src.upper()}"
             except Exception as e:
                 self.swissquote_status = f"ERR: {e}"
-            time.sleep(0.75) # High-precision 750ms cadence
+            time.sleep(0.45) # Ultra-responsive 450ms tick cadence
 
     def initialize_mt5(self) -> bool:
         """Connect to MT5 terminal and find the correct Gold symbol"""
@@ -3959,9 +3960,9 @@ class OrderFlowEngine:
             "spoof_events": self.spoof_events[-4:],
             "mtf_confluence": self._evaluate_mtf_confluence(),
             "prop_firm_shield": self._evaluate_prop_firm_shield(),
-            "bookmap_signals": self._evaluate_bookmap_signals(),
+            "bookmap_signals": self._evaluate_bookmap_signals() if initial else self._evaluate_bookmap_signals()[-20:],
             "snr_valid_zones": self.snr_valid_zones[-6:],
-            "snr_valid_signals": self.snr_valid_signals[-500:],
+            "snr_valid_signals": self.snr_valid_signals[-500:] if initial else self.snr_valid_signals[-15:],
             "order_book": {
                 "bids": self.order_book_bids,
                 "asks": self.order_book_asks
