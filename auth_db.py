@@ -32,11 +32,36 @@ def _get_writable_data_dir() -> Path:
                 pass
         return tmp_dir
 
-_DATA_DIR = _get_writable_data_dir()
-DB_PATH = _DATA_DIR / "users.db"
+_APP_DIR = Path(__file__).parent
+DB_PATH = _APP_DIR / "users.db"
+_USE_MEMORY_DB = False
+_KEEPALIVE_MEM_CONN = None
+
+def _check_sqlite_writable() -> bool:
+    global _USE_MEMORY_DB, _KEEPALIVE_MEM_CONN, DB_PATH
+    for candidate_dir in [_APP_DIR, Path("/tmp")]:
+        try:
+            test_db = candidate_dir / "users.db"
+            conn = sqlite3.connect(str(test_db))
+            conn.execute("CREATE TABLE IF NOT EXISTS _wtest (id INT)")
+            conn.commit()
+            conn.close()
+            DB_PATH = test_db
+            return True
+        except Exception:
+            continue
+    # Both /app and /tmp are read-only (Hostless Cloud): Use Shared In-Memory SQLite DB + Supabase Cloud Sync!
+    _USE_MEMORY_DB = True
+    _KEEPALIVE_MEM_CONN = sqlite3.connect("file:gringgo_auth_mem?mode=memory&cache=shared", uri=True, check_same_thread=False)
+    return False
+
+_check_sqlite_writable()
 
 def get_connection():
-    conn = sqlite3.connect(str(DB_PATH))
+    if _USE_MEMORY_DB:
+        conn = sqlite3.connect("file:gringgo_auth_mem?mode=memory&cache=shared", uri=True, check_same_thread=False)
+    else:
+        conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -55,7 +80,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return False
 
 
-BACKUP_JSON_PATH = _DATA_DIR / "users_backup.json"
+BACKUP_JSON_PATH = Path(__file__).parent / "users_backup.json"
 
 # ─── Supabase Cloud DB User Sync Helpers ─────────────────────────
 def _get_supabase_client():
