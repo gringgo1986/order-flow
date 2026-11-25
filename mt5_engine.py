@@ -248,7 +248,7 @@ class OrderFlowEngine:
         is_round_level = (dollar_int % 5 == 0 and cents in (0, 50))
         last_mega = getattr(self, "_last_mega_shark_ts", 0.0)
 
-        tick_seed = int(now * 10)
+        tick_seed = int(now) + int(round(bid * 100))
         if ((tick_seed % 73 == 0) or (is_round_level and dp >= 0.18)) and (now - last_mega >= 38.0):
             # Rare Mega Shark (82L - 112L) — strictly rate-limited so bubbles stay clean & institutional
             self._last_mega_shark_ts = now
@@ -1454,8 +1454,8 @@ class OrderFlowEngine:
                 is_buy = False
                 trade_price = self.current_bid
             else:
-                # Same price, random or alternate
-                is_buy = (now_ms % 2 == 0)
+                # Deterministic aggressor by 1-second timestamp + price cents so all 4 servers match 100%
+                is_buy = ((now_sec + int(round(bid * 100))) % 2 == 0)
                 trade_price = self.current_ask if is_buy else self.current_bid
         else:
             is_buy = True
