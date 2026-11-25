@@ -471,18 +471,19 @@ async def websocket_endpoint(websocket: WebSocket):
             pass
         return
 
-    # Kick any lingering WebSocket connection for the same user_id that has an older session_id
-    for existing_ws, meta in list(client_sessions.items()):
-        if meta.get("user_id") == user.get("id") and meta.get("session_id") != active_sid:
-            try:
-                await existing_ws.send_json({
-                    "type": "session_kicked",
-                    "message": "⚠️ Akaun anda telah log masuk pada peranti baharu. Sesi pada peranti ini ditamatkan (Had: 1 Peranti Sahaja)."
-                })
-            except Exception:
-                pass
-            connected_clients.discard(existing_ws)
-            client_sessions.pop(existing_ws, None)
+    # Kick any lingering WebSocket connection for the same user_id that has an older session_id (Members only; Admin allowed multi-device)
+    if str(user.get("role", "")).lower() != "admin":
+        for existing_ws, meta in list(client_sessions.items()):
+            if meta.get("user_id") == user.get("id") and meta.get("session_id") != active_sid:
+                try:
+                    await existing_ws.send_json({
+                        "type": "session_kicked",
+                        "message": "⚠️ Akaun anda telah log masuk pada peranti baharu. Sesi pada peranti ini ditamatkan (Had: 1 Peranti Sahaja)."
+                    })
+                except Exception:
+                    pass
+                connected_clients.discard(existing_ws)
+                client_sessions.pop(existing_ws, None)
 
     connected_clients.add(websocket)
     client_sessions[websocket] = {"user_id": user.get("id"), "session_id": active_sid}
