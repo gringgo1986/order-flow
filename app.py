@@ -658,10 +658,13 @@ import shutil
 import shutil
 base_dir = Path(__file__).parent
 static_dir = base_dir / "static"
-static_dir.mkdir(parents=True, exist_ok=True)
-(static_dir / "js").mkdir(parents=True, exist_ok=True)
-(static_dir / "css").mkdir(parents=True, exist_ok=True)
-(static_dir / "icons").mkdir(parents=True, exist_ok=True)
+try:
+    static_dir.mkdir(parents=True, exist_ok=True)
+    (static_dir / "js").mkdir(parents=True, exist_ok=True)
+    (static_dir / "css").mkdir(parents=True, exist_ok=True)
+    (static_dir / "icons").mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 # 1. Auto-fix Windows backslash filenames on Linux systems
 BS = chr(92)
