@@ -4,7 +4,7 @@
     const origFetch = window.fetch.bind(window);
     window.fetch = function(input, init) {
       if (typeof input === 'string' && input.startsWith('/api/')) {
-        input = '/gradio_api' + input;
+        input = '/gradio_api/gof/' + input.slice(5);
       }
       const token = localStorage.getItem('session_id');
       if (token) {
@@ -1638,7 +1638,7 @@ class App {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const token = localStorage.getItem('session_id') || '';
     const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
-    const wsPath = window.location.hostname.endsWith('.hf.space') ? '/gradio_api/ws' : '/ws';
+    const wsPath = window.location.hostname.endsWith('.hf.space') ? '/gradio_api/gof/ws' : '/ws';
     const wsUrl = `${protocol}//${window.location.host}${wsPath}${tokenQuery}`;
     this.ws = new WebSocket(wsUrl);
 
