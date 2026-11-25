@@ -9,6 +9,7 @@ base_dir = Path(__file__).parent
 
 # ─── AUTO-UPDATER DARI GITHUB SETIAP KALI START / RESTART ───
 try:
+    if not os.access(str(base_dir), os.W_OK): raise RuntimeError("Read-only container: menggunakan imej binaan Git terkini.")
     print("[Auto-Updater] Menyemak & memuat turun kod terkini dari GitHub (gringgo1986/order-flow)...")
     zip_url = "https://github.com/gringgo1986/order-flow/archive/refs/heads/main.zip"
     req = urllib.request.Request(zip_url, headers={"User-Agent": "Mozilla/5.0"})
