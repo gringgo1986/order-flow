@@ -9,7 +9,31 @@ import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
-DB_PATH = Path(__file__).parent / "users.db"
+import tempfile
+
+def _get_writable_data_dir() -> Path:
+    app_dir = Path(__file__).parent
+    try:
+        test_file = app_dir / ".write_test"
+        with open(test_file, "w") as tf:
+            tf.write("1")
+        test_file.unlink(missing_ok=True)
+        return app_dir
+    except Exception:
+        tmp_dir = Path(tempfile.gettempdir()) / "gringgo_data"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        src_backup = app_dir / "users_backup.json"
+        dst_backup = tmp_dir / "users_backup.json"
+        if src_backup.exists() and not dst_backup.exists():
+            try:
+                import shutil
+                shutil.copy2(src_backup, dst_backup)
+            except Exception:
+                pass
+        return tmp_dir
+
+_DATA_DIR = _get_writable_data_dir()
+DB_PATH = _DATA_DIR / "users.db"
 
 def get_connection():
     conn = sqlite3.connect(str(DB_PATH))
@@ -31,7 +55,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return False
 
 
-BACKUP_JSON_PATH = Path(__file__).parent / "users_backup.json"
+BACKUP_JSON_PATH = _DATA_DIR / "users_backup.json"
 
 # ─── Supabase Cloud DB User Sync Helpers ─────────────────────────
 def _get_supabase_client():
