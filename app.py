@@ -122,6 +122,7 @@ async def keep_alive_cloud_pinger():
     global _local_state_updated_at, _local_signals_reset_ts, _last_github_commit_sha
 
     peers = [
+        "https://gringgorderflow.hostless.app/api/peer_state",
         "https://gringgo-orderflow.enzonic.dev/api/peer_state",
         "https://order-flow-whfl.onrender.com/api/peer_state",
         "https://gringgo-gringgo-orderflow.hf.space/gradio_api/api/peer_state"
