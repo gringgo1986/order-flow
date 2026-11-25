@@ -4365,11 +4365,16 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     if (hasChange) {
       this._saveSignals();
     }
-    this._renderSignalsUI();
-    this._fetchServerSignals();
+    this._renderSignalsUI(hasChange);
+    // Only poll /api/signals every 30s (live signals already arrive in WebSocket s.bookmap_signals!)
+    const nowMs = Date.now();
+    if (!this._lastServerSigFetchTs || (nowMs - this._lastServerSigFetchTs > 30000)) {
+      this._lastServerSigFetchTs = nowMs;
+      this._fetchServerSignals();
+    }
   }
 
-  _renderSignalsUI() {
+  _renderSignalsUI(forceTableRebuild = true) {
     const tbody = document.getElementById('signalsTableBody');
     const badgeHdr = document.getElementById('hdrSigWinLossBadge');
     const badgeDock = document.getElementById('badgeSignalWinLoss');
@@ -4418,6 +4423,15 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     }
 
     if (!tbody) return;
+
+    // Performance Guard (60 FPS): Do NOT rebuild 500 HTML table rows every 0.55s tick unless a signal changed or user is viewing the Signals tab (throttled to 2.5s)
+    const nowRenderTs = Date.now();
+    const isSignalsTabVisible = (this.activeDockTab === 'signals' && !this.isDockCollapsed);
+    if (!forceTableRebuild) {
+      if (!isSignalsTabVisible) return;
+      if (this._lastSigTableDomTs && (nowRenderTs - this._lastSigTableDomTs < 2500)) return;
+    }
+    this._lastSigTableDomTs = nowRenderTs;
 
     const filtered = this.signalsList.filter(s => {
       if (this.signalFilter === 'active') return s.status === 'ACTIVE';
