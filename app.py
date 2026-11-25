@@ -125,7 +125,7 @@ async def keep_alive_cloud_pinger():
         "https://gringgorderflow.hostless.app/api/peer_state",
         "https://gringgo-orderflow.enzonic.dev/api/peer_state",
         "https://order-flow-whfl.onrender.com/api/peer_state",
-        "https://gringgo-gringgo-orderflow.hf.space/gradio_api/api/peer_state"
+        "https://gringgo-gringgo-orderflow.hf.space/gradio_api/gof/peer_state"
     ]
     cycle = 0
     while True:
@@ -771,7 +771,8 @@ def index(request: Request):
 
 
 
-# ─── Hugging Face Spaces (/gradio_api/*) Direct FastAPI Route Aliases ───
+# ─── Hugging Face Spaces (/gradio_api/gof/*) Direct FastAPI Route Aliases ───
+@app.get("/gradio_api/gof/terminal")
 @app.get("/gradio_api/terminal")
 @app.get("/static/terminal")
 def hf_terminal_index(request: Request):
@@ -786,16 +787,18 @@ def hf_terminal_index(request: Request):
             return FileResponse(str(c))
     return RedirectResponse(url="/login")
 
+@app.websocket("/gradio_api/gof/ws")
 @app.websocket("/gradio_api/ws")
 async def hf_websocket_endpoint(websocket: WebSocket):
     await websocket_endpoint(websocket)
 
-# Duplicate all /api/* routes under /gradio_api/api/* so Hugging Face Gradio 6 proxy forwards all GET/POST/PUT/DELETE directly to Uvicorn
+# Duplicate all /api/* routes under /gradio_api/gof/* (avoids Gradio's reserved /gradio_api/api/{api_name} route!)
 for _r in list(app.router.routes):
     _p = getattr(_r, "path", "")
     if _p.startswith("/api/") and hasattr(_r, "endpoint") and hasattr(_r, "methods"):
+        _sub = _p[len("/api"):]  # e.g. /login, /me, /admin/users, /status
         app.add_api_route(
-            "/gradio_api" + _p,
+            "/gradio_api/gof" + _sub,
             _r.endpoint,
             methods=list(_r.methods),
             response_model=getattr(_r, "response_model", None)
