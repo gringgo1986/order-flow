@@ -638,6 +638,10 @@ def candles_endpoint():
 def health_check_endpoint():
     return {"status": "ok", "service": "gringgo-orderflow", "time": time.time()}
 
+@app.get("/api/snapshot")
+def full_snapshot_http_endpoint(initial: bool = False):
+    return engine.get_full_snapshot(initial=initial)
+
 @app.get("/api/status")
 def status_endpoint():
     return {
