@@ -49,6 +49,6 @@ import uvicorn
 from app import app
 
 if __name__ == "__main__":
-    port = int(os.environ.get("SERVER_PORT", os.environ.get("PORT", 8000)))
+    port = int(os.environ.get("PORT", os.environ.get("SERVER_PORT", 8000)))
     print(f"Starting Gringgo Orderflow Server on 0.0.0.0:{port}...")
     uvicorn.run("app:app", host="0.0.0.0", port=port, workers=1)
