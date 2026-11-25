@@ -1,3 +1,4 @@
+import auth_db
 import os
 from pathlib import Path
 """
@@ -84,7 +85,7 @@ class OrderFlowEngine:
         self.bookmap_signals: List[Dict[str, Any]] = []
         self.snr_valid_zones: List[Dict[str, Any]] = []
         self.snr_valid_signals: List[Dict[str, Any]] = []
-        self.signals_storage_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signals_history.json")
+        self.signals_storage_file = os.path.join(str(auth_db._DATA_DIR) if "auth_db" in globals() else "/tmp", "signals_history.json")
         self._load_signals_from_disk()
         self._last_snr_valid_time: float = 0.0
         self._last_bm_signal_time = 0.0
