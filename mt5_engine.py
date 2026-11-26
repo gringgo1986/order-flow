@@ -371,7 +371,7 @@ class OrderFlowEngine:
                         self.swissquote_status = f"LIVE_{src.upper()}"
             except Exception as e:
                 self.swissquote_status = f"ERR: {e}"
-            time.sleep(0.45) # Ultra-responsive 450ms tick cadence
+            time.sleep(0.20) # Ultra-Turbo 200ms (5 ticks/sec) institutional cadence
 
     def initialize_mt5(self) -> bool:
         """Connect to MT5 terminal and find the correct Gold symbol"""
@@ -1519,7 +1519,7 @@ class OrderFlowEngine:
         self._evaluate_spoofing(now_ms)
             
         # Add Trade Bubble: clean authentic tape prints
-        if trade_price != self._last_bubble_price or (now_ms - self.last_bubble_time_ms >= 250):
+        if trade_price != self._last_bubble_price or (now_ms - self.last_bubble_time_ms >= 150):
             # If recent_trades is empty or all trades drifted off-screen (> $6 away from trade_price), re-seed history
             if not self.recent_trades or all(abs(t.get("price", 0) - trade_price) > 6.0 for t in self.recent_trades[-30:]):
                 self._seed_recent_trades_history(trade_price, now_ms)
