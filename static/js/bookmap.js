@@ -740,8 +740,8 @@ class BookmapRenderer {
             this._heatmapHistoryBuffer.push(snap);
           }
         }
-        if (this._heatmapHistoryBuffer.length > 600) {
-          this._heatmapHistoryBuffer = this._heatmapHistoryBuffer.slice(-600);
+        if (this._heatmapHistoryBuffer.length > 1500) {
+          this._heatmapHistoryBuffer = this._heatmapHistoryBuffer.slice(-1500);
         }
       }
     }
@@ -901,8 +901,8 @@ class BookmapRenderer {
             this._heatmapHistoryBuffer.push(snap);
           }
         }
-        if (this._heatmapHistoryBuffer.length > 600) {
-          this._heatmapHistoryBuffer = this._heatmapHistoryBuffer.slice(-600);
+        if (this._heatmapHistoryBuffer.length > 1500) {
+          this._heatmapHistoryBuffer = this._heatmapHistoryBuffer.slice(-1500);
         }
       }
     }
