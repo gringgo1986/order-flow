@@ -4147,6 +4147,20 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
       this.signalsList = [];
     }
 
+    if (this.signalsList && this.signalsList.length > 1) {
+      const cleanList = [];
+      const asc = [...this.signalsList].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      for (const s of asc) {
+        const isDup = cleanList.some(c =>
+          c.direction === s.direction &&
+          Math.abs((c.timestamp || 0) - (s.timestamp || 0)) < 120000 &&
+          Math.abs((c.entryPrice || 0) - (s.entryPrice || 0)) <= 3.00
+        );
+        if (!isDup) cleanList.push(s);
+      }
+      this.signalsList = cleanList.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      this._saveSignals();
+    }
     this._renderSignalsUI();
     this._fetchServerSignals();
   }
@@ -4174,8 +4188,13 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
     const sigTs = (timestamp && timestamp > 1000000000) ? (timestamp < 10000000000 ? timestamp * 1000 : timestamp) : now;
     const sigId = id || `SIG-${now.toString().slice(-4)}`;
 
-    // Anti-duplication guard (by ID or identical price+dir within 45s)
-    if (this.signalsList && this.signalsList.some(s => s.id === sigId)) return;
+    // Anti-duplication guard: Block exact ID OR cross-server triplicate signal (same direction within 120s and ±$3.00)
+    if (this.signalsList && this.signalsList.some(s => {
+      if (s.id === sigId) return true;
+      const sTs = s.timestamp || 0;
+      const sPrice = s.entryPrice || 0;
+      return (s.direction === direction.toUpperCase() && Math.abs(sigTs - sTs) < 120000 && Math.abs(entryPrice - sPrice) <= 3.00);
+    })) return;
 
     const newDir = direction.toUpperCase();
     const cleanZone = (zone || type || '').replace(/^[^\w\s]+/, '').trim();
