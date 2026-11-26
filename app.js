@@ -1479,6 +1479,14 @@ class App {
       if (whaleWrap) whaleWrap.style.display = 'none';
       if (csTechBar) csTechBar.style.display = 'none';
 
+    } else if (view === 'candlestick') {
+      if (fpTools) fpTools.style.display = 'none';
+      if (clusterWrap) clusterWrap.style.display = 'none';
+      const clusterModeWrap = document.getElementById('clusterModeWrap');
+      if (clusterModeWrap) clusterModeWrap.style.display = 'none';
+      if (bookmapWrap) bookmapWrap.style.display = 'none';
+      if (whaleWrap) whaleWrap.style.display = 'none';
+      if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'split') {
       if (fpTools) fpTools.style.display = 'inline-flex';
       if (clusterWrap) clusterWrap.style.display = 'none';
@@ -1546,6 +1554,22 @@ class App {
         document.querySelectorAll('.step-btn').forEach(b => {
           b.classList.toggle('active', b.dataset.step === '1.00');
         });
+        if (this.latestSnapshot) {
+          this.footprint.render(this.latestSnapshot);
+        }
+      }
+    } else if (view === 'candlestick') {
+      const viewport = document.getElementById('chartViewport');
+      if (viewport) viewport.classList.remove('split-mode-vertical');
+      this.bookmapCanvas.style.display = 'none';
+      this.footprintCanvas.style.display = 'block';
+      this.footprintCanvas.style.left = '0';
+      this.footprintCanvas.style.top = '0';
+      this.footprintCanvas.style.width = '100%';
+      this.footprintCanvas.style.height = '100%';
+      if (this.footprint) {
+        this.footprint.setViewMode('candlestick');
+        this.footprint.centerVertical();
         if (this.latestSnapshot) {
           this.footprint.render(this.latestSnapshot);
         }
@@ -2938,7 +2962,7 @@ class App {
           if (this.bookmap && (this.currentView === 'bookmap' || this.currentView === 'split')) {
             try { this.bookmap.render(this.latestSnapshot); } catch (e) { console.error('[Bookmap Render]', e); }
           }
-          if (this.footprint && (this.currentView === 'footprint' || this.currentView === 'clusterdelta' || this.currentView === 'split')) {
+          if (this.footprint && (this.currentView === 'footprint' || this.currentView === 'clusterdelta' || this.currentView === 'candlestick' || this.currentView === 'split')) {
             try { this.footprint.render(this.latestSnapshot); } catch (e) { console.error('[Footprint Render]', e); }
           }
           try { this._updateSopDashboard(this.latestSnapshot); } catch (e) { console.error('[SOP Dashboard]', e); }
@@ -4849,7 +4873,8 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
             'bookmap': '📈 BOOKMAP [1]',
             'clusterdelta': '📊 CLUSTERDELTA [2]',
             'footprint': '👣 FOOTPRINT [3]',
-            'split': '🔀 SPLIT [4]'
+            'candlestick': '🕯️ CARTA LILIN [4]',
+            'split': '🔀 SPLIT [5]'
           };
           this.showToast(`✨ Buka Modul: ${viewNames[view] || view}`);
         });
