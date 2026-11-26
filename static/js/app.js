@@ -4229,6 +4229,25 @@ Selamat berdagang dan semoga beroleh profit konsisten!`;
   }
 
   addSignal({ id, type, direction, entryPrice, slPrice, tpPrice, tp1, tp2, tp3, tp4, tp5, zone, timestamp, status, resultPips, highestTPTier, isBEActive, fromBackend = false, slPips = 50, tpPips = 50 }) {
+    if (type) {
+      type = String(type)
+        .replace(/1D \(DAILY\) SUPPLY/g, 'D1 SNR RESISTANCE')
+        .replace(/1D \(DAILY\) DEMAND/g, 'D1 SNR SUPPORT')
+        .replace(/H8 SND SUPPLY/g, 'H8 SNR RESISTANCE')
+        .replace(/H8 SND DEMAND/g, 'H8 SNR SUPPORT')
+        .replace(/H4 SND SUPPLY/g, 'H4 SNR RESISTANCE')
+        .replace(/H4 SND DEMAND/g, 'H4 SNR SUPPORT')
+        .replace(/VAH 70% VALUE SUPPLY/g, 'H1 SNR RESISTANCE')
+        .replace(/VAL 70% VALUE DEMAND/g, 'H1 SNR SUPPORT')
+        .replace(/LONDON HIGH SUPPLY/g, 'H1 SNR RESISTANCE')
+        .replace(/LONDON LOW DEMAND/g, 'H1 SNR SUPPORT')
+        .replace(/ASIAN HIGH SUPPLY/g, 'M30 SNR RESISTANCE')
+        .replace(/ASIAN LOW DEMAND/g, 'M30 SNR SUPPORT')
+        .replace(/SND SUPPLY/g, 'SNR RESISTANCE')
+        .replace(/SND DEMAND/g, 'SNR SUPPORT')
+        .replace(/SUPPLY/g, 'SNR RESISTANCE')
+        .replace(/DEMAND/g, 'SNR SUPPORT');
+    }
     if (!entryPrice || entryPrice <= 0) return;
     const now = Date.now();
     const sigTs = (timestamp && timestamp > 1000000000) ? (timestamp < 10000000000 ? timestamp * 1000 : timestamp) : now;
