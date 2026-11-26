@@ -3458,6 +3458,23 @@ class OrderFlowEngine:
         except Exception:
             pass
 
+        # Clean up any cross-server triplicate signals within 120s and ±$3.00
+        if len(self.bookmap_signals) > 1:
+            deduped = []
+            for s in sorted(self.bookmap_signals, key=lambda x: x.get("timestamp", 0)):
+                s_ts = float(s.get("timestamp") or 0)
+                s_p = float(s.get("price") or 0)
+                s_dir = s.get("direction")
+                if any(
+                    d.get("direction") == s_dir
+                    and abs(float(d.get("timestamp") or 0) - s_ts) < 120.0
+                    and abs(float(d.get("price") or 0) - s_p) <= 3.00
+                    for d in deduped
+                ):
+                    continue
+                deduped.append(s)
+            self.bookmap_signals = deduped[-500:]
+
         self._update_signals_status(p)
         self._save_signals_to_disk()
         return self.bookmap_signals
