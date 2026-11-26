@@ -576,11 +576,11 @@ class OrderFlowEngine:
                         target_dict[wp] = round(min(nat_vol, target_dict[wp] + 0.45), 1)
 
     def _seed_recent_trades_history(self, current_p: float, current_ms: int):
-        """Generates a realistic rolling trail of 120 historical trades across the visible timeline"""
+        """Generates a realistic rolling trail of 450 historical trades across ~11 minutes (covers M1 & M5 Bookmap edge-to-edge)"""
         self.recent_trades = []
         p_walk = current_p
-        for k in range(120, 0, -1):
-            t_k = current_ms - (k * 1450) # spread across ~175 seconds
+        for k in range(450, 0, -1):
+            t_k = current_ms - (k * 1450) # spread across ~650 seconds (~11 minutes)
             drift = math.sin(k * 0.12) * 0.05
             noise = (math.cos(k * 1.7) * 0.03)
             p_walk = round(max(current_p - 1.40, min(current_p + 1.40, p_walk + drift + noise)), 2)
@@ -1550,8 +1550,8 @@ class OrderFlowEngine:
                 "is_large": trade_vol >= 12.0
             }
             self.recent_trades.append(trade_record)
-            if len(self.recent_trades) > 1500:
-                self.recent_trades = self.recent_trades[-1200:]
+            if len(self.recent_trades) > 3000:
+                self.recent_trades = self.recent_trades[-2500:]
         
         # Update dynamic Depth & Heatmap
         self._synthesize_book_depth(trade_price)
@@ -3972,7 +3972,7 @@ class OrderFlowEngine:
             "market_radar": self._evaluate_market_radar(),
             "account": self.account_info,
             "positions": self.positions,
-            "trades": self.recent_trades[-500:] if initial else self.recent_trades[-80:],
+            "trades": self.recent_trades[-1200:] if initial else self.recent_trades[-80:],
             "heatmap": self.heatmap_history[-600:] if initial else (
                 [{
                     "timestamp": h_slice.get("timestamp", 0),
