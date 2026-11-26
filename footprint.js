@@ -1305,20 +1305,19 @@ class FootprintRenderer {
       { price: sessions.pwh,         label: 'PWH (1W H)', tf: 'W1', col: '#f43f5e', isMajor: true },
       { price: sessions.pwl,         label: 'PWL (1W L)', tf: 'W1', col: '#10b981', isMajor: true },
 
-      // 1D (Daily) Major Levels
-      { price: sessions.pdh,         label: 'PDH (1D H)', tf: 'D1', col: '#fde047', isMajor: true },
-      { price: sessions.pdl,         label: 'PDL (1D L)', tf: 'D1', col: '#fde047', isMajor: true },
-      { price: sessions.daily_open,  label: '1D OPEN',    tf: 'D1', col: '#38bdf8', isMajor: true },
-
-      // Higher Timeframe SNR H4, H1, M30, M15
-      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SUPPLY', tf: 'H4', col: '#ec4899', isMajor: true },
-      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 DEMAND', tf: 'H4', col: '#10b981', isMajor: true },
-      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SUPPLY', tf: 'H1', col: '#f97316', isMajor: true },
-      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 DEMAND', tf: 'H1', col: '#06b6d4', isMajor: true },
-      { price: sessions.m30_res || sessions.m30_high, label: 'M30 RES', tf: 'M30', col: '#a855f7', isMajor: false },
-      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SUP', tf: 'M30', col: '#3b82f6', isMajor: false },
-      { price: sessions.m15_res || sessions.m15_high, label: 'M15 RES', tf: 'M15', col: '#fbbf24', isMajor: false },
-      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SUP', tf: 'M15', col: '#2dd4bf', isMajor: false },
+      // Higher Timeframe SNR Strictly: D1, H8, H4, H1, M30, M15
+      { price: sessions.pdh,                        label: 'D1 SNR RES',  tf: 'D1',  col: '#fde047', isMajor: true },
+      { price: sessions.pdl,                        label: 'D1 SNR SUP',  tf: 'D1',  col: '#fde047', isMajor: true },
+      { price: sessions.h8_res || sessions.h8_high, label: 'H8 SNR RES',  tf: 'H8',  col: '#e11d48', isMajor: true },
+      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SNR SUP',  tf: 'H8',  col: '#059669', isMajor: true },
+      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SNR RES',  tf: 'H4',  col: '#ec4899', isMajor: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SNR SUP',  tf: 'H4',  col: '#10b981', isMajor: true },
+      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SNR RES',  tf: 'H1',  col: '#f97316', isMajor: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SNR SUP',  tf: 'H1',  col: '#06b6d4', isMajor: true },
+      { price: sessions.m30_res || sessions.m30_high, label: 'M30 SNR RES', tf: 'M30', col: '#a855f7', isMajor: false },
+      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SNR SUP', tf: 'M30', col: '#3b82f6', isMajor: false },
+      { price: sessions.m15_res || sessions.m15_high, label: 'M15 SNR RES', tf: 'M15', col: '#fbbf24', isMajor: false },
+      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SNR SUP', tf: 'M15', col: '#2dd4bf', isMajor: false },
 
       // Session Extremes
       { price: sessions.asian_high,  label: 'ASIA HIGH', tf: 'SESSION', col: '#f59e0b', isMajor: false },
@@ -2464,27 +2463,21 @@ class FootprintRenderer {
     const svp = snapshot.session_vp || {};
 
     const demandLevels = [
-      { p: sess.pdl || sess.d1_low, name: '1D (DAILY) DEMAND' },
-      { p: sess.h8_sup || sess.h8_low, name: 'H8 SND DEMAND' },
-      { p: sess.h4_sup || sess.h4_low, name: 'H4 SND DEMAND' },
+      { p: sess.pdl || sess.d1_low, name: 'D1 SNR SUPPORT' },
+      { p: sess.h8_sup || sess.h8_low, name: 'H8 SNR SUPPORT' },
+      { p: sess.h4_sup || sess.h4_low, name: 'H4 SNR SUPPORT' },
       { p: sess.h1_sup || sess.h1_low, name: 'H1 SNR SUPPORT' },
       { p: sess.m30_sup || sess.m30_low, name: 'M30 SNR SUPPORT' },
-      { p: sess.m15_sup || sess.m15_low, name: 'M15 SNR SUPPORT' },
-      { p: svp.val, name: 'VAL 70% VALUE DEMAND' },
-      { p: sess.asian_low, name: 'ASIAN LOW DEMAND' },
-      { p: sess.london_low, name: 'LONDON LOW DEMAND' }
+      { p: sess.m15_sup || sess.m15_low, name: 'M15 SNR SUPPORT' }
     ].filter(l => l.p && l.p > 0);
 
     const supplyLevels = [
-      { p: sess.pdh || sess.d1_high, name: '1D (DAILY) SUPPLY' },
-      { p: sess.h8_res || sess.h8_high, name: 'H8 SND SUPPLY' },
-      { p: sess.h4_res || sess.h4_high, name: 'H4 SND SUPPLY' },
+      { p: sess.pdh || sess.d1_high, name: 'D1 SNR RESISTANCE' },
+      { p: sess.h8_res || sess.h8_high, name: 'H8 SNR RESISTANCE' },
+      { p: sess.h4_res || sess.h4_high, name: 'H4 SNR RESISTANCE' },
       { p: sess.h1_res || sess.h1_high, name: 'H1 SNR RESISTANCE' },
       { p: sess.m30_res || sess.m30_high, name: 'M30 SNR RESISTANCE' },
-      { p: sess.m15_res || sess.m15_high, name: 'M15 SNR RESISTANCE' },
-      { p: svp.vah, name: 'VAH 70% VALUE SUPPLY' },
-      { p: sess.asian_high, name: 'ASIAN HIGH SUPPLY' },
-      { p: sess.london_high, name: 'LONDON HIGH SUPPLY' }
+      { p: sess.m15_res || sess.m15_high, name: 'M15 SNR RESISTANCE' }
     ].filter(l => l.p && l.p > 0);
 
     const tol = 1.30;
@@ -3056,34 +3049,24 @@ class FootprintRenderer {
       }
     }
 
-    // Compile Active Institutional Support & Demand Zones
+    // Compile Active Institutional SNR Support Zones ONLY (D1, H8, H4, H1, M30, M15)
     const sess = snapshot.sessions || snapshot.htf_snr || {};
     const supDemandLevels = [];
-    if ((sess.pdl || sess.d1_low) > 0) supDemandLevels.push({ price: sess.pdl || sess.d1_low, name: '1D (DAILY) DEMAND' });
-    if (sess.h8_sup > 0) supDemandLevels.push({ price: sess.h8_sup, name: 'H8 SND DEMAND' });
-    if (sess.h4_sup > 0) supDemandLevels.push({ price: sess.h4_sup, name: 'H4 SND DEMAND' });
+    if ((sess.pdl || sess.d1_low) > 0) supDemandLevels.push({ price: sess.pdl || sess.d1_low, name: 'D1 SNR SUPPORT' });
+    if (sess.h8_sup > 0) supDemandLevels.push({ price: sess.h8_sup, name: 'H8 SNR SUPPORT' });
+    if (sess.h4_sup > 0) supDemandLevels.push({ price: sess.h4_sup, name: 'H4 SNR SUPPORT' });
     if (sess.h1_sup > 0) supDemandLevels.push({ price: sess.h1_sup, name: 'H1 SNR SUPPORT' });
     if (sess.m30_sup > 0) supDemandLevels.push({ price: sess.m30_sup, name: 'M30 SNR SUPPORT' });
     if (sess.m15_sup > 0) supDemandLevels.push({ price: sess.m15_sup, name: 'M15 SNR SUPPORT' });
-    if (sess.asian_low > 0) supDemandLevels.push({ price: sess.asian_low, name: 'ASIAN LOW DEMAND' });
-    if (sess.london_low > 0) supDemandLevels.push({ price: sess.london_low, name: 'LONDON LOW DEMAND' });
-    if (snapshot.session_vp && snapshot.session_vp.val > 0) {
-      supDemandLevels.push({ price: snapshot.session_vp.val, name: 'VAL 70% VALUE DEMAND' });
-    }
 
-    // Compile Active Institutional Resistance & Supply Zones
+    // Compile Active Institutional SNR Resistance Zones ONLY (D1, H8, H4, H1, M30, M15)
     const resSupplyLevels = [];
-    if ((sess.pdh || sess.d1_high) > 0) resSupplyLevels.push({ price: sess.pdh || sess.d1_high, name: '1D (DAILY) SUPPLY' });
-    if (sess.h8_res > 0) resSupplyLevels.push({ price: sess.h8_res, name: 'H8 SND SUPPLY' });
-    if (sess.h4_res > 0) resSupplyLevels.push({ price: sess.h4_res, name: 'H4 SND SUPPLY' });
+    if ((sess.pdh || sess.d1_high) > 0) resSupplyLevels.push({ price: sess.pdh || sess.d1_high, name: 'D1 SNR RESISTANCE' });
+    if (sess.h8_res > 0) resSupplyLevels.push({ price: sess.h8_res, name: 'H8 SNR RESISTANCE' });
+    if (sess.h4_res > 0) resSupplyLevels.push({ price: sess.h4_res, name: 'H4 SNR RESISTANCE' });
     if (sess.h1_res > 0) resSupplyLevels.push({ price: sess.h1_res, name: 'H1 SNR RESISTANCE' });
     if (sess.m30_res > 0) resSupplyLevels.push({ price: sess.m30_res, name: 'M30 SNR RESISTANCE' });
     if (sess.m15_res > 0) resSupplyLevels.push({ price: sess.m15_res, name: 'M15 SNR RESISTANCE' });
-    if (sess.asian_high > 0) resSupplyLevels.push({ price: sess.asian_high, name: 'ASIAN HIGH SUPPLY' });
-    if (sess.london_high > 0) resSupplyLevels.push({ price: sess.london_high, name: 'LONDON HIGH SUPPLY' });
-    if (snapshot.session_vp && snapshot.session_vp.vah > 0) {
-      resSupplyLevels.push({ price: snapshot.session_vp.vah, name: 'VAH 70% VALUE SUPPLY' });
-    }
 
     const vwapVal = snapshot.vwap && (snapshot.vwap.value || snapshot.vwap.vwap);
 
@@ -4871,32 +4854,19 @@ class FootprintRenderer {
       }
       if (snapshot.sessions) {
         const s = snapshot.sessions;
-        // 1D (Daily) Levels - Major Institutional
-        if (s.pdh > 0) candidateLevels.push({ price: s.pdh, label: '🏛️ 1D HIGH (PDH)', color: '#fde047', dash: [8, 4], prio: 10 });
-        if (s.pdl > 0) candidateLevels.push({ price: s.pdl, label: '🏛️ 1D LOW (PDL)',  color: '#fde047', dash: [8, 4], prio: 10 });
-        if (s.daily_open > 0) candidateLevels.push({ price: s.daily_open, label: '⚡ 1D OPEN', color: '#38bdf8', dash: [6, 3], prio: 9 });
-
-        // H8 & H4
-        if (s.h8_res > 0) candidateLevels.push({ price: s.h8_res, label: '🏛️ H8 RES', color: '#e11d48', dash: [8, 4], prio: 8 });
-        if (s.h8_sup > 0) candidateLevels.push({ price: s.h8_sup, label: '🏛️ H8 SUP', color: '#059669', dash: [8, 4], prio: 8 });
-        if (s.h4_res > 0) candidateLevels.push({ price: s.h4_res, label: '🏰 H4 RES', color: '#ec4899', dash: [6, 3], prio: 7 });
-        if (s.h4_sup > 0) candidateLevels.push({ price: s.h4_sup, label: '🏰 H4 SUP', color: '#10b981', dash: [6, 3], prio: 7 });
-
-        // H1
-        if (s.h1_res > 0) candidateLevels.push({ price: s.h1_res, label: '⏱️ H1 RES', color: '#f97316', dash: [5, 3], prio: 6 });
-        if (s.h1_sup > 0) candidateLevels.push({ price: s.h1_sup, label: '⏱️ H1 SUP', color: '#06b6d4', dash: [5, 3], prio: 6 });
-
-        // M30
-        if (s.m30_res > 0) candidateLevels.push({ price: s.m30_res, label: '⏳ M30 RES', color: '#a855f7', dash: [4, 3], prio: 5 });
-        if (s.m30_sup > 0) candidateLevels.push({ price: s.m30_sup, label: '⏳ M30 SUP', color: '#3b82f6', dash: [4, 3], prio: 5 });
-
-        // M15
-        if (s.m15_res > 0) candidateLevels.push({ price: s.m15_res, label: '⚡ M15 RES', color: '#fbbf24', dash: [3, 3], prio: 5 });
-        if (s.m15_sup > 0) candidateLevels.push({ price: s.m15_sup, label: '⚡ M15 SUP', color: '#2dd4bf', dash: [3, 3], prio: 5 });
-
-        // Sessions
-        if (s.asian_high > 0) candidateLevels.push({ price: s.asian_high, label: '🌏 ASIAN H', color: '#f59e0b', dash: [5, 4], prio: 4 });
-        if (s.asian_low > 0)  candidateLevels.push({ price: s.asian_low,  label: '🌏 ASIAN L', color: '#f59e0b', dash: [5, 4], prio: 4 });
+        // Strictly 6 Institutional SNR Timeframes: D1, H8, H4, H1, M30, M15
+        if (s.pdh > 0) candidateLevels.push({ price: s.pdh, label: '🏛️ D1 SNR RES', color: '#fde047', dash: [8, 4], prio: 10 });
+        if (s.pdl > 0) candidateLevels.push({ price: s.pdl, label: '🏛️ D1 SNR SUP', color: '#fde047', dash: [8, 4], prio: 10 });
+        if (s.h8_res > 0) candidateLevels.push({ price: s.h8_res, label: '🏛️ H8 SNR RES', color: '#e11d48', dash: [8, 4], prio: 9 });
+        if (s.h8_sup > 0) candidateLevels.push({ price: s.h8_sup, label: '🏛️ H8 SNR SUP', color: '#059669', dash: [8, 4], prio: 9 });
+        if (s.h4_res > 0) candidateLevels.push({ price: s.h4_res, label: '🏰 H4 SNR RES', color: '#ec4899', dash: [6, 3], prio: 8 });
+        if (s.h4_sup > 0) candidateLevels.push({ price: s.h4_sup, label: '🏰 H4 SNR SUP', color: '#10b981', dash: [6, 3], prio: 8 });
+        if (s.h1_res > 0) candidateLevels.push({ price: s.h1_res, label: '⏱️ H1 SNR RES', color: '#f97316', dash: [5, 3], prio: 7 });
+        if (s.h1_sup > 0) candidateLevels.push({ price: s.h1_sup, label: '⏱️ H1 SNR SUP', color: '#06b6d4', dash: [5, 3], prio: 7 });
+        if (s.m30_res > 0) candidateLevels.push({ price: s.m30_res, label: '⏳ M30 SNR RES', color: '#a855f7', dash: [4, 3], prio: 6 });
+        if (s.m30_sup > 0) candidateLevels.push({ price: s.m30_sup, label: '⏳ M30 SNR SUP', color: '#3b82f6', dash: [4, 3], prio: 6 });
+        if (s.m15_res > 0) candidateLevels.push({ price: s.m15_res, label: '⚡ M15 SNR RES', color: '#fbbf24', dash: [3, 3], prio: 5 });
+        if (s.m15_sup > 0) candidateLevels.push({ price: s.m15_sup, label: '⚡ M15 SNR SUP', color: '#2dd4bf', dash: [3, 3], prio: 5 });
       }
     }
 
@@ -5445,18 +5415,18 @@ class FootprintRenderer {
       if (snapshot && snapshot.sessions) {
         const s = snapshot.sessions;
         const rawLvls = [
-          { name: '1D HIGH (PDH)', price: s.pdh, side: 'RES', tf: '1D' },
-          { name: '1D LOW (PDL)', price: s.pdl, side: 'SUP', tf: '1D' },
-          { name: 'H4 SNR RES', price: s.h4_res, side: 'RES', tf: 'H4' },
-          { name: 'H4 SNR SUP', price: s.h4_sup, side: 'SUP', tf: 'H4' },
-          { name: 'H1 SNR RES', price: s.h1_res, side: 'RES', tf: 'H1' },
-          { name: 'H1 SNR SUP', price: s.h1_sup, side: 'SUP', tf: 'H1' },
-          { name: 'M30 SNR RES', price: s.m30_res, side: 'RES', tf: 'M30' },
-          { name: 'M30 SNR SUP', price: s.m30_sup, side: 'SUP', tf: 'M30' },
-          { name: 'M15 SNR RES', price: s.m15_res, side: 'RES', tf: 'M15' },
-          { name: 'M15 SNR SUP', price: s.m15_sup, side: 'SUP', tf: 'M15' },
-          { name: 'ASIAN HIGH', price: s.asian_high, side: 'RES', tf: 'SESI' },
-          { name: 'ASIAN LOW', price: s.asian_low, side: 'SUP', tf: 'SESI' }
+          { name: 'D1 SNR RESISTANCE', price: s.pdh, side: 'RES', tf: 'D1' },
+          { name: 'D1 SNR SUPPORT', price: s.pdl, side: 'SUP', tf: 'D1' },
+          { name: 'H8 SNR RESISTANCE', price: s.h8_res, side: 'RES', tf: 'H8' },
+          { name: 'H8 SNR SUPPORT', price: s.h8_sup, side: 'SUP', tf: 'H8' },
+          { name: 'H4 SNR RESISTANCE', price: s.h4_res, side: 'RES', tf: 'H4' },
+          { name: 'H4 SNR SUPPORT', price: s.h4_sup, side: 'SUP', tf: 'H4' },
+          { name: 'H1 SNR RESISTANCE', price: s.h1_res, side: 'RES', tf: 'H1' },
+          { name: 'H1 SNR SUPPORT', price: s.h1_sup, side: 'SUP', tf: 'H1' },
+          { name: 'M30 SNR RESISTANCE', price: s.m30_res, side: 'RES', tf: 'M30' },
+          { name: 'M30 SNR SUPPORT', price: s.m30_sup, side: 'SUP', tf: 'M30' },
+          { name: 'M15 SNR RESISTANCE', price: s.m15_res, side: 'RES', tf: 'M15' },
+          { name: 'M15 SNR SUPPORT', price: s.m15_sup, side: 'SUP', tf: 'M15' }
         ];
         for (const l of rawLvls) {
           if (l.price && l.price > 0) htfLevels.push(l);
@@ -6173,12 +6143,6 @@ class FootprintRenderer {
       { label: '🎯 SNR', active: !!this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
       { label: '🌐 VWAP', active: !!this.csShowVWAP, col: '#00f0ff', fn: () => { this.csShowVWAP = !this.csShowVWAP; } },
       { label: '📈 EMA', active: !!this.csShowEMA, col: '#ffd60a', fn: () => { this.csShowEMA = !this.csShowEMA; } },
-      { label: '📦 SMC', active: !this.csZenMode, col: '#34d399', fn: () => {
-          this.csZenMode = !this.csZenMode;
-          this.csShowFvgOb = !this.csZenMode;
-          this.csShowStructure = !this.csZenMode;
-        }
-      },
       { label: '⭐ Signal', active: !!this.csShowSignals, col: '#00e676', fn: () => { this.csShowSignals = !this.csShowSignals; } }
     ];
 
