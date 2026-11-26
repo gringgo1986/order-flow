@@ -4845,18 +4845,18 @@ class FootprintRenderer {
       ctx.fillText(gp.toFixed(2), this.width - 6, gy + 3.5);
     }
 
-    // 5. Right-Edge Subtle Session Volume Profile Silhouette
+    // 5. Right-Edge Ultra-Subtle Session Volume Profile Silhouette (26px max width so live candles & SL/TP stay 100% clear)
     if (snapshot.session_vp && snapshot.session_vp.buckets) {
       const svp = snapshot.session_vp;
       const maxSvpV = Math.max(10, svp.max_bucket_vol || 50);
-      const maxBarW = 58;
+      const maxBarW = 26;
       for (const b of svp.buckets) {
         const by = pToY(b.price);
         if (by < mainChartTop + 6 || by > mainChartBottom - 6) continue;
         const bw = Math.min(maxBarW, (b.total / maxSvpV) * maxBarW);
         const isDpoc = Math.abs(b.price - (svp.dpoc || 0)) < 0.08;
-        ctx.fillStyle = isDpoc ? 'rgba(255, 214, 10, 0.35)' : 'rgba(56, 189, 248, 0.12)';
-        ctx.fillRect(chartW - bw, by - 3, bw, 6);
+        ctx.fillStyle = isDpoc ? 'rgba(255, 214, 10, 0.22)' : 'rgba(56, 189, 248, 0.06)';
+        ctx.fillRect(chartW - bw, by - 2.5, bw, 5);
       }
     }
 
@@ -4900,47 +4900,49 @@ class FootprintRenderer {
       }
     }
 
-    // Anti-collision slotting: Sort candidate levels by priority and filter overlapping tags
-    candidateLevels.sort((a, b) => b.prio - a.prio);
+    // Anti-collision slotting: Sort by proximity to live price & priority, max 4 visible levels, strictly single left column (>= 24px vertical gap)
+    candidateLevels.sort((a, b) => {
+      const distA = Math.abs((a.price || 0) - lastPrice);
+      const distB = Math.abs((b.price || 0) - lastPrice);
+      return (distA - distB) || (b.prio - a.prio);
+    });
     const placedTagYs = [];
 
     for (const lvl of candidateLevels) {
+      if (placedTagYs.length >= 4) break;
       if (!lvl.price || lvl.price <= 0) continue;
       const y = pToY(lvl.price);
-      if (y < mainChartTop + 14 || y > mainChartBottom - 14) continue;
+      if (y < mainChartTop + 34 || y > mainChartBottom - 18) continue;
+      if (placedTagYs.some(py => Math.abs(py - y) < 24)) continue;
+      placedTagYs.push(y);
 
-      // Draw Ray Line across the full chart width
+      // Draw Subtle Ray Line across the full chart width
       ctx.save();
-      ctx.setLineDash(lvl.dash);
+      ctx.setLineDash(lvl.dash && lvl.dash.length ? lvl.dash : [4, 4]);
       ctx.strokeStyle = lvl.color;
-      ctx.lineWidth = 1.0;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 0.9;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(chartW, y);
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.globalAlpha = 1.0;
 
-      // Anti-Collision Left-Edge Pill Tag (Keeps the right live candle area 100% spacious)
+      // Single-Column Left-Edge Pill Tag (Zero horizontal stacking over candles)
       const txt = `${lvl.label} $${lvl.price.toFixed(2)}`;
       ctx.font = 'bold 8px "JetBrains Mono", monospace';
       const tw = ctx.measureText(txt).width + 8;
+      const tagX = 8;
 
-      let tagX = 8;
-      let colShift = 0;
-      while (placedTagYs.some(pt => Math.abs(pt.y - y) < 16 && Math.abs(pt.x - tagX) < (tw + 8)) && colShift < 4) {
-        tagX += tw + 6;
-        colShift++;
-      }
-      placedTagYs.push({ x: tagX, y: y });
-
-      ctx.fillStyle = 'rgba(7, 11, 20, 0.94)';
-      ctx.fillRect(tagX, y - 7, tw, 14);
+      ctx.fillStyle = 'rgba(7, 11, 20, 0.92)';
+      ctx.fillRect(tagX, y - 6.5, tw, 13);
       ctx.strokeStyle = lvl.color;
       ctx.lineWidth = 0.8;
-      ctx.strokeRect(tagX, y - 7, tw, 14);
+      ctx.strokeRect(tagX, y - 6.5, tw, 13);
       ctx.fillStyle = lvl.color;
       ctx.textAlign = 'center';
-      ctx.fillText(txt, tagX + tw / 2, y + 3.5);
+      ctx.fillText(txt, tagX + tw / 2, y + 3);
       ctx.restore();
     }
 
@@ -5834,12 +5836,6 @@ class FootprintRenderer {
             }
           }
           ctx.restore();
-        } else if (signalBadge) {
-          const sy = hasBullDivergence ? Math.min(mainChartBottom - 8, yLow + 14) : Math.max(mainChartTop + 14, yHigh - 10);
-          ctx.font = 'bold 8px "JetBrains Mono", monospace';
-          ctx.fillStyle = signalCol;
-          ctx.textAlign = 'center';
-          ctx.fillText(signalBadge, cx, sy);
         }
       }
 
@@ -5971,8 +5967,10 @@ class FootprintRenderer {
 
     const dispC = hoveredCandle || candles[candles.length - 1];
 
-    // 9.8. Smart Auto Trendline (Support & Resistance)
-    this._drawAutoTrendlines(ctx, candles, getBarX, pToY, chartW);
+    // 9.8. Smart Auto Trendline (Only drawn when SMC/Structure overlay is enabled so default Zen Candle chart stays 100% pristine)
+    if (!this.csZenMode) {
+      this._drawAutoTrendlines(ctx, candles, getBarX, pToY, chartW);
+    }
 
     // 10. Bottom Volume + Order Flow Delta Sub-Pane + CVD Curve
     const volTop = mainChartBottom;
@@ -6493,7 +6491,8 @@ class FootprintRenderer {
     const barW = 186;
     const barH = 28;
     const bx = Math.floor((this.width - barW) / 2);
-    const by = (this.viewMode === 'clusterdelta') ? (this.height - barH - 32) : (this.height - barH - 8);
+    const volPaneOffset = (this.viewMode === 'candlestick') ? Math.max(54, Math.floor((this.height - 22) * 0.18)) + 28 : 0;
+    const by = (this.viewMode === 'clusterdelta') ? (this.height - barH - 32) : (this.viewMode === 'candlestick' ? (this.height - barH - volPaneOffset) : (this.height - barH - 8));
 
     // Glowing background capsule
     ctx.fillStyle = 'rgba(10, 16, 30, 0.92)';
