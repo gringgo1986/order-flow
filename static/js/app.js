@@ -95,24 +95,44 @@ class App {
     this._setupDomResize();
     this._setupMobileModuleDock();
 
-    // 24/7 Always-On Visibility Listener: Immediately sync full history & recenter on tab wakeup
+    // 24/7 Always-On Visibility & Focus Listener: Immediately backfill 100% of server's 24/7 Bookmap, Cluster & Footprint history on tab wakeup!
+    const syncFullServerHistoryOnWake = async () => {
+      this.isPageHidden = false;
+      this.needsRedraw = true;
+      this._hfPollCount = 1; // Triggers initial=true on next HF poll cycle
+      this.loadHistoricalCandles(this.currentTimeframe || 'M1');
+      if (!window.location.hostname.endsWith('.hf.space') && (!this.ws || this.ws.readyState !== WebSocket.OPEN)) {
+        this._connectWebSocket();
+      }
+      try {
+        const snapRes = await fetch('/api/snapshot?initial=true');
+        if (snapRes.ok) {
+          const fullSnap = await snapRes.json();
+          this._ingestSnapshotPayload(fullSnap);
+        }
+      } catch (e) {}
+      window.dispatchEvent(new Event('resize'));
+      if (this.latestSnapshot) {
+        if (this.bookmap && (this.currentView === 'bookmap' || this.currentView === 'split')) {
+          this.bookmap.render(this.latestSnapshot);
+        }
+        if (this.footprint && this.currentView !== 'bookmap') {
+          this.footprint.render(this.latestSnapshot);
+        }
+      }
+    };
+
     document.addEventListener('visibilitychange', () => {
       this.isPageHidden = document.hidden;
       if (!this.isPageHidden) {
-        this.needsRedraw = true;
-        this.loadHistoricalCandles(this.currentTimeframe || 'M1');
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-          this._connectWebSocket();
-        }
-        window.dispatchEvent(new Event('resize'));
-        if (this.latestSnapshot) {
-          if (this.bookmap && (this.currentView === 'bookmap' || this.currentView === 'split')) {
-            this.bookmap.render(this.latestSnapshot);
-          }
-          if (this.footprint && this.currentView !== 'bookmap') {
-            this.footprint.render(this.latestSnapshot);
-          }
-        }
+        syncFullServerHistoryOnWake();
+      }
+    });
+    window.addEventListener('focus', () => {
+      const now = Date.now();
+      if (!this._lastFocusBackfillTs || (now - this._lastFocusBackfillTs > 3000)) {
+        this._lastFocusBackfillTs = now;
+        syncFullServerHistoryOnWake();
       }
     });
   }
