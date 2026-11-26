@@ -62,7 +62,7 @@ class OrderFlowEngine:
         # Liquidity Heatmap snapshots: list of {timestamp, bid_levels: {price: vol}, ask_levels: {price: vol}}
         self.heatmap_history: List[Dict[str, Any]] = []
         self._last_supabase_sync_time = 0.0
-        self.max_heatmap_records = 850
+        self.max_heatmap_records = 1500
         
         # Persistent resting order book (price -> volume)
         # Keeps institutional limit walls FIXED at absolute price levels across time
@@ -1391,17 +1391,23 @@ class OrderFlowEngine:
         self.order_book_bids = bids
         self.order_book_asks = asks
         
-        # Record heatmap snapshot
-        snapshot = {
-            "timestamp": now_ms,
-            "mid_price": center_price,
-            "bids": bids,
-            "asks": asks
-        }
-        self.heatmap_history.append(snapshot)
-        self._sync_to_cloud_db_if_needed(now)
-        if len(self.heatmap_history) > self.max_heatmap_records:
-            self.heatmap_history.pop(0)
+        # Record heatmap snapshot (throttle history storage to 0.45s intervals so 1500 slices retain ~12 minutes of 24/7 background history)
+        last_hm_ts = self.heatmap_history[-1]["timestamp"] if self.heatmap_history else 0
+        if now_ms - last_hm_ts >= 450:
+            snapshot = {
+                "timestamp": now_ms,
+                "mid_price": center_price,
+                "bids": bids,
+                "asks": asks
+            }
+            self.heatmap_history.append(snapshot)
+            self._sync_to_cloud_db_if_needed(now)
+            if len(self.heatmap_history) > self.max_heatmap_records:
+                self.heatmap_history.pop(0)
+        elif self.heatmap_history:
+            self.heatmap_history[-1]["mid_price"] = center_price
+            self.heatmap_history[-1]["bids"] = bids
+            self.heatmap_history[-1]["asks"] = asks
 
 
     def _sync_to_cloud_db_if_needed(self, now: float):
@@ -3962,8 +3968,8 @@ class OrderFlowEngine:
             "market_radar": self._evaluate_market_radar(),
             "account": self.account_info,
             "positions": self.positions,
-            "trades": self.recent_trades[-160:] if initial else self.recent_trades[-60:],
-            "heatmap": self.heatmap_history[-350:] if initial else (
+            "trades": self.recent_trades[-500:] if initial else self.recent_trades[-80:],
+            "heatmap": self.heatmap_history[-600:] if initial else (
                 [{
                     "timestamp": h_slice.get("timestamp", 0),
                     "mid_price": h_slice.get("mid_price", self.last_price or 4008.0),
