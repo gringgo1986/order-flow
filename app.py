@@ -196,9 +196,18 @@ def _run_peer_and_github_sync_Cycle(cycle: int, is_hostless_master: bool, master
                         added = False
                         for ps in peer_sigs:
                             ps_ts = float(ps.get("timestamp") or 0.0)
+                            ps_price = float(ps.get("price") or 0.0)
+                            ps_dir = ps.get("direction")
                             if ps_ts <= _local_signals_reset_ts:
                                 continue
-                            if ps.get("id") and ps["id"] not in existing_ids:
+                            # Block triplicate signals generated 1-180s apart across the 4 servers at the same price zone (±$3.50)
+                            is_cross_server_dup = any(
+                                s.get("direction") == ps_dir
+                                and abs(float(s.get("timestamp") or 0.0) - ps_ts) < 180.0
+                                and abs(float(s.get("price") or 0.0) - ps_price) <= 3.50
+                                for s in engine.bookmap_signals
+                            )
+                            if not is_cross_server_dup and ps.get("id") and ps["id"] not in existing_ids:
                                 engine.bookmap_signals.append(ps)
                                 existing_ids.add(ps["id"])
                                 added = True
