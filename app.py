@@ -161,7 +161,12 @@ def _run_peer_and_github_sync_Cycle(cycle: int, is_hostless_master: bool, master
                     if isinstance(data.get("order_book_asks"), dict) and data["order_book_asks"]:
                         engine.order_book_asks = {float(k): float(v) for k, v in data["order_book_asks"].items()}
                     if isinstance(data.get("recent_trades"), list) and data["recent_trades"]:
-                        engine.recent_trades = data["recent_trades"]
+                        by_id = { (t.get("id") or t.get("timestamp")): t for t in engine.recent_trades if isinstance(t, dict) }
+                        for pt in data["recent_trades"]:
+                            if isinstance(pt, dict):
+                                by_id[pt.get("id") or pt.get("timestamp")] = pt
+                        merged_tr = sorted(by_id.values(), key=lambda x: x.get("timestamp", 0))
+                        engine.recent_trades = merged_tr[-2500:]
                     break
             except Exception:
                 continue
@@ -686,7 +691,7 @@ def get_peer_state_endpoint():
         "session_vp_summary": engine.session_vp_summary,
         "current_candle": engine.current_candle,
         "candles": engine.candles[-40:],
-        "recent_trades": engine.recent_trades[-50:],
+        "recent_trades": engine.recent_trades[-600:],
         "order_book_bids": {str(k): v for k, v in engine.order_book_bids.items() if abs(float(k) - p) <= 15.0},
         "order_book_asks": {str(k): v for k, v in engine.order_book_asks.items() if abs(float(k) - p) <= 15.0},
         "signals": engine.bookmap_signals[-500:]
