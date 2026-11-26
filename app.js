@@ -1647,8 +1647,10 @@ class App {
       if (this._isSessionKicked) return;
       const t0 = performance.now();
       try {
-        // 1. Try direct /api/snapshot endpoint first
-        const snapRes = await fetch(`/api/snapshot?initial=${isFirst ? 'true' : 'false'}`);
+        // 1. Try direct /api/snapshot endpoint first (paint instant lightweight tick 0 in <0.4s, then load full history on tick 1)
+        this._hfPollCount = (this._hfPollCount || 0) + 1;
+        const wantInitial = (this._hfPollCount === 2);
+        const snapRes = await fetch(`/api/snapshot?initial=${wantInitial ? 'true' : 'false'}`);
         if (snapRes.ok) {
           const snapshot = await snapRes.json();
           isFirst = false;
