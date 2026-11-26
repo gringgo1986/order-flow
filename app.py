@@ -271,7 +271,7 @@ async def keep_alive_cloud_pinger():
     ]
     cycle = 0
     while True:
-        await asyncio.sleep(6)
+        await asyncio.sleep(3)
         cycle += 1
         try:
             await asyncio.to_thread(_run_peer_and_github_sync_Cycle, cycle, is_hostless_master, master_urls, all_peers)
@@ -323,7 +323,7 @@ async def background_tick_stream():
         except Exception as e:
             print(f"[Loop Error] {e}")
             
-        await asyncio.sleep(0.55) # ~1.8 updates per second - ultra-efficient bandwidth shield (fits 5GB/month easily)
+        await asyncio.sleep(0.22) # ~4.5 updates per second - Ultra-Turbo real-time institutional stream
 
 # --- Authentication & Membership SaaS Endpoints ---
 
