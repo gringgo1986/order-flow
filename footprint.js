@@ -51,16 +51,18 @@ class FootprintRenderer {
     this._cdConfirmedSignalsCache = new Map(); // Permanent cache: c.time -> signal data (Zero Repaint)
     this._cdConfirmedPatternsCache = new Map(); // Permanent cache: c.time -> { trapSignal, climaxSignal } (Zero Flickering) // Permanent cache: c.time -> signal data (Prevents flickering & repainting)
 
-    // Pro Candlestick Chart Sub-Settings
-    this.csZenMode = false; // Zen Candle Mode: Pristine view without clutter
-    this.csVisibleBars = 34;
-    this.csShowEMA = true;
+    // Pro Candlestick Chart Sub-Settings (Clean MT5/TradingView SNR Candlestick Default)
+    this.csZenMode = true; // Clean Zen Candle Mode by default: Zero clutter, pure Price Action + SNR + Signal A+
+    this.csVisibleBars = 35;
+    this.csShowEMA = false;
     this.csShowVWAP = true;
     this.csShowLevels = true;
     this.csShowSignals = true;
-    this.csShowEqhl = true;       // NEW: Equal Highs & Equal Lows (EQH/EQL Liquidity Pools)
-    this.csShowSweeps = true;     // NEW: Liquidity Sweeps (Turtle Soup Reversal Alerts)
-    this.csShowPatterns = true;   // NEW: Reversal Patterns (Hammer, Shooting Star, Engulfing)
+    this.csShowFvgOb = false;
+    this.csShowStructure = false;
+    this.csShowEqhl = false;
+    this.csShowSweeps = false;
+    this.csShowPatterns = false;
     this.csVerticalScale = 1.0;
 
     // Deep Historical Buffer (1,000+ bars across timeframes)
@@ -6193,58 +6195,36 @@ class FootprintRenderer {
       ctx.fillText(cursorP.toFixed(2), chartW + rightAxisW / 2, this.mousePos.y + 3.5);
     }
 
-    // 13. Top Interactive Candlestick Header: Streamlined, Zero-Overlap, Crystal Clear
-    ctx.fillStyle = '#0b1220';
-    ctx.fillRect(0, 0, this.width, topBarH);
-    ctx.strokeStyle = '#1e293b';
-    ctx.beginPath();
-    ctx.moveTo(0, topBarH);
-    ctx.lineTo(this.width, topBarH);
-    ctx.stroke();
+    // 13. Clean Top-Left OHLC Strip & Compact Top-Right Layer Pills (Zero Overlap)
+    const chg = dispC.close - dispC.open;
+    const isUpC = chg >= 0;
 
-    // Streamlined Essential Feature Toggle Pills
+    // Top-Left Translucent HUD Pill (Instrument + OHLC + Delta)
+    const ohlcTxt = `🕯️ XAUUSD [${this.timeframe || 'M1'}]   O:${dispC.open.toFixed(2)}  H:${dispC.high.toFixed(2)}  L:${dispC.low.toFixed(2)}  C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})  Δ:${(dispC.delta || 0) >= 0 ? '+' : ''}${(dispC.delta || 0).toFixed(1)}L`;
+    ctx.font = 'bold 9px "JetBrains Mono", monospace';
+    const hudW = Math.min(chartW - 16, Math.ceil(ctx.measureText(ohlcTxt).width) + 18);
+    drawRoundedRect(8, 6, hudW, 20, 4, 'rgba(9, 15, 28, 0.88)', '#1e293b', 0.9);
+    ctx.fillStyle = isUpC ? '#00e676' : '#ff3366';
+    ctx.textAlign = 'left';
+    ctx.fillText(ohlcTxt, 16, 19);
+
+    // Compact Top-Right Toggle Pills
     const pills = [
-      // 1-Click Quick Action Trading HUD
-      { label: '⚡ BUY', active: true, col: '#059669', fn: () => { if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('BUY'); } },
-      { label: '⚡ SELL', active: true, col: '#dc2626', fn: () => { if (window.orderFlowApp && window.orderFlowApp.sendTrade) window.orderFlowApp.sendTrade('SELL'); } },
-      { label: '🎯 BE', active: false, col: '#38bdf8', fn: () => { fetch('/api/breakeven_all', { method: 'POST' }).then(r=>r.json()).then(res=>{ if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message); }); } },
-      { label: '❌ CLOSE', active: false, col: '#f43f5e', fn: () => { fetch('/api/close_all', { method: 'POST' }).then(r=>r.json()).then(res=>{ if (window.orderFlowApp && window.orderFlowApp.showToast) window.orderFlowApp.showToast(res.message); }); } },
-
-      // Zoom presets
-      { label: '15L', active: (this.csVisibleBars || 34) === 15, col: '#38bdf8', fn: () => { this.csVisibleBars = 15; } },
-      { label: '30L', active: (this.csVisibleBars || 34) === 30, col: '#38bdf8', fn: () => { this.csVisibleBars = 30; } },
-      { label: '50L', active: (this.csVisibleBars || 34) === 50, col: '#38bdf8', fn: () => { this.csVisibleBars = 50; } },
-
-      // Feature toggles
-      { label: this.csShowEqhl !== false ? '💲 EQH/L' : '💲 EQH: OFF', active: this.csShowEqhl !== false, col: '#facc15', fn: () => { this.csShowEqhl = (this.csShowEqhl === false); } },
-      { label: this.csShowSweeps !== false ? '⚡ SWEEP' : '⚡ SWEEP: OFF', active: this.csShowSweeps !== false, col: '#f43f5e', fn: () => { this.csShowSweeps = (this.csShowSweeps === false); } },
-      { label: this.csShowPatterns !== false ? '🕯️ PATTERN' : '🕯️ PATTERN: OFF', active: this.csShowPatterns !== false, col: '#4ade80', fn: () => { this.csShowPatterns = (this.csShowPatterns === false); } },
-
-      {
-        label: this.csZenMode ? '🧘 Zen: ON' : '🧘 Zen: OFF',
-        active: this.csZenMode,
-        col: '#00f0ff',
-        fn: () => {
+      { label: '20L', active: (this.csVisibleBars || 35) <= 22, col: '#38bdf8', fn: () => { this.csVisibleBars = 20; } },
+      { label: '35L', active: (this.csVisibleBars || 35) > 22 && (this.csVisibleBars || 35) <= 40, col: '#38bdf8', fn: () => { this.csVisibleBars = 35; } },
+      { label: '50L', active: (this.csVisibleBars || 35) > 40, col: '#38bdf8', fn: () => { this.csVisibleBars = 50; } },
+      { label: '🎯 SNR', active: !!this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
+      { label: '🌐 VWAP', active: !!this.csShowVWAP, col: '#00f0ff', fn: () => { this.csShowVWAP = !this.csShowVWAP; } },
+      { label: '📈 EMA', active: !!this.csShowEMA, col: '#ffd60a', fn: () => { this.csShowEMA = !this.csShowEMA; } },
+      { label: '📦 SMC', active: !this.csZenMode, col: '#34d399', fn: () => {
           this.csZenMode = !this.csZenMode;
-          if (window.orderFlowApp && window.orderFlowApp.showToast) {
-            window.orderFlowApp.showToast(this.csZenMode ? '🧘 Mod Zen Candle: Paparan Bersih & Tenang' : '📊 Mod Analisis Penuh: Semua Garisan & Isyarat Dipaparkan');
-          }
+          this.csShowFvgOb = !this.csZenMode;
+          this.csShowStructure = !this.csZenMode;
         }
       },
-      { label: '📈 EMA', active: this.csShowEMA, col: '#ffd60a', fn: () => { this.csShowEMA = !this.csShowEMA; } },
-      { label: '🌐 VWAP', active: this.csShowVWAP, col: '#00f0ff', fn: () => { this.csShowVWAP = !this.csShowVWAP; } },
-      { label: '🎯 Garisan SNR', active: this.csShowLevels, col: '#fbbf24', fn: () => { this.csShowLevels = !this.csShowLevels; } },
-      { label: this.csShowFvgOb !== false ? '📦 FVG/OB' : '📦 FVG: OFF', active: this.csShowFvgOb !== false, col: '#34d399', fn: () => { this.csShowFvgOb = !(this.csShowFvgOb !== false); } },
-      { label: this.csShowStructure !== false ? '🏛️ BOS' : '🏛️ BOS: OFF', active: this.csShowStructure !== false, col: '#c084fc', fn: () => { this.csShowStructure = !(this.csShowStructure !== false); } },
-      { label: this.csShowSignals ? '🎯 Isyarat' : '🎯 Isyarat: OFF', active: this.csShowSignals, col: '#00e676', fn: () => { this.csShowSignals = !this.csShowSignals; } }
+      { label: '⭐ Signal', active: !!this.csShowSignals, col: '#00e676', fn: () => { this.csShowSignals = !this.csShowSignals; } }
     ];
 
-    // Show Center Reset button if chart is panned or zoomed away
-    if (Math.abs(this.priceOffset || 0) > 0.05 || (this.barOffset || 0) > 0 || Math.abs((this.csVerticalScale || 1.0) - 1.0) > 0.05) {
-      pills.push({ label: '🎯 Pusat', active: true, col: '#fbbf24', fn: () => { this.centerVertical(); this.csVerticalScale = 1.0; } });
-    }
-
-    // Measure pill widths
     ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
     let totalPillsW = 0;
     const pillMetrics = pills.map(p => {
@@ -6253,112 +6233,43 @@ class FootprintRenderer {
       return { ...p, w };
     });
 
-    // Anchor pills strictly from right edge with 6px margin
-    const pillStartX = Math.max(260, this.width - totalPillsW - 6);
-    let curPx = pillStartX;
-
-    // Render Pills with subtle rounded borders
+    let curPx = Math.max(8, chartW - totalPillsW - 6);
+    const pillY = (curPx < hudW + 16) ? 30 : 6;
     for (const p of pillMetrics) {
-      const y = 6;
-      const h = 22;
-      if (curPx + p.w > this.width - 4) break;
-      drawRoundedRect(curPx, y, p.w, h, 3, p.active ? (p.col === '#ffd60a' ? 'rgba(255,214,10,0.18)' : (p.col === '#00f0ff' ? 'rgba(0,240,255,0.18)' : (p.col === '#34d399' ? 'rgba(52,211,153,0.18)' : (p.col === '#c084fc' ? 'rgba(192,132,252,0.18)' : 'rgba(0,230,118,0.18)')))) : '#162238', p.active ? p.col : '#334155', p.active ? 1.0 : 0.8);
-      ctx.fillStyle = p.active ? p.col : '#94a3b8';
+      const h = 20;
+      if (curPx + p.w > chartW - 4) break;
+      drawRoundedRect(curPx, pillY, p.w, h, 3, p.active ? 'rgba(15, 23, 42, 0.92)' : 'rgba(9, 15, 28, 0.75)', p.active ? p.col : '#334155', p.active ? 1.1 : 0.8);
+      ctx.fillStyle = p.active ? p.col : '#64748b';
       ctx.textAlign = 'center';
-      ctx.fillText(p.label, curPx + p.w / 2, y + 14);
-      this.cdToolbarHitboxes.push({ x: curPx, y, w: p.w, h, onClick: p.fn });
+      ctx.fillText(p.label, curPx + p.w / 2, pillY + 13);
+      this.cdToolbarHitboxes.push({ x: curPx, y: pillY, w: p.w, h, onClick: p.fn });
       curPx += p.w + 4;
     }
 
-    // Left Telemetry Strip (Spacious, Anti-Collision, Zero-Overlap)
-    const chg = dispC.close - dispC.open;
-    const isUpC = chg >= 0;
-    const availTeleW = pillStartX - 16;
-
-    // Badge: Instrument & Timeframe
-    ctx.fillStyle = 'rgba(255, 214, 10, 0.12)';
-    ctx.fillRect(8, 6, 92, 22);
-    ctx.strokeStyle = '#ffd60a';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(8, 6, 92, 22);
-    ctx.font = 'bold 9px "JetBrains Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd60a';
-    ctx.fillText(`🕯️ XAUUSD [${this.timeframe || 'M1'}]`, 54, 20);
-
-    // Live OHLC Metrics + Volume & Delta
-    if (availTeleW > 120) {
-      ctx.textAlign = 'left';
-      if (availTeleW > 580) {
-        // Complete Desktop Telemetry
-        ctx.font = '9px "JetBrains Mono", monospace';
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`O:`, 110, 20);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(`${dispC.open.toFixed(2)}`, 124, 20);
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`H:`, 174, 20);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(`${dispC.high.toFixed(2)}`, 188, 20);
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`L:`, 238, 20);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(`${dispC.low.toFixed(2)}`, 252, 20);
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`C:`, 302, 20);
-        ctx.fillStyle = isUpC ? '#00e676' : '#ff3366';
-        ctx.fillText(`${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`, 316, 20);
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`Vol:`, 414, 20);
-        ctx.fillStyle = '#ffd60a';
-        ctx.fillText(`${(dispC.volume || 0).toFixed(0)}L`, 440, 20);
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`Δ:`, 488, 20);
-        ctx.fillStyle = (dispC.delta || 0) >= 0 ? '#00e676' : '#ff3366';
-        ctx.fillText(`${(dispC.delta || 0) >= 0 ? '+' : ''}${(dispC.delta || 0).toFixed(1)}L`, 504, 20);
-
-        // Triple EMA Legend inline
-        if (this.csShowEMA && availTeleW > 740 && ema9.length > 0) {
-          const lastE9 = ema9[ema9.length - 1];
-          const lastE21 = ema21[ema21.length - 1];
-          const lastE50 = ema50[ema50.length - 1];
-          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-          ctx.fillStyle = '#ffd60a';
-          ctx.fillText(`EMA9:${lastE9.toFixed(1)}`, 574, 20);
-          ctx.fillStyle = '#00f0ff';
-          ctx.fillText(`EMA21:${lastE21.toFixed(1)}`, 650, 20);
-          ctx.fillStyle = '#c084fc';
-          ctx.fillText(`EMA50:${lastE50.toFixed(1)}`, 732, 20);
-        }
-      } else if (availTeleW > 380) {
-        // Compact Laptop Telemetry
-        ctx.font = '9px "JetBrains Mono", monospace';
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`O:`, 110, 20);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(`${dispC.open.toFixed(2)}`, 124, 20);
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`H:`, 172, 20);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(`${dispC.high.toFixed(2)}`, 186, 20);
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`L:`, 234, 20);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(`${dispC.low.toFixed(2)}`, 248, 20);
-        ctx.fillStyle = isUpC ? '#00e676' : '#ff3366';
-        ctx.fillText(`C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})`, 296, 20);
-      } else {
-        // Ultra Compact
-        ctx.font = '9px "JetBrains Mono", monospace';
-        ctx.fillStyle = isUpC ? '#00e676' : '#ff3366';
-        ctx.fillText(`C: $${dispC ? dispC.close.toFixed(2) : '0.00'} (${isUpC ? '+' : ''}${chg.toFixed(2)})`, 110, 20);
+    // Draw SNR Valid 1 Makan 1 Zones if available in snapshot
+    if (this.csShowLevels && snapshot && snapshot.snr_valid_zones && snapshot.snr_valid_zones.length > 0) {
+      const midP = (minP + maxP) / 2;
+      const resZ = snapshot.snr_valid_zones.filter(z => z.type === 'RESISTANCE' && z.zone_low >= midP - 1.5).sort((a, b) => a.zone_low - b.zone_low);
+      const supZ = snapshot.snr_valid_zones.filter(z => z.type !== 'RESISTANCE' && z.zone_high <= midP + 1.5).sort((a, b) => b.zone_high - a.zone_high);
+      const zonesToDraw = [...resZ.slice(0, 1), ...supZ.slice(0, 1)];
+      for (const z of zonesToDraw) {
+        const yTop = pToY(z.zone_high);
+        const yBot = pToY(z.zone_low);
+        if (yBot < mainChartTop + 15 || yTop > mainChartBottom - 15) continue;
+        const isRes = z.type === 'RESISTANCE';
+        const col = isRes ? '#f43f5e' : '#00e676';
+        const h = Math.max(5, Math.abs(yBot - yTop));
+        const y = Math.min(yTop, yBot);
+        ctx.fillStyle = isRes ? 'rgba(244, 63, 94, 0.08)' : 'rgba(0, 230, 118, 0.08)';
+        ctx.fillRect(0, y, chartW, h);
+        ctx.strokeStyle = isRes ? 'rgba(244, 63, 94, 0.45)' : 'rgba(0, 230, 118, 0.45)';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(0, y, chartW, h);
       }
     }
+
+    // Floating bottom 🎯 PUSAT / ➕ / ➖ capsule
+    this._drawMobileToolbar(ctx);
     } catch (renderErr) {
       console.error('[Candlestick Render Error]', renderErr);
     } finally {
