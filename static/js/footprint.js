@@ -5471,18 +5471,31 @@ class FootprintRenderer {
 
         // Enforce institutional cooldown (at least 6 bars between same-direction signals, 3 bars for opposite)
         const timeDiff = rc.time - lastCachedSignalTime;
-        const canEmitBuy = (timeDiff >= candleInterval * 6) || (lastCachedSignalDir === 'SELL' && timeDiff >= candleInterval * 3);
-        const canEmitSell = (timeDiff >= candleInterval * 6) || (lastCachedSignalDir === 'BUY' && timeDiff >= candleInterval * 3);
+        let canEmitBuy = (timeDiff >= candleInterval * 6) || (lastCachedSignalDir === 'SELL' && timeDiff >= candleInterval * 3);
+        let canEmitSell = (timeDiff >= candleInterval * 6) || (lastCachedSignalDir === 'BUY' && timeDiff >= candleInterval * 3);
 
-        // Must be at an authoritative HTF SNR Zone OR a major 20-bar Structural Swing Level (Zero Mid-Air Signals!)
+        // Counter-Trend M15 SNR & VWAP ±2σ Surge Filter (v85.0):
+        // Block counter-trend signals on minor M15 SNR when price is surging/plunging beyond VWAP ±2σ or >$7.50 over 12 bars
+        const vwapObj = (snapshot && snapshot.vwap) ? snapshot.vwap : {};
+        const vwapVal = vwapObj.value || rc.close;
+        const std2Up = vwapObj.std2_up || (vwapVal + 4.50);
+        const std2Dn = vwapObj.std2_down || (vwapVal - 4.50);
+        const refBar12 = rawCandles[Math.max(0, i - 12)] || prevC;
+        const netDisp12 = rc.close - (refBar12.open || rc.open);
+        const isBullSurge2Sigma = (rc.close >= std2Up - 0.25) || (rc.close > vwapVal + 2.80 && netDisp12 >= 7.50) || (netDisp12 >= 9.00);
+        const isBearPlunge2Sigma = (rc.close <= std2Dn + 0.25) || (rc.close < vwapVal - 2.80 && netDisp12 <= -7.50) || (netDisp12 <= -9.00);
+
+        // Must be at an authoritative HTF SNR Zone (D1, H8, H4, H1, M30, M15)
         let matchedSup = null;
         let matchedRes = null;
         for (const l of htfLevels) {
           if (l.side === 'SUP' && rc.low <= l.price + 1.20 && rc.low >= l.price - 1.80 && rc.close >= l.price - 0.30) {
+            if (isBearPlunge2Sigma && l.tf === 'M15') continue; // Block M15 counter-trend BUY during >2σ bearish plunge
             matchedSup = l;
             break;
           }
           if (l.side === 'RES' && rc.high >= l.price - 1.20 && rc.high <= l.price + 1.80 && rc.close <= l.price + 0.30) {
+            if (isBullSurge2Sigma && l.tf === 'M15') continue; // Block M15 counter-trend SELL during >2σ bullish surge
             matchedRes = l;
             break;
           }
