@@ -2187,47 +2187,35 @@ class OrderFlowEngine:
 
         if side == "BUY":
             demand_levels = [
-                ("ASIAN LOW", s.get("asian_low", 0.0)),
-                ("LONDON LOW", s.get("london_low", 0.0)),
-                ("PDL", s.get("pdl", 0.0)),
-                ("SESSION VAL", svp.get("val", 0.0)),
-                ("dPOC", svp.get("dpoc", 0.0)),
-                ("VWAP -1σ", self.vwap_std1_down),
-                ("VWAP -2σ", self.vwap_std2_down),
-                ("M15 SUP", s.get("m15_sup", 0.0)),
-                ("M30 SUP", s.get("m30_sup", 0.0)),
-                ("H1 SUP", s.get("h1_sup", 0.0)),
-                ("H4 SUP", s.get("h4_sup", 0.0)),
-                ("H8 SUP", s.get("h8_sup", 0.0)),
+                ("D1 SNR SUPPORT", s.get("pdl") or s.get("d1_low", 0.0)),
+                ("H8 SNR SUPPORT", s.get("h8_sup", 0.0)),
+                ("H4 SNR SUPPORT", s.get("h4_sup", 0.0)),
+                ("H1 SNR SUPPORT", s.get("h1_sup", 0.0)),
+                ("M30 SNR SUPPORT", s.get("m30_sup", 0.0)),
+                ("M15 SNR SUPPORT", s.get("m15_sup", 0.0)),
             ]
             valid_lvls = [(name, p) for name, p in demand_levels if p and p > 0 and abs(price - p) <= tolerance]
             if valid_lvls:
                 closest = min(valid_lvls, key=lambda x: abs(price - x[1]))
                 return True, f"{closest[0]} (${closest[1]:.2f})"
             else:
-                return False, "TIADA ZON DEMAND / SOKONGAN"
+                return False, "TIADA ZON SNR SUPPORT (M15-D1)"
 
         elif side == "SELL":
             supply_levels = [
-                ("ASIAN HIGH", s.get("asian_high", 0.0)),
-                ("LONDON HIGH", s.get("london_high", 0.0)),
-                ("PDH", s.get("pdh", 0.0)),
-                ("SESSION VAH", svp.get("vah", 0.0)),
-                ("dPOC", svp.get("dpoc", 0.0)),
-                ("VWAP +1σ", self.vwap_std1_up),
-                ("VWAP +2σ", self.vwap_std2_up),
-                ("M15 RES", s.get("m15_res", 0.0)),
-                ("M30 RES", s.get("m30_res", 0.0)),
-                ("H1 RES", s.get("h1_res", 0.0)),
-                ("H4 RES", s.get("h4_res", 0.0)),
-                ("H8 RES", s.get("h8_res", 0.0)),
+                ("D1 SNR RESISTANCE", s.get("pdh") or s.get("d1_high", 0.0)),
+                ("H8 SNR RESISTANCE", s.get("h8_res", 0.0)),
+                ("H4 SNR RESISTANCE", s.get("h4_res", 0.0)),
+                ("H1 SNR RESISTANCE", s.get("h1_res", 0.0)),
+                ("M30 SNR RESISTANCE", s.get("m30_res", 0.0)),
+                ("M15 SNR RESISTANCE", s.get("m15_res", 0.0)),
             ]
             valid_lvls = [(name, p) for name, p in supply_levels if p and p > 0 and abs(price - p) <= tolerance]
             if valid_lvls:
                 closest = min(valid_lvls, key=lambda x: abs(price - x[1]))
                 return True, f"{closest[0]} (${closest[1]:.2f})"
             else:
-                return False, "TIADA ZON SUPPLY / RINTANGAN"
+                return False, "TIADA ZON SNR RESISTANCE (M15-D1)"
 
         return False, "ARAH TIDAK SAH"
 
@@ -3324,30 +3312,24 @@ class OrderFlowEngine:
         sess = self.sessions_data or {}
         svp = self.session_vp_summary or {}
 
-        # Higher Timeframe Demand & Support Pools (Ordered by HTF authority: 1D -> H8 -> H4 -> H1 -> M30 -> VAL 70% -> Session -> M15)
+        # Higher Timeframe SNR Support Pools ONLY (Strictly 6 Timeframes: D1 -> H8 -> H4 -> H1 -> M30 -> M15)
         demand_levels = [
-            {"p": sess.get("pdl") or sess.get("d1_low"), "name": "1D (DAILY) DEMAND"},
-            {"p": sess.get("h8_sup") or sess.get("h8_low"), "name": "H8 SND DEMAND"},
-            {"p": sess.get("h4_sup") or sess.get("h4_low"), "name": "H4 SND DEMAND"},
+            {"p": sess.get("pdl") or sess.get("d1_low"), "name": "D1 SNR SUPPORT"},
+            {"p": sess.get("h8_sup") or sess.get("h8_low"), "name": "H8 SNR SUPPORT"},
+            {"p": sess.get("h4_sup") or sess.get("h4_low"), "name": "H4 SNR SUPPORT"},
             {"p": sess.get("h1_sup") or sess.get("h1_low"), "name": "H1 SNR SUPPORT"},
             {"p": sess.get("m30_sup") or sess.get("m30_low"), "name": "M30 SNR SUPPORT"},
-            {"p": svp.get("val"), "name": "VAL 70% VALUE DEMAND"},
-            {"p": sess.get("london_low"), "name": "LONDON LOW DEMAND"},
-            {"p": sess.get("asian_low"), "name": "ASIAN LOW DEMAND"},
             {"p": sess.get("m15_sup") or sess.get("m15_low"), "name": "M15 SNR SUPPORT"}
         ]
         demand_levels = [d for d in demand_levels if d.get("p") and d["p"] > 0]
 
-        # Higher Timeframe Supply & Resistance Pools (Ordered by HTF authority: 1D -> H8 -> H4 -> H1 -> M30 -> VAH 70% -> Session -> M15)
+        # Higher Timeframe SNR Resistance Pools ONLY (Strictly 6 Timeframes: D1 -> H8 -> H4 -> H1 -> M30 -> M15)
         supply_levels = [
-            {"p": sess.get("pdh") or sess.get("d1_high"), "name": "1D (DAILY) SUPPLY"},
-            {"p": sess.get("h8_res") or sess.get("h8_high"), "name": "H8 SND SUPPLY"},
-            {"p": sess.get("h4_res") or sess.get("h4_high"), "name": "H4 SND SUPPLY"},
+            {"p": sess.get("pdh") or sess.get("d1_high"), "name": "D1 SNR RESISTANCE"},
+            {"p": sess.get("h8_res") or sess.get("h8_high"), "name": "H8 SNR RESISTANCE"},
+            {"p": sess.get("h4_res") or sess.get("h4_high"), "name": "H4 SNR RESISTANCE"},
             {"p": sess.get("h1_res") or sess.get("h1_high"), "name": "H1 SNR RESISTANCE"},
             {"p": sess.get("m30_res") or sess.get("m30_high"), "name": "M30 SNR RESISTANCE"},
-            {"p": svp.get("vah"), "name": "VAH 70% VALUE SUPPLY"},
-            {"p": sess.get("london_high"), "name": "LONDON HIGH SUPPLY"},
-            {"p": sess.get("asian_high"), "name": "ASIAN HIGH SUPPLY"},
             {"p": sess.get("m15_res") or sess.get("m15_high"), "name": "M15 SNR RESISTANCE"}
         ]
         supply_levels = [s for s in supply_levels if s.get("p") and s["p"] > 0]
@@ -3479,6 +3461,28 @@ class OrderFlowEngine:
                 ):
                     continue
                 deduped.append(s)
+            for s in deduped:
+                for k in ("type", "zone", "badge"):
+                    if s.get(k):
+                        s[k] = (
+                            str(s[k])
+                            .replace("1D (DAILY) SUPPLY", "D1 SNR RESISTANCE")
+                            .replace("1D (DAILY) DEMAND", "D1 SNR SUPPORT")
+                            .replace("H8 SND SUPPLY", "H8 SNR RESISTANCE")
+                            .replace("H8 SND DEMAND", "H8 SNR SUPPORT")
+                            .replace("H4 SND SUPPLY", "H4 SNR RESISTANCE")
+                            .replace("H4 SND DEMAND", "H4 SNR SUPPORT")
+                            .replace("VAH 70% VALUE SUPPLY", "H1 SNR RESISTANCE")
+                            .replace("VAL 70% VALUE DEMAND", "H1 SNR SUPPORT")
+                            .replace("LONDON HIGH SUPPLY", "H1 SNR RESISTANCE")
+                            .replace("LONDON LOW DEMAND", "H1 SNR SUPPORT")
+                            .replace("ASIAN HIGH SUPPLY", "M30 SNR RESISTANCE")
+                            .replace("ASIAN LOW DEMAND", "M30 SNR SUPPORT")
+                            .replace("SND SUPPLY", "SNR RESISTANCE")
+                            .replace("SND DEMAND", "SNR SUPPORT")
+                            .replace("SUPPLY", "SNR RESISTANCE")
+                            .replace("DEMAND", "SNR SUPPORT")
+                        )
             self.bookmap_signals = deduped[-500:]
 
         self._update_signals_status(p)
