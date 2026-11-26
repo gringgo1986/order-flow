@@ -2526,25 +2526,29 @@ class BookmapRenderer {
       { price: sessions.pwl,         label: 'PWL (1W LOW)',  tf: 'W1', strength: '95%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.26)', isHtf: true },
 
       // 1D (Previous Day High/Low & Daily Open)
-      { price: sessions.pdh,         label: 'PDH (1D HIGH)', tf: 'D1', strength: '90%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.pdl,         label: 'PDL (1D LOW)',  tf: 'D1', strength: '90%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.daily_open,  label: '1D OPEN',       tf: 'D1', strength: '85%', col: '#38bdf8', bg: 'rgba(56, 189, 248, 0.26)', isHtf: true },
+      // D1 SNR
+      { price: sessions.pdh,         label: 'D1 SNR RES', tf: 'D1', strength: '95%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.pdl,         label: 'D1 SNR SUP', tf: 'D1', strength: '95%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
 
-      // H4 Supply/Demand
-      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SUPPLY', tf: 'H4', strength: '85%', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
-      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 DEMAND', tf: 'H4', strength: '85%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
+      // H8 SNR
+      { price: sessions.h8_res || sessions.h8_high, label: 'H8 SNR RES', tf: 'H8', strength: '90%', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.25)', isHtf: true },
+      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SNR SUP', tf: 'H8', strength: '90%', col: '#059669', bg: 'rgba(5, 150, 105, 0.25)', isHtf: true },
 
-      // H1 Supply/Demand
-      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SUPPLY', tf: 'H1', strength: '78%', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
-      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 DEMAND', tf: 'H1', strength: '78%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
+      // H4 SNR
+      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SNR RES', tf: 'H4', strength: '85%', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SNR SUP', tf: 'H4', strength: '85%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
 
-      // M30 Supply/Demand
-      { price: sessions.m30_res || sessions.m30_high, label: 'M30 RES', tf: 'M30', strength: '70%', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
-      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SUP', tf: 'M30', strength: '70%', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
+      // H1 SNR
+      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SNR RES', tf: 'H1', strength: '78%', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SNR SUP', tf: 'H1', strength: '78%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
 
-      // M15 Supply/Demand
-      { price: sessions.m15_res || sessions.m15_high, label: 'M15 RES', tf: 'M15', strength: '65%', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
-      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SUP', tf: 'M15', strength: '65%', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true },
+      // M30 SNR
+      { price: sessions.m30_res || sessions.m30_high, label: 'M30 SNR RES', tf: 'M30', strength: '70%', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
+      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SNR SUP', tf: 'M30', strength: '70%', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
+
+      // M15 SNR
+      { price: sessions.m15_res || sessions.m15_high, label: 'M15 SNR RES', tf: 'M15', strength: '65%', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
+      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SNR SUP', tf: 'M15', strength: '65%', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true },
 
       // Session Extremes (Asian / London)
       { price: sessions.asian_high,  label: 'ASIA HIGH', tf: 'SESSION', strength: '72%', col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
