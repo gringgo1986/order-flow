@@ -728,41 +728,21 @@ class BookmapRenderer {
       this.lastKnownPrice = snapshot.last_price;
       this._currentPrice = snapshot.last_price;
     }
-    // 1. Ingest Heatmap Slices continuously in background
+    // 1. Ingest Heatmap Slices continuously in background (Always merge by timestamp, never wipe older history!)
     if (!this._heatmapHistoryBuffer) this._heatmapHistoryBuffer = [];
     if (snapshot.heatmap && snapshot.heatmap.length) {
-      if (snapshot.heatmap.length >= 100) {
-        this._heatmapHistoryBuffer = [...snapshot.heatmap];
-      } else {
-        const lastTs = this._heatmapHistoryBuffer.length ? this._heatmapHistoryBuffer[this._heatmapHistoryBuffer.length - 1].timestamp : 0;
-        for (const snap of snapshot.heatmap) {
-          if (snap.timestamp > lastTs) {
-            this._heatmapHistoryBuffer.push(snap);
-          }
-        }
-        if (this._heatmapHistoryBuffer.length > 1500) {
-          this._heatmapHistoryBuffer = this._heatmapHistoryBuffer.slice(-1500);
-        }
-      }
+      const hmMap = new Map();
+      for (const h of this._heatmapHistoryBuffer) hmMap.set(h.timestamp, h);
+      for (const h of snapshot.heatmap) hmMap.set(h.timestamp, h);
+      this._heatmapHistoryBuffer = Array.from(hmMap.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-1800);
     }
-    // 2. Ingest Trades continuously in background
+    // 2. Ingest Trades continuously in background (Always merge by ID/timestamp, never wipe older history!)
     if (!this._tradesHistoryBuffer) this._tradesHistoryBuffer = [];
     if (snapshot.trades && snapshot.trades.length) {
-      if (snapshot.trades.length >= 80 && this._tradesHistoryBuffer.length === 0) {
-        this._tradesHistoryBuffer = [...snapshot.trades];
-      } else {
-        const seenIds = new Set(this._tradesHistoryBuffer.map(t => t.id != null ? t.id : `${t.timestamp}_${t.price}`));
-        for (const tr of snapshot.trades) {
-          const tid = tr.id != null ? tr.id : `${tr.timestamp}_${tr.price}`;
-          if (!seenIds.has(tid)) {
-            this._tradesHistoryBuffer.push(tr);
-            seenIds.add(tid);
-          }
-        }
-      }
-      if (this._tradesHistoryBuffer.length > 2000) {
-        this._tradesHistoryBuffer = this._tradesHistoryBuffer.slice(-2000);
-      }
+      const trMap = new Map();
+      for (const t of this._tradesHistoryBuffer) trMap.set(t.id != null ? t.id : `${t.timestamp}_${t.price}`, t);
+      for (const t of snapshot.trades) trMap.set(t.id != null ? t.id : `${t.timestamp}_${t.price}`, t);
+      this._tradesHistoryBuffer = Array.from(trMap.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-3500);
     }
   }
 
@@ -888,23 +868,10 @@ class BookmapRenderer {
     // Persistent rolling heatmap buffer across WebSocket updates
     if (!this._heatmapHistoryBuffer) this._heatmapHistoryBuffer = [];
     if (snapshot.heatmap && snapshot.heatmap.length) {
-      if (snapshot.heatmap.length >= 100) {
-        // Full initial buffer delivered on connect/refresh (300-350 slices)
-        this._heatmapHistoryBuffer = [...snapshot.heatmap];
-      } else {
-        // Real-time incremental stream updates: append newer slices
-        const lastTs = this._heatmapHistoryBuffer.length 
-          ? this._heatmapHistoryBuffer[this._heatmapHistoryBuffer.length - 1].timestamp 
-          : 0;
-        for (const snap of snapshot.heatmap) {
-          if (snap.timestamp > lastTs) {
-            this._heatmapHistoryBuffer.push(snap);
-          }
-        }
-        if (this._heatmapHistoryBuffer.length > 1500) {
-          this._heatmapHistoryBuffer = this._heatmapHistoryBuffer.slice(-1500);
-        }
-      }
+      const hmMap = new Map();
+      for (const h of this._heatmapHistoryBuffer) hmMap.set(h.timestamp, h);
+      for (const h of snapshot.heatmap) hmMap.set(h.timestamp, h);
+      this._heatmapHistoryBuffer = Array.from(hmMap.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-1800);
     }
     const effectiveHeatmap = (this._heatmapHistoryBuffer && this._heatmapHistoryBuffer.length >= 2) 
       ? this._heatmapHistoryBuffer 
@@ -912,35 +879,42 @@ class BookmapRenderer {
 
     this._drawHeatmap(ctx, effectiveHeatmap, snapshot.order_book, now, snapshot.spoof_events || []);
 
-    /* ── 3B. Persistent Rolling Trades Buffer across WebSocket Updates ── */
+    /* ── 3B. Persistent Rolling Trades Buffer across WebSocket Updates (Never wipe older trades!) ── */
     if (!this._tradesHistoryBuffer) this._tradesHistoryBuffer = [];
     if (snapshot.trades && snapshot.trades.length) {
-      if (snapshot.trades.length >= 80) {
-        // Full initial buffer delivered on connect/refresh (up to 160 trades)
-        this._tradesHistoryBuffer = [...snapshot.trades];
-      } else {
-        // Real-time incremental stream updates: append newer trades avoiding duplicates
-        const seenIds = new Set(this._tradesHistoryBuffer.map(t => t.id != null ? t.id : `${t.timestamp}_${t.price}`));
-        for (const tr of snapshot.trades) {
-          const tid = tr.id != null ? tr.id : `${tr.timestamp}_${tr.price}`;
-          if (!seenIds.has(tid)) {
-            this._tradesHistoryBuffer.push(tr);
-            seenIds.add(tid);
-          }
-        }
-      }
-      // Retain at least 10 minutes of trades across all zooms and scrolls
-      const visibleHorizonMs = Math.max(600000, (this.timeWindowMs || 180000) * 3.5);
+      const trMap = new Map();
+      for (const t of this._tradesHistoryBuffer) trMap.set(t.id != null ? t.id : `${t.timestamp}_${t.price}`, t);
+      for (const t of snapshot.trades) trMap.set(t.id != null ? t.id : `${t.timestamp}_${t.price}`, t);
+      const visibleHorizonMs = Math.max(1200000, (this.timeWindowMs || 180000) * 3.5);
       const pruneCutoff = now - visibleHorizonMs;
-      this._tradesHistoryBuffer = this._tradesHistoryBuffer.filter(t => {
-        const tMs = (t.timestamp && t.timestamp < 1e11) ? t.timestamp * 1000 : (t.timestamp || 0);
-        return tMs >= pruneCutoff;
-      });
-      if (this._tradesHistoryBuffer.length === 0 && snapshot.trades && snapshot.trades.length > 0) {
-        this._tradesHistoryBuffer = [...snapshot.trades];
-      }
-      if (this._tradesHistoryBuffer.length > 2000) {
-        this._tradesHistoryBuffer = this._tradesHistoryBuffer.slice(-2000);
+      this._tradesHistoryBuffer = Array.from(trMap.values())
+        .filter(t => {
+          const tMs = (t.timestamp && t.timestamp < 1e11) ? t.timestamp * 1000 : (t.timestamp || 0);
+          return tMs >= pruneCutoff;
+        })
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .slice(-3500);
+    }
+    // Bridge any left-side time gap using heatmap mid_price history so Bookmap price line & histogram always span 100% from CHART_LEFT to NOW_X!
+    if (effectiveHeatmap.length >= 2 && this._tradesHistoryBuffer.length > 0) {
+      const oldestTradeTs = this._tradesHistoryBuffer[0].timestamp;
+      const hmOlder = effectiveHeatmap.filter(h => h.timestamp < oldestTradeTs - 800 && h.mid_price > 0);
+      if (hmOlder.length > 0) {
+        const bridged = hmOlder.map((h, idx) => {
+          const prevP = idx > 0 ? hmOlder[idx - 1].mid_price : h.mid_price;
+          const isUp = h.mid_price >= prevP;
+          return {
+            id: `hm_bridge_${h.timestamp}`,
+            timestamp: h.timestamp,
+            price: h.mid_price,
+            volume: 3.5,
+            buy_vol: isUp ? 2.4 : 1.1,
+            sell_vol: isUp ? 1.1 : 2.4,
+            side: isUp ? 'buy' : 'sell',
+            is_large: false
+          };
+        });
+        this._tradesHistoryBuffer = [...bridged, ...this._tradesHistoryBuffer];
       }
     }
     const effectiveTrades = (this._tradesHistoryBuffer && this._tradesHistoryBuffer.length > 0)
