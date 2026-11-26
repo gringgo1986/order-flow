@@ -1146,7 +1146,7 @@
   </div>
   <!-- PWA Service Worker Registration & Android Install Prompt Handler -->
   <script>
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && !window.location.hostname.endsWith('.hf.space')) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js?v=78.0').then(reg => {
           console.log('[PWA] Service Worker aktif:', reg.scope);
