@@ -1763,8 +1763,14 @@ class App {
       }
     };
 
-    pollTick();
-    this._hfStreamTimer = setInterval(pollTick, 700);
+    let isPolling = false;
+    const fastPoll = async () => {
+      if (isPolling) return;
+      isPolling = true;
+      try { await pollTick(); } finally { isPolling = false; }
+    };
+    fastPoll();
+    this._hfStreamTimer = setInterval(fastPoll, 320);
   }
 
   _ingestSnapshotPayload(snapshot) {
