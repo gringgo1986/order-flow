@@ -1545,11 +1545,11 @@ class App {
         }
       }
       if (this.footprint) {
-        this.footprint.setViewMode('bid_ask');
+        this.footprint.setViewMode('delta');
         this.footprint.centerVertical();
         this.footprint.setClusterStep(1.00);
         document.querySelectorAll('.fp-mode-btn').forEach(b => {
-          b.classList.toggle('active', b.dataset.mode === 'bid_ask');
+          b.classList.toggle('active', b.dataset.mode === 'delta');
         });
         document.querySelectorAll('.step-btn').forEach(b => {
           b.classList.toggle('active', b.dataset.step === '1.00');
