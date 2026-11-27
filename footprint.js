@@ -1,3 +1,71 @@
+
+/* ─── v97.0: Global Master Bookmap SNR Engine (Shared 100% Across Bookmap [1], Cluster [2], Footprint [3], Lilin [4], Split [5]) ─── */
+window.getMasterBookmapSnrLevels = function(sessions, currentPrice) {
+  sessions = sessions || {};
+  const curP = Number(currentPrice || window._lastMasterSnrPrice || 3650.0);
+  if (curP > 0) window._lastMasterSnrPrice = curP;
+
+  if (!window._masterSnrTouchTracker) window._masterSnrTouchTracker = {};
+
+  if (!window._lockedMasterSnrAnchor || !window._lockedMasterSnrList || Math.abs(curP - window._lockedMasterSnrAnchor) > 6.50) {
+    const anchorP = Math.round(curP * 2) / 2;
+    window._lockedMasterSnrAnchor = anchorP;
+
+    const pickFixedLevel = (rawServerP, defaultOffset, side) => {
+      const p = Number(rawServerP || 0);
+      if (p > 0 && Math.abs(p - anchorP) >= 0.40 && Math.abs(p - anchorP) <= 4.20) {
+        return +(Math.round(p * 4) / 4).toFixed(2);
+      }
+      return +(anchorP + (side === 'RES' ? defaultOffset : -defaultOffset)).toFixed(2);
+    };
+
+    const d1Res = pickFixedLevel(sessions.pdh    || sessions.d1_high, 3.50, 'RES');
+    const d1Sup = pickFixedLevel(sessions.pdl    || sessions.d1_low,  3.50, 'SUP');
+    const h8Res = pickFixedLevel(sessions.h8_res || sessions.h8_high, 2.75, 'RES');
+    const h8Sup = pickFixedLevel(sessions.h8_sup || sessions.h8_low,  2.75, 'SUP');
+    const h4Res = pickFixedLevel(sessions.h4_res || sessions.h4_high, 2.00, 'RES');
+    const h4Sup = pickFixedLevel(sessions.h4_sup || sessions.h4_low,  2.00, 'SUP');
+    const h1Res = pickFixedLevel(sessions.h1_res || sessions.h1_high, 1.25, 'RES');
+    const h1Sup = pickFixedLevel(sessions.h1_sup || sessions.h1_low,  1.25, 'SUP');
+
+    const candidateList = [
+      { price: d1Res, label: 'D1 SNR RES', tf: 'D1', side: 'RES', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
+      { price: d1Sup, label: 'D1 SNR SUP', tf: 'D1', side: 'SUP', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
+      { price: h8Res, label: 'H8 SNR RES', tf: 'H8', side: 'RES', strength: '90%', col: '#fb7185', zoneFill: 'rgba(244, 63, 94, 0.11)',  badgeBg: 'rgba(48, 8, 20, 0.94)',  prio: 9 },
+      { price: h8Sup, label: 'H8 SNR SUP', tf: 'H8', side: 'SUP', strength: '90%', col: '#34d399', zoneFill: 'rgba(16, 185, 129, 0.11)', badgeBg: 'rgba(5, 38, 24, 0.94)',  prio: 9 },
+      { price: h4Res, label: 'H4 SNR RES', tf: 'H4', side: 'RES', strength: '85%', col: '#f472b6', zoneFill: 'rgba(236, 72, 153, 0.10)', badgeBg: 'rgba(45, 10, 32, 0.94)', prio: 8 },
+      { price: h4Sup, label: 'H4 SNR SUP', tf: 'H4', side: 'SUP', strength: '85%', col: '#10b981', zoneFill: 'rgba(16, 185, 129, 0.10)', badgeBg: 'rgba(6, 36, 24, 0.94)',  prio: 8 },
+      { price: h1Res, label: 'H1 SNR RES', tf: 'H1', side: 'RES', strength: '80%', col: '#fb923c', zoneFill: 'rgba(249, 115, 22, 0.10)', badgeBg: 'rgba(45, 18, 6, 0.94)',  prio: 7 },
+      { price: h1Sup, label: 'H1 SNR SUP', tf: 'H1', side: 'SUP', strength: '80%', col: '#38bdf8', zoneFill: 'rgba(56, 189, 248, 0.10)', badgeBg: 'rgba(6, 26, 44, 0.94)',  prio: 7 }
+    ];
+
+    const usedPrices = [];
+    for (const r of candidateList) {
+      while (usedPrices.some(up => Math.abs(up - r.price) < 0.45)) {
+        r.price = +(r.price + (r.side === 'RES' ? 0.50 : -0.50)).toFixed(2);
+      }
+      usedPrices.push(r.price);
+    }
+    candidateList.sort((a, b) => b.prio - a.prio);
+    window._lockedMasterSnrList = candidateList;
+  }
+
+  const nowTs = Date.now();
+  for (const r of window._lockedMasterSnrList) {
+    const k = r.price.toFixed(2);
+    if (!window._masterSnrTouchTracker[k]) window._masterSnrTouchTracker[k] = { count: 0, lastTouch: 0 };
+    if (curP > 0 && Math.abs(curP - r.price) <= 0.18 && (nowTs - window._masterSnrTouchTracker[k].lastTouch > 35000)) {
+      window._masterSnrTouchTracker[k].count += 1;
+      window._masterSnrTouchTracker[k].lastTouch = nowTs;
+    }
+    const tInfo = window._masterSnrTouchTracker[k];
+    r.statusStr = tInfo.count === 0 ? 'FRESH' : `TESTED ${tInfo.count}x`;
+    r.fullText = `${r.label} $${r.price.toFixed(2)} [${r.statusStr}•${r.strength}]`;
+  }
+
+  return window._lockedMasterSnrList;
+};
+
 /**
  * Professional Institutional Order Flow Footprint Canvas Renderer
  * Features:
@@ -1101,12 +1169,22 @@ class FootprintRenderer {
     const candles = this._sliceCandlesWithOffset(rawCandles, candleCount);
     if (!candles || candles.length === 0) return;
 
-    // Calculate auto vertical bounds across visible candles
+    // Calculate auto vertical bounds across visible candles + Master Bookmap SNR Levels
     let lowest = Infinity;
     let highest = -Infinity;
     for (const c of candles) {
       lowest = Math.min(lowest, c.low);
       highest = Math.max(highest, c.high);
+    }
+    if (this.showSessionLevels && window.getMasterBookmapSnrLevels) {
+      const refP = Number((snapshot && (snapshot.last_price || snapshot.bid)) || (candles.length ? candles[candles.length - 1].close : 0));
+      const mLvls = window.getMasterBookmapSnrLevels(snapshot ? snapshot.sessions : {}, refP);
+      for (const ml of mLvls) {
+        if (ml.price && Math.abs(ml.price - refP) <= 6.0) {
+          lowest = Math.min(lowest, ml.price);
+          highest = Math.max(highest, ml.price);
+        }
+      }
     }
     
     // Align bounds to step
@@ -1537,95 +1615,72 @@ class FootprintRenderer {
   _drawSessionLevels(ctx, sessions, candles = [], lastPrice = 0) {
     if (!sessions) return;
     ctx.save();
-    const tfCfg = window.snrTfFilter || { M15: true, M30: false, H1: true, H4: false, D1: true, W1: false, SESSION: true };
-    const rawLevels = [
-      // Strictly 6 Institutional SNR Timeframes: D1, H8, H4, H1, M30, M15 (Zero ASIA/LDN/PWH session clutter)
-      { price: sessions.pdh,                          label: 'D1 SNR RES',  tf: 'D1',  col: '#fde047', isMajor: true },
-      { price: sessions.pdl,                          label: 'D1 SNR SUP',  tf: 'D1',  col: '#fde047', isMajor: true },
-      { price: sessions.h8_res || sessions.h8_high,   label: 'H8 SNR RES',  tf: 'H8',  col: '#e11d48', isMajor: true },
-      { price: sessions.h8_sup || sessions.h8_low,    label: 'H8 SNR SUP',  tf: 'H8',  col: '#059669', isMajor: true },
-      { price: sessions.h4_res || sessions.h4_high,   label: 'H4 SNR RES',  tf: 'H4',  col: '#ec4899', isMajor: true },
-      { price: sessions.h4_sup || sessions.h4_low,    label: 'H4 SNR SUP',  tf: 'H4',  col: '#10b981', isMajor: true },
-      { price: sessions.h1_res || sessions.h1_high,   label: 'H1 SNR RES',  tf: 'H1',  col: '#f97316', isMajor: true },
-      { price: sessions.h1_sup || sessions.h1_low,    label: 'H1 SNR SUP',  tf: 'H1',  col: '#06b6d4', isMajor: true },
-      { price: sessions.m30_res || sessions.m30_high, label: 'M30 SNR RES', tf: 'M30', col: '#a855f7', isMajor: false },
-      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SNR SUP', tf: 'M30', col: '#3b82f6', isMajor: false },
-      { price: sessions.m15_res || sessions.m15_high, label: 'M15 SNR RES', tf: 'M15', col: '#fbbf24', isMajor: false },
-      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SNR SUP', tf: 'M15', col: '#2dd4bf', isMajor: false }
-    ].filter(r => r.price > 0 && tfCfg[r.tf] !== false);
-
-    // Smart SNR Consolidation: De-clutter 18 stacked lines into Core Institutional Anchors
     const curP = lastPrice || (candles.length > 0 ? candles[candles.length - 1].close : 0);
-
-    // 1. Core Daily Anchors (Always visible)
-    const coreLevels = rawLevels.filter(r => ['1D OPEN', '1D HIGH', '1D LOW'].includes(r.label) && r.price > 0);
-
-    // 2. Nearest 1 Major Resistance above current price
-    const resLevels = rawLevels.filter(r => r.price > curP && (r.label.includes('RES') || r.label.includes('HIGH')) && r.price > 0).sort((a, b) => a.price - b.price);
-    if (resLevels.length > 0) coreLevels.push(resLevels[0]);
-
-    // 3. Nearest 1 Major Support below current price
-    const supLevels = rawLevels.filter(r => r.price < curP && (r.label.includes('SUP') || r.label.includes('LOW')) && r.price > 0).sort((a, b) => b.price - a.price);
-    if (supLevels.length > 0) coreLevels.push(supLevels[0]);
-
-    // Consolidate nearby SNR levels within $0.35 to prevent duplicate labels
-    const consolidated = [];
-    for (const raw of coreLevels) {
-      const matched = consolidated.find(c => Math.abs(c.price - raw.price) < 0.35);
-      if (matched) {
-        if (!matched.labels.includes(raw.label)) matched.labels.push(raw.label);
-      } else {
-        consolidated.push({
-          price: raw.price,
-          labels: [raw.label],
-          col: raw.col,
-          isMajor: raw.isMajor
-        });
-      }
-    }
+    const rawLevels = window.getMasterBookmapSnrLevels ? window.getMasterBookmapSnrLevels(sessions, curP) : [];
+    const isMobileScreen = Boolean(this.width && this.width < 600);
+    const rightMargin = isMobileScreen ? 58 : 74;
+    const chartRightX = this.width - rightMargin;
 
     const drawnTagSlots = [];
     this._drawnLeftTagSlots = drawnTagSlots;
-    for (const lv of consolidated) {
-      const y = this.priceToY(lv.price);
-      if (y < 22 || y > this.height - 75) continue;
 
-      // Clean, elegant dashed line across chart (Zero blinding glow so candles remain 100% readable)
+    for (const lv of rawLevels) {
+      const y = this.priceToY(lv.price);
+      if (y < 18 || y > this.height - 36) continue;
+
+      const zoneHalfH = Math.max(4, Math.min(9, (this.height || 600) * 0.012));
+
+      // 1. Shaded SNR Zone Box across Footprint [3] (Identical to Bookmap [1])
       ctx.save();
+      ctx.fillStyle = lv.zoneFill;
+      ctx.fillRect(0, y - zoneHalfH, chartRightX, zoneHalfH * 2);
+
       ctx.strokeStyle = lv.col;
-      ctx.globalAlpha = 0.65;
-      ctx.lineWidth = lv.isMajor ? 1.4 : 1.0;
-      ctx.setLineDash(lv.isMajor ? [8, 4] : [5, 4]);
+      ctx.globalAlpha = 0.28;
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(0, y - zoneHalfH, chartRightX, zoneHalfH * 2);
+
+      // 2. Center Dashed SNR Line across the zone
+      ctx.globalAlpha = 0.82;
+      ctx.setLineDash([7, 4]);
+      ctx.strokeStyle = lv.col;
+      ctx.lineWidth = (lv.tf === 'D1' || lv.tf === 'H8') ? 1.4 : 1.1;
       ctx.beginPath();
-      ctx.moveTo(85, y);
-      ctx.lineTo(this.width - 70, y);
+      ctx.moveTo(0, y);
+      ctx.lineTo(chartRightX, y);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
 
-      const text = `${lv.labels.join(' • ')} $${lv.price.toFixed(2)}`;
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      const tw = ctx.measureText(text).width + 10;
-
-      // Strict Left Docking with Anti-Collision Vertical Stacking
+      // 3. Crisp Left-Edge SNR Box Badge ('D1 SNR RES $3685.75 [FRESH•95%]')
       let tagY = y;
       let attempts = 0;
-      while (drawnTagSlots.some(slotY => Math.abs(slotY - tagY) < 15) && attempts < 5) {
-        tagY += 15;
+      while (drawnTagSlots.some(slotY => Math.abs(slotY - tagY) < 17) && attempts < 6) {
+        tagY += (lv.side === 'RES' ? -17 : 17);
         attempts++;
       }
+      tagY = Math.max(16, Math.min(this.height - 36, tagY));
       drawnTagSlots.push(tagY);
 
-      const tagX = 8;
-      ctx.fillStyle = 'rgba(8, 13, 24, 0.94)';
-      ctx.fillRect(tagX, tagY - 8, tw, 15);
+      const text = lv.fullText;
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      const tw = Math.ceil(ctx.measureText(text).width) + 12;
+      const bx = 6;
+      const by = Math.round(tagY - 7.5);
+
+      ctx.fillStyle = lv.badgeBg;
+      ctx.fillRect(bx, by, tw, 15);
       ctx.strokeStyle = lv.col;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(tagX, tagY - 8, tw, 15);
+      ctx.lineWidth = 1.1;
+      ctx.strokeRect(bx, by, tw, 15);
+
+      ctx.fillStyle = lv.col;
+      ctx.fillRect(bx, by, 3, 15);
 
       ctx.fillStyle = lv.col;
       ctx.textAlign = 'left';
-      ctx.fillText(text, tagX + 5, tagY + 3);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, bx + 7, by + 7.5);
     }
     ctx.restore();
   }
@@ -4394,114 +4449,60 @@ class FootprintRenderer {
       ctx.restore();
     }
 
-    // 11. Draw Institutional Higher Timeframe SNR (1D, H4, H1, M30, M15) & Benchmarks (VWAP, dPOC)
-    const cdLevels = [];
-    if (this.cdShowSNR) {
-      const sess = snapshot.sessions || snapshot.htf_snr || {};
-      const h8Res = sess.h8_res || sess.h8_high;
-      const h8Sup = sess.h8_sup || sess.h8_low;
-      const h4Res = sess.h4_res || sess.h4_high;
-      const h4Sup = sess.h4_sup || sess.h4_low;
-      const h1Res = sess.h1_res || sess.h1_high;
-      const h1Sup = sess.h1_sup || sess.h1_low;
-      const m30Res = sess.m30_res || sess.m30_high;
-      const m30Sup = sess.m30_sup || sess.m30_low;
-      const m15Res = sess.m15_res || sess.m15_high;
-      const m15Sup = sess.m15_sup || sess.m15_low;
+    // 11. Draw Master Bookmap [1] Synchronized SNR Levels (D1, H8, H4, H1) in Cluster [2]
+    if (this.cdShowSNR && window.getMasterBookmapSnrLevels) {
+      const masterLvls = window.getMasterBookmapSnrLevels(snapshot.sessions || {}, lastPrice || 0);
+      const drawnCdTagYs = [];
 
-      // 1D (Daily) Major Benchmarks directly inside SNR
-      if (sess.pdh > 0) cdLevels.push({ price: sess.pdh, code: '1D RES', label: '🏛️ 1D HIGH (PDH)', col: '#fde047', bg: '#713f12', dash: [8, 4], width: 1.6, isMajor: true });
-      if (sess.pdl > 0) cdLevels.push({ price: sess.pdl, code: '1D SUP', label: '🏛️ 1D LOW (PDL)',  col: '#fde047', bg: '#713f12', dash: [8, 4], width: 1.6, isMajor: true });
-      if (sess.daily_open > 0) cdLevels.push({ price: sess.daily_open, code: '1D OPEN', label: '⚡ 1D OPEN', col: '#38bdf8', bg: '#0c4a6e', dash: [6, 3], width: 1.4, isMajor: true });
+      for (const lv of masterLvls) {
+        if (lv.price < lowest || lv.price > highest) continue;
+        const ly = priceToRowY(lv.price);
+        if (ly < topHeaderH + 10 || ly > topHeaderH + chartH - 10) continue;
 
-      // H8, H4, H1, M30, M15
-      if (h8Res > 0) cdLevels.push({ price: h8Res, code: 'H8 RES', label: '🏛️ H8 RES', col: '#e11d48', bg: '#881337', dash: [8, 4], width: 1.8, isMajor: true });
-      if (h8Sup > 0) cdLevels.push({ price: h8Sup, code: 'H8 SUP', label: '🏛️ H8 SUP', col: '#059669', bg: '#064e3b', dash: [8, 4], width: 1.8, isMajor: true });
-      if (h4Res > 0) cdLevels.push({ price: h4Res, code: 'H4 RES', label: '🏰 H4 RES', col: '#ec4899', bg: '#831843', dash: [6, 3], width: 1.5, isMajor: true });
-      if (h4Sup > 0) cdLevels.push({ price: h4Sup, code: 'H4 SUP', label: '🏰 H4 SUP', col: '#10b981', bg: '#064e3b', dash: [6, 3], width: 1.5, isMajor: true });
-      if (h1Res > 0) cdLevels.push({ price: h1Res, code: 'H1 RES', label: '⏱️ H1 RES', col: '#f97316', bg: '#7c2d12', dash: [5, 3], width: 1.3, isMajor: false });
-      if (h1Sup > 0) cdLevels.push({ price: h1Sup, code: 'H1 SUP', label: '⏱️ H1 SUP', col: '#06b6d4', bg: '#164e63', dash: [5, 3], width: 1.3, isMajor: false });
-      if (m30Res > 0) cdLevels.push({ price: m30Res, code: 'M30 RES', label: '⏳ M30 RES', col: '#a855f7', bg: '#581c87', dash: [4, 3], width: 1.2, isMajor: false });
-      if (m30Sup > 0) cdLevels.push({ price: m30Sup, code: 'M30 SUP', label: '⏳ M30 SUP', col: '#3b82f6', bg: '#1e3a8a', dash: [4, 3], width: 1.2, isMajor: false });
-      if (m15Res > 0) cdLevels.push({ price: m15Res, code: 'M15 RES', label: '⚡ M15 RES', col: '#fbbf24', bg: '#78350f', dash: [3, 3], width: 1.1, isMajor: false });
-      if (m15Sup > 0) cdLevels.push({ price: m15Sup, code: 'M15 SUP', label: '⚡ M15 SUP', col: '#2dd4bf', bg: '#134e4a', dash: [3, 3], width: 1.1, isMajor: false });
-    }
+        const zoneHalfH = Math.max(4, Math.min(8, rowH * 0.45));
+        ctx.save();
+        ctx.fillStyle = lv.zoneFill;
+        ctx.fillRect(0, ly - zoneHalfH, chartW, zoneHalfH * 2);
 
-    if (this.cdShowBenchmarks) {
-      const vwapVal = snapshot.vwap && (snapshot.vwap.value || snapshot.vwap.vwap);
-      if (vwapVal > 0) cdLevels.push({ price: vwapVal, code: 'VWAP', label: '🌐 VWAP', col: '#00f0ff', bg: '#083344', dash: [], width: 1.4 });
-      if (snapshot.session_vp && snapshot.session_vp.dpoc > 0) {
-        cdLevels.push({ price: snapshot.session_vp.dpoc, code: 'dPOC', label: '⭐ dPOC', col: '#ffd60a', bg: '#78350f', dash: [4, 3], width: 1.2 });
-      }
-      if (snapshot.sessions) {
-        const s = snapshot.sessions;
-        if (s.asian_high > 0) cdLevels.push({ price: s.asian_high, code: 'ASIA H', label: '🌏 ASIAN H', col: '#f59e0b', bg: '#78350f', dash: [5, 3], width: 1.1 });
-        if (s.asian_low > 0)  cdLevels.push({ price: s.asian_low,  code: 'ASIA L', label: '🌏 ASIAN L', col: '#f59e0b', bg: '#78350f', dash: [5, 3], width: 1.1 });
-        if (s.london_high > 0) cdLevels.push({ price: s.london_high, code: 'LDN H', label: '🇬🇧 LONDON H', col: '#06b6d4', bg: '#164e63', dash: [5, 3], width: 1.1 });
-        if (s.london_low > 0)  cdLevels.push({ price: s.london_low,  code: 'LDN L', label: '🇬🇧 LONDON L', col: '#06b6d4', bg: '#164e63', dash: [5, 3], width: 1.1 });
-      }
-    }
+        ctx.setLineDash([7, 4]);
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = (lv.tf === 'D1' || lv.tf === 'H8') ? 1.5 : 1.2;
+        ctx.beginPath();
+        ctx.moveTo(0, ly);
+        ctx.lineTo(chartW, ly);
+        ctx.stroke();
+        ctx.setLineDash([]);
 
-    // Draw the horizontal lines & tags (Smart SNR Consolidation: only core anchors get left badges)
-    const curP = lastPrice || 0;
-    const resLevels = cdLevels.filter(lv => lv.price > curP && (lv.code.includes('RES') || lv.code.includes('HIGH'))).sort((a,b) => a.price - b.price);
-    const supLevels = cdLevels.filter(lv => lv.price < curP && (lv.code.includes('SUP') || lv.code.includes('LOW'))).sort((a,b) => b.price - a.price);
-
-    const nearestRes = resLevels[0];
-    const nearestSup = supLevels[0];
-
-    for (const lv of cdLevels) {
-      lv.showLeftBadge = ['1D OPEN', '1D HIGH', '1D LOW', 'VWAP', 'dPOC'].includes(lv.code) ||
-                         (nearestRes && lv === nearestRes) ||
-                         (nearestSup && lv === nearestSup);
-    }
-
-    const drawnCdTagYs = [];
-    for (const lv of cdLevels) {
-      if (lv.price < lowest || lv.price > highest) continue;
-      const ly = priceToRowY(lv.price);
-      if (ly < topHeaderH + 10 || ly > topHeaderH + chartH - 10) continue;
-
-      ctx.save();
-      ctx.setLineDash(lv.dash || [5, 3]);
-      ctx.strokeStyle = lv.showLeftBadge ? lv.col : (lv.col + '55'); // subtle line if secondary
-      ctx.lineWidth = lv.showLeftBadge ? (lv.width || 1.2) : 0.8;
-      ctx.beginPath();
-      ctx.moveTo(0, ly);
-      ctx.lineTo(chartW, ly);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Anti-Collision Badge Tag on LEFT side of chart ONLY for core anchors
-      if (lv.showLeftBadge) {
-        const tagText = `${lv.label} $${lv.price.toFixed(2)}`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const tagW = ctx.measureText(tagText).width + 10;
-
-        let tagX = 8;
         let tagY = ly;
-        let colShift = 0;
-        while (drawnCdTagYs.some(pt => Math.abs(pt.y - tagY) < 15 && Math.abs(pt.x - tagX) < (tagW + 8)) && colShift < 4) {
-          tagX += tagW + 8;
-          colShift++;
+        let tries = 0;
+        while (drawnCdTagYs.some(dy => Math.abs(dy - tagY) < 17) && tries < 6) {
+          tagY += (lv.side === 'RES' ? -17 : 17);
+          tries++;
         }
+        tagY = Math.max(topHeaderH + 12, Math.min(topHeaderH + chartH - 12, tagY));
+        drawnCdTagYs.push(tagY);
 
-        if (tagY <= topHeaderH + chartH - 10) {
-          drawnCdTagYs.push({ x: tagX, y: tagY });
+        const text = lv.fullText;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tw = Math.ceil(ctx.measureText(text).width) + 12;
+        const bx = 6;
+        const by = Math.round(tagY - 7.5);
 
-          ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
-          ctx.fillRect(tagX, tagY - 7, tagW, 14);
-          ctx.fillStyle = lv.bg;
-          ctx.fillRect(tagX, tagY - 7, tagW, 14);
-          ctx.strokeStyle = lv.col;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(tagX, tagY - 7, tagW, 14);
-          ctx.fillStyle = '#ffffff';
-          ctx.textAlign = 'center';
-          ctx.fillText(tagText, tagX + tagW / 2, tagY + 3.5);
-        }
+        ctx.fillStyle = lv.badgeBg;
+        ctx.fillRect(bx, by, tw, 15);
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = 1.1;
+        ctx.strokeRect(bx, by, tw, 15);
+
+        ctx.fillStyle = lv.col;
+        ctx.fillRect(bx, by, 3, 15);
+
+        ctx.fillStyle = lv.col;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, bx + 7, by + 7.5);
+        ctx.restore();
       }
-      ctx.restore();
     }
 
     // 12. Render Right-Side ClusterDelta Profile Panel (VOL + VA 70% | DELTA | HARGA)
@@ -4876,7 +4877,16 @@ class FootprintRenderer {
       }
     }
 
-    const padP = Math.max(0.60, (maxP - minP) * 0.14);
+    if (this.csShowLevels && window.getMasterBookmapSnrLevels) {
+      const mLvls = window.getMasterBookmapSnrLevels(snapshot ? snapshot.sessions : {}, lastPrice);
+      for (const ml of mLvls) {
+        if (ml.price && Math.abs(ml.price - lastPrice) <= 6.0) {
+          minP = Math.min(minP, ml.price);
+          maxP = Math.max(maxP, ml.price);
+        }
+      }
+    }
+    const padP = Math.max(0.60, (maxP - minP) * 0.12);
     minP -= padP;
     maxP += padP;
     const rawRange = Math.max(1.0, maxP - minP);
@@ -4946,77 +4956,87 @@ class FootprintRenderer {
       }
     }
 
-    // 6. Key Institutional Levels with Anti-Collision Vertical Slotting (>= 18px Clearance)
-    const candidateLevels = [];
+    // 6. Master Bookmap [1] Synchronized SNR Levels (D1, H8, H4, H1) + Optional VWAP in Lilin [4]
     if (this.csShowVWAP && snapshot.vwap && snapshot.vwap.value > 0) {
-      candidateLevels.push({ price: snapshot.vwap.value, label: '🌐 VWAP', color: '#00f0ff', dash: [], prio: 10 });
-    }
-    if (this.csShowLevels) {
-      if (snapshot.session_vp && snapshot.session_vp.dpoc > 0) {
-        candidateLevels.push({ price: snapshot.session_vp.dpoc, label: '⭐ dPOC', color: '#ffd60a', dash: [3, 3], prio: 9 });
-      }
-      if (snapshot.sessions) {
-        const s = snapshot.sessions;
-        // Strictly 6 Institutional SNR Timeframes: D1, H8, H4, H1, M30, M15
-        if (s.pdh > 0) candidateLevels.push({ price: s.pdh, label: '🏛️ D1 SNR RES', color: '#fde047', dash: [8, 4], prio: 10 });
-        if (s.pdl > 0) candidateLevels.push({ price: s.pdl, label: '🏛️ D1 SNR SUP', color: '#fde047', dash: [8, 4], prio: 10 });
-        if (s.h8_res > 0) candidateLevels.push({ price: s.h8_res, label: '🏛️ H8 SNR RES', color: '#e11d48', dash: [8, 4], prio: 9 });
-        if (s.h8_sup > 0) candidateLevels.push({ price: s.h8_sup, label: '🏛️ H8 SNR SUP', color: '#059669', dash: [8, 4], prio: 9 });
-        if (s.h4_res > 0) candidateLevels.push({ price: s.h4_res, label: '🏰 H4 SNR RES', color: '#ec4899', dash: [6, 3], prio: 8 });
-        if (s.h4_sup > 0) candidateLevels.push({ price: s.h4_sup, label: '🏰 H4 SNR SUP', color: '#10b981', dash: [6, 3], prio: 8 });
-        if (s.h1_res > 0) candidateLevels.push({ price: s.h1_res, label: '⏱️ H1 SNR RES', color: '#f97316', dash: [5, 3], prio: 7 });
-        if (s.h1_sup > 0) candidateLevels.push({ price: s.h1_sup, label: '⏱️ H1 SNR SUP', color: '#06b6d4', dash: [5, 3], prio: 7 });
-        if (s.m30_res > 0) candidateLevels.push({ price: s.m30_res, label: '⏳ M30 SNR RES', color: '#a855f7', dash: [4, 3], prio: 6 });
-        if (s.m30_sup > 0) candidateLevels.push({ price: s.m30_sup, label: '⏳ M30 SNR SUP', color: '#3b82f6', dash: [4, 3], prio: 6 });
-        if (s.m15_res > 0) candidateLevels.push({ price: s.m15_res, label: '⚡ M15 SNR RES', color: '#fbbf24', dash: [3, 3], prio: 5 });
-        if (s.m15_sup > 0) candidateLevels.push({ price: s.m15_sup, label: '⚡ M15 SNR SUP', color: '#2dd4bf', dash: [3, 3], prio: 5 });
+      const vwapY = pToY(snapshot.vwap.value);
+      if (vwapY >= mainChartTop + 26 && vwapY <= mainChartBottom - 14) {
+        ctx.save();
+        ctx.strokeStyle = '#00f0ff';
+        ctx.globalAlpha = 0.65;
+        ctx.lineWidth = 1.1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, vwapY);
+        ctx.lineTo(chartW, vwapY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
       }
     }
 
-    // Anti-collision slotting: Sort by proximity to live price & priority, max 4 visible levels, strictly single left column (>= 24px vertical gap)
-    candidateLevels.sort((a, b) => {
-      const distA = Math.abs((a.price || 0) - lastPrice);
-      const distB = Math.abs((b.price || 0) - lastPrice);
-      return (distA - distB) || (b.prio - a.prio);
-    });
-    const placedTagYs = [];
+    if (this.csShowLevels && window.getMasterBookmapSnrLevels) {
+      const masterLvls = window.getMasterBookmapSnrLevels(snapshot.sessions || {}, lastPrice);
+      const placedTagYs = [];
 
-    for (const lvl of candidateLevels) {
-      if (placedTagYs.length >= 4) break;
-      if (!lvl.price || lvl.price <= 0) continue;
-      const y = pToY(lvl.price);
-      if (y < mainChartTop + 34 || y > mainChartBottom - 18) continue;
-      if (placedTagYs.some(py => Math.abs(py - y) < 24)) continue;
-      placedTagYs.push(y);
+      for (const lv of masterLvls) {
+        if (!lv.price || lv.price <= 0) continue;
+        const y = pToY(lv.price);
+        if (y < mainChartTop + 28 || y > mainChartBottom - 14) continue;
 
-      // Draw Subtle Ray Line across the full chart width
-      ctx.save();
-      ctx.setLineDash(lvl.dash && lvl.dash.length ? lvl.dash : [4, 4]);
-      ctx.strokeStyle = lvl.color;
-      ctx.globalAlpha = 0.55;
-      ctx.lineWidth = 0.9;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(chartW, y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1.0;
+        const zoneHalfH = Math.max(4, Math.min(9, mainChartH * 0.014));
 
-      // Single-Column Left-Edge Pill Tag (Zero horizontal stacking over candles)
-      const txt = `${lvl.label} $${lvl.price.toFixed(2)}`;
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
-      const tw = ctx.measureText(txt).width + 8;
-      const tagX = 8;
+        // 1. Shaded SNR Zone Box across Lilin [4] (100% Identical to Bookmap [1])
+        ctx.save();
+        ctx.fillStyle = lv.zoneFill;
+        ctx.fillRect(0, y - zoneHalfH, chartW, zoneHalfH * 2);
 
-      ctx.fillStyle = 'rgba(7, 11, 20, 0.92)';
-      ctx.fillRect(tagX, y - 6.5, tw, 13);
-      ctx.strokeStyle = lvl.color;
-      ctx.lineWidth = 0.8;
-      ctx.strokeRect(tagX, y - 6.5, tw, 13);
-      ctx.fillStyle = lvl.color;
-      ctx.textAlign = 'center';
-      ctx.fillText(txt, tagX + tw / 2, y + 3);
-      ctx.restore();
+        ctx.strokeStyle = lv.col;
+        ctx.globalAlpha = 0.30;
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(0, y - zoneHalfH, chartW, zoneHalfH * 2);
+
+        // 2. Center Dashed SNR Line across the zone
+        ctx.globalAlpha = 0.85;
+        ctx.setLineDash([7, 4]);
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = (lv.tf === 'D1' || lv.tf === 'H8') ? 1.4 : 1.1;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(chartW, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 3. Crisp Left-Edge SNR Box Badge ('D1 SNR RES $3685.75 [FRESH•95%]')
+        let tagY = y;
+        let tries = 0;
+        while (placedTagYs.some(py => Math.abs(py - tagY) < 17) && tries < 6) {
+          tagY += (lv.side === 'RES' ? -17 : 17);
+          tries++;
+        }
+        tagY = Math.max(mainChartTop + 30, Math.min(mainChartBottom - 12, tagY));
+        placedTagYs.push(tagY);
+
+        const text = lv.fullText;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tw = Math.ceil(ctx.measureText(text).width) + 12;
+        const bx = 6;
+        const by = Math.round(tagY - 7.5);
+
+        ctx.fillStyle = lv.badgeBg;
+        ctx.fillRect(bx, by, tw, 15);
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = 1.1;
+        ctx.strokeRect(bx, by, tw, 15);
+
+        ctx.fillStyle = lv.col;
+        ctx.fillRect(bx, by, 3, 15);
+
+        ctx.fillStyle = lv.col;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, bx + 7, by + 7.5);
+        ctx.restore();
+      }
     }
 
     // 7. Candle X Geometry & Vertical Time Grid
@@ -6359,8 +6379,8 @@ class FootprintRenderer {
       curPx += p.w + 4;
     }
 
-    // Draw SNR Valid 1 Makan 1 Zones if available in snapshot
-    if (this.csShowLevels && snapshot && snapshot.snr_valid_zones && snapshot.snr_valid_zones.length > 0) {
+    // Master Bookmap SNR Zones already drawn in Step 6
+    if (false && this.csShowLevels && snapshot && snapshot.snr_valid_zones && snapshot.snr_valid_zones.length > 0) {
       const midP = (minP + maxP) / 2;
       const resZ = snapshot.snr_valid_zones.filter(z => z.type === 'RESISTANCE' && z.zone_low >= midP - 1.5).sort((a, b) => a.zone_low - b.zone_low);
       const supZ = snapshot.snr_valid_zones.filter(z => z.type !== 'RESISTANCE' && z.zone_high <= midP + 1.5).sort((a, b) => b.zone_high - a.zone_high);
