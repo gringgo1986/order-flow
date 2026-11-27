@@ -517,8 +517,8 @@ class App {
     // Whale Tier Category Selector (Noise, Normal Whale, Major Institutional, Mega Shark)
     const selWhaleCategory = document.getElementById('selWhaleCategory');
     if (selWhaleCategory) {
-      // 1. Restore saved preference or dropdown default
-      const savedTier = localStorage.getItem('gringgo_whale_category') || selWhaleCategory.value || 'noise';
+      // 1. Restore saved preference or default to 'normal' (🦈 Institusi / Jerung ≥45L)
+      const savedTier = localStorage.getItem('gringgo_whale_category_v96') || 'normal';
       selWhaleCategory.value = savedTier;
       if (this.bookmap && this.bookmap.setBubbleCategory) {
         this.bookmap.setBubbleCategory(savedTier);
@@ -527,7 +527,7 @@ class App {
       // 2. Change handler with immediate sync and redraw
       selWhaleCategory.addEventListener('change', (e) => {
         const tier = e.target.value;
-        localStorage.setItem('gringgo_whale_category', tier);
+        localStorage.setItem('gringgo_whale_category_v96', tier);
         if (this.bookmap && this.bookmap.setBubbleCategory) {
           this.bookmap.setBubbleCategory(tier);
           this.needsRedraw = true;
@@ -535,11 +535,11 @@ class App {
             this.bookmap.render(this.latestSnapshot);
           }
         }
-        const toastMsg = tier === 'noise' ? '🫧 Aktiviti: Semua Transaksi (≥5.0 Lot • Habuk <5L Ditapis)'
-          : (tier === 'smart' ? '🐟 Aktiviti: Smart Money / Scalping (≥15.0 Lot)'
-          : (tier === 'normal' ? '🦈 Aktiviti: Institusi / Jerung (≥30.0 Lot) [Potensi Win: 75%+]'
-          : (tier === 'major' ? '🏦 Aktiviti: Bank Utama / Whale (≥50.0 Lot) [Potensi Win: 85%+]'
-          : (tier === 'mega' ? '👑 Aktiviti: Bank Pusat / Extreme (≥70.0 Lot) [Potensi Win: 92%+]' : '🚫 Buih: Dimatikan (Heatmap Sahaja)'))));
+        const toastMsg = tier === 'noise' ? '🫧 Aktiviti: Semua Aktiviti (≥10 Lot • Tapis Habuk)'
+          : (tier === 'smart' ? '🐟 Aktiviti: Smart Money / Scalping (≥25 Lot)'
+          : (tier === 'normal' ? '🦈 Aktiviti: Institusi / Jerung (≥45 Lot)'
+          : (tier === 'major' ? '🏦 Aktiviti: Bank Utama / Whale (≥60 Lot)'
+          : (tier === 'mega' ? '👑 Aktiviti: Bank Pusat / Extreme (≥75 Lot)' : '🚫 Buih: Sembunyi Buih (Heatmap Sahaja)'))));
         this.showToast(toastMsg);
       });
     }
