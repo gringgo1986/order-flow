@@ -2484,21 +2484,30 @@ class FootprintRenderer {
     if (!this._emittedFpSignals) this._emittedFpSignals = new Set();
     ctx.save();
 
-    // Pre-find the SINGLE most recent BUY and SINGLE most recent SELL candle index so boxes NEVER stack 2-deep!
-    const scanStart = Math.max(0, candles.length - 8);
+    // Permanent Non-Repainting Cache for Footprint [3] Signals (Evaluated ONLY on CLOSED Candles so signals NEVER flicker!)
+    if (!this._fpConfirmedSignalsCache) this._fpConfirmedSignalsCache = new Map();
+    const scanStart = Math.max(0, candles.length - 10);
     let latestBuySigIdx = -1;
     let latestSellSigIdx = -1;
-    for (let k = candles.length - 1; k >= Math.max(0, candles.length - 2); k--) {
+    const lastClosedIdx = Math.max(0, candles.length - 2);
+
+    for (let k = lastClosedIdx; k >= scanStart; k--) {
       const ck = candles[k];
-      const actDem = demandLevels.find(l => Math.abs(l.p - ck.low) <= tol || (ck.low <= l.p && ck.close >= l.p));
-      const actSup = supplyLevels.find(l => Math.abs(l.p - ck.high) <= tol || (ck.high >= l.p && ck.close <= l.p));
-      const bullOk = (actDem && (ck._absorptionLow || (ck.delta > 0 && ck.close >= ck.open))) || (ck._absorptionLow && ck.delta > 0) || (actDem && ck.delta > 10.0);
-      const bearOk = (actSup && (ck._absorptionHigh || (ck.delta < 0 && ck.close <= ck.open))) || (ck._absorptionHigh && ck.delta < 0) || (actSup && ck.delta < -10.0);
-      if (bullOk && latestBuySigIdx === -1) latestBuySigIdx = k;
-      if (bearOk && latestSellSigIdx === -1) latestSellSigIdx = k;
+      if (!ck) continue;
+      let cached = this._fpConfirmedSignalsCache.get(ck.time);
+      if (!cached) {
+        const actDem = demandLevels.find(l => Math.abs(l.p - ck.low) <= tol || (ck.low <= l.p && ck.close >= l.p));
+        const actSup = supplyLevels.find(l => Math.abs(l.p - ck.high) <= tol || (ck.high >= l.p && ck.close <= l.p));
+        const bullOk = !!(actDem && ((ck._absorptionLow && ck.delta > 0) || (ck.delta >= 8.0 && ck.close >= ck.open)));
+        const bearOk = !!(actSup && ((ck._absorptionHigh && ck.delta < 0) || (ck.delta <= -8.0 && ck.close <= ck.open)));
+        cached = { bullOk, bearOk, demName: actDem ? actDem.name : 'H1 SNR SUPPORT', supName: actSup ? actSup.name : 'H1 SNR RESISTANCE' };
+        this._fpConfirmedSignalsCache.set(ck.time, cached);
+      }
+      if (cached.bullOk && latestBuySigIdx === -1) latestBuySigIdx = k;
+      if (cached.bearOk && latestSellSigIdx === -1) latestSellSigIdx = k;
     }
 
-    for (let i = scanStart; i < candles.length; i++) {
+    for (let i = scanStart; i <= lastClosedIdx; i++) {
       const c = candles[i];
       const candleIndexFromRight = (candles.length - 1) - i;
       const x = startX - (candleIndexFromRight * (this.candleWidth + this.candleSpacing));
@@ -2506,20 +2515,12 @@ class FootprintRenderer {
       const yLow = this.priceToY(c.low);
       const yHigh = this.priceToY(c.high);
 
-      // Check Demand Gate for BUY
-      const activeDemand = demandLevels.find(l => Math.abs(l.p - c.low) <= tol || (c.low <= l.p && c.close >= l.p));
-      // Check Supply Gate for SELL
-      const activeSupply = supplyLevels.find(l => Math.abs(l.p - c.high) <= tol || (c.high >= l.p && c.close <= l.p));
-
-      // ── BUY SIGNAL (At Demand OR 3x Stacked Buy Imbalance OR Absorption Low) ──
-      const isBullSetup = (activeDemand && (c._absorptionLow || (c.delta > 0 && c.close >= c.open))) || 
-                          (c._absorptionLow && c.delta > 0) || 
-                          (activeDemand && c.delta > 10.0);
-
+      const fpCached = this._fpConfirmedSignalsCache.get(c.time) || {};
+      const isBullSetup = !!fpCached.bullOk;
       const isRecentSignal = (i === latestBuySigIdx);
 
       if (isBullSetup) {
-        const zoneName = activeDemand ? activeDemand.name : 'DEMAND ABSORPTION';
+        const zoneName = fpCached.demName || 'H1 SNR SUPPORT';
 
         if (isRecentSignal) {
           // Neon Glowing Pulse Arrow & Single Clean Badge for LIVE/FRESH signal
@@ -2567,14 +2568,11 @@ class FootprintRenderer {
         }
       }
 
-      // ── SELL SIGNAL (At Supply OR 3x Stacked Sell Imbalance OR Absorption High) ──
-      const isBearSetup = (activeSupply && (c._absorptionHigh || (c.delta < 0 && c.close <= c.open))) || 
-                          (c._absorptionHigh && c.delta < 0) || 
-                          (activeSupply && c.delta < -10.0);
-
+      // ── SELL SIGNAL (Locked from Non-Repainting Closed Candle Cache) ──
+      const isBearSetup = !!fpCached.bearOk;
       const isRecentSellSignal = (i === latestSellSigIdx);
       if (isBearSetup) {
-        const zoneName = activeSupply ? activeSupply.name : 'SUPPLY ABSORPTION';
+        const zoneName = fpCached.supName || 'H1 SNR RESISTANCE';
 
         if (isRecentSellSignal) {
           // Neon Glowing Pulse Arrow & Single Clean Badge for LIVE/FRESH signal
@@ -5689,7 +5687,7 @@ class FootprintRenderer {
       if (this.csShowSignals && (aPlusSignal || signalBadge)) {
         if (aPlusSignal) {
           const isBuy = aPlusSignal.direction === 'BUY';
-          const isFocus = (i === latestSignalCandleIdx) || (i === hoveredCandleIdx);
+          const isFocus = (i === latestSignalCandleIdx) || (i === hoveredCandleIdx && !!aPlusSignal);
 
           ctx.save();
           ctx.fillStyle = signalCol;
