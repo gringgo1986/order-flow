@@ -2225,7 +2225,10 @@ class FootprintRenderer {
 
   _handleHoverTooltip() {
     const tooltip = document.getElementById('chartTooltip');
-    if (!tooltip) return;
+    if (tooltip) {
+      tooltip.style.display = 'none';
+    }
+    return;
 
     if (this.hoverCell) {
       const c = this.hoverCell;
@@ -5986,12 +5989,7 @@ class FootprintRenderer {
           signalCol,
           aPlusSignal
         };
-        this.hoverCell = {
-          isCandleTooltip: true,
-          screenX: cx,
-          screenY: this.mousePos.y,
-          ...hoveredCandle
-        };
+        this.hoverCell = null; // Clean TradingView/MT5 UX: No floating popup blocking the candles!
       }
     }
 
