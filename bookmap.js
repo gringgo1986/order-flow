@@ -1327,50 +1327,7 @@ class BookmapRenderer {
         ctx.fillRect(projX, y - drawH * 0.5, projW, drawH);
       }
 
-      // v93.0: Display compact Bank Limit Wall Lot Tags on the Top 2 Institutional Heatmap Walls (Ask & Bid)
-      const pickTop2 = (dict, isAskSide) => {
-        const curP = this._currentPrice || 0;
-        const arr = [];
-        for (const [pk, vv] of Object.entries(dict || {})) {
-          const p = +pk;
-          const v = +vv;
-          if (v < 45) continue;
-          if (isAskSide && curP > 0 && p <= curP) continue;
-          if (!isAskSide && curP > 0 && p >= curP) continue;
-          const y = this.priceToY(p);
-          if (y < this.CHART_TOP + 18 || y > this.CHART_BOTTOM - 22) continue;
-          arr.push({ p, v, y, isAskSide });
-        }
-        arr.sort((a, b) => b.v - a.v);
-        const out = [];
-        for (const item of arr) {
-          if (out.every(o => Math.abs(o.y - item.y) >= 24)) {
-            out.push(item);
-            if (out.length >= 2) break;
-          }
-        }
-        return out;
-      };
-
-      const topBankWalls = [...pickTop2(asks, true), ...pickTop2(bids, false)];
-      for (const bw of topBankWalls) {
-        const tagTxt = `🏦 BANK ${bw.isAskSide ? 'SELL' : 'BUY'} ${Math.round(bw.v)}L`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const tw = Math.ceil(ctx.measureText(tagTxt).width) + 10;
-        const tx = this.CHART_RIGHT - tw - 6;
-        const ty = Math.round(bw.y - 7);
-
-        ctx.fillStyle = bw.isAskSide ? 'rgba(69, 10, 10, 0.90)' : 'rgba(6, 78, 59, 0.90)';
-        ctx.fillRect(tx, ty, tw, 14);
-        ctx.strokeStyle = bw.isAskSide ? '#f87171' : '#34d399';
-        ctx.lineWidth = 1.0;
-        ctx.strokeRect(tx, ty, tw, 14);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(tagTxt, tx + tw / 2, ty + 7);
-      }
+      // Clean Bookmap canvas: Bank lots & SVP lots are marked via boxes in their right-axis columns
 
       // Highlight Top Institutional Shark/Jerung Limit Walls cleanly in the Live Projection Zone
       if (this.bmShowSharkWalls !== false) {
@@ -3406,7 +3363,7 @@ class BookmapRenderer {
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
         ctx.fillStyle = '#fef08a';
         ctx.textAlign = 'right';
-        ctx.fillText(`★${svpLots}L`, sx + sw - 2, y + 3);
+        ctx.fillText(`${svpLots}L`, sx + sw - 3, y + 3);
       } else if (isSvpKuat) {
         // Tier 2: 🔥 SVP KUAT (Electric Cyan Frame + High-Contrast Bar)
         ctx.fillStyle = 'rgba(56, 189, 248, 0.65)';
@@ -3418,7 +3375,7 @@ class BookmapRenderer {
         ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
         ctx.fillStyle = '#7dd3fc';
         ctx.textAlign = 'right';
-        ctx.fillText(`${svpLots}L`, sx + sw - 2, y + 3);
+        ctx.fillText(`${svpLots}L`, sx + sw - 3, y + 3);
       } else {
         // Tier 3: Normal / Vacuum SVP Row (Subtle muted green/red split)
         ctx.fillStyle = 'rgba(22, 163, 74, 0.42)';
@@ -3433,77 +3390,7 @@ class BookmapRenderer {
       }
     }
 
-    // ── Draw Right-Edge On-Chart Comparison Callouts & Top Comparison Bar ('👑 SVP PALING KUAT' vs '🔥 SVP KUAT') ──
-    if (!isMob && svpPalingKuatRow) {
-      const drawSvpComparisonTag = (rowObj, label, borderCol, bgCol, textCol, rayLen) => {
-        const ry = Math.round(rowObj.y) + 0.5;
-        if (ry < 32 || ry > this.CHART_BOTTOM - 26) return;
-
-        ctx.save();
-        ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = borderCol;
-        ctx.lineWidth = 1.1;
-        ctx.beginPath();
-        ctx.moveTo(sx - rayLen, ry);
-        ctx.lineTo(sx, ry);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const tw = Math.ceil(ctx.measureText(label).width) + 10;
-        const tx = sx - tw - 6;
-        const ty = Math.round(ry - 7.5);
-
-        ctx.fillStyle = bgCol;
-        ctx.fillRect(tx, ty, tw, 15);
-        ctx.strokeStyle = borderCol;
-        ctx.lineWidth = 1.1;
-        ctx.strokeRect(tx, ty, tw, 15);
-
-        ctx.fillStyle = textCol;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, tx + tw / 2, ty + 7.5);
-        ctx.restore();
-      };
-
-      drawSvpComparisonTag(
-        svpPalingKuatRow,
-        `👑 SVP PALING KUAT: ${svpPalingKuatRow.svpLots}L`,
-        '#facc15',
-        'rgba(32, 24, 4, 0.94)',
-        '#fde047',
-        155
-      );
-
-      for (const kr of svpKuatRows) {
-        drawSvpComparisonTag(
-          kr,
-          `🔥 SVP KUAT: ${kr.svpLots}L`,
-          '#00f0ff',
-          'rgba(6, 24, 38, 0.92)',
-          '#7dd3fc',
-          125
-        );
-      }
-
-      // Top-Left Sleek Comparison Summary Pill (Instant comparison at a glance!)
-      const kuatListStr = svpKuatRows.map(k => `$${k.p.toFixed(2)} (${k.svpLots}L)`).join(' • ') || 'Tiada';
-      const hudTxt = `👑 SVP PALING KUAT: $${svpPalingKuatRow.p.toFixed(2)} (${svpPalingKuatRow.svpLots}L)   |   🔥 SVP KUAT: ${kuatListStr}`;
-      ctx.save();
-      ctx.font = 'bold 9px "JetBrains Mono", monospace';
-      const hudW = Math.min(sx - 16, Math.ceil(ctx.measureText(hudTxt).width) + 18);
-      ctx.fillStyle = 'rgba(10, 15, 24, 0.90)';
-      ctx.fillRect(8, 6, hudW, 20);
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(8, 6, hudW, 20);
-      ctx.fillStyle = '#fde047';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(hudTxt, 16, 16);
-      ctx.restore();
-    }
+    // v94.1: Zero on-chart SVP text! 'SVP PALING KUAT' (Gold Box) and 'SVP KUAT' (Cyan Box) are marked strictly by boxes inside the SVP(LOT) column, just like LOT BANK.
 
     // Live Current Price Green Highlight Box on Price Axis
     if (cyLive >= hdrH + 8 && cyLive <= this.CHART_BOTTOM - 8) {
