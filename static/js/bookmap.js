@@ -3333,6 +3333,18 @@ class BookmapRenderer {
       rows.push({ p, y, isAsk, bankLots, svpLots, buyShare });
     }
 
+    // ── v94.0: Rank SVP Rows into '👑 SVP PALING KUAT' (#1 Peak) vs '🔥 SVP KUAT' (Top 2 Secondary Strong Nodes) ──
+    const sortedBySvp = [...rows].sort((a, b) => b.svpLots - a.svpLots);
+    const svpPalingKuatRow = sortedBySvp.length > 0 ? sortedBySvp[0] : null;
+    const svpKuatRows = [];
+    for (const cand of sortedBySvp.slice(1)) {
+      if (cand.svpLots < 180) break;
+      if (svpPalingKuatRow && Math.abs(cand.y - svpPalingKuatRow.y) < 24) continue;
+      if (svpKuatRows.some(k => Math.abs(k.y - cand.y) < 24)) continue;
+      svpKuatRows.push(cand);
+      if (svpKuatRows.length >= 2) break;
+    }
+
     for (const r of rows) {
       const { p, y, isAsk, bankLots, svpLots, buyShare } = r;
       const isNearLive = Math.abs(y - cyLive) <= rowH * 0.55;
@@ -3340,7 +3352,8 @@ class BookmapRenderer {
                               (!isAsk && Math.abs(p - peakBankBid.p) < 0.01 && bankLots >= 50);
       const isSnrHighlight = (nearestResP && Math.abs(p - nearestResP) <= ladderStep * 0.5) ||
                              (nearestSupP && Math.abs(p - nearestSupP) <= ladderStep * 0.5);
-      const isDpocRow = dpocP > 0 && Math.abs(p - dpocP) <= ladderStep * 0.5;
+      const isPalingKuat = svpPalingKuatRow && Math.abs(p - svpPalingKuatRow.p) < 0.005;
+      const isSvpKuat = !isPalingKuat && svpKuatRows.some(k => Math.abs(p - k.p) < 0.005);
 
       // ── COLUMN 1: HARGA ($) (With Exact .00 / .25 / .50 Decimals & Max 2 SNR Golden Highlights) ──
       if (isSnrHighlight && !isNearLive) {
@@ -3377,20 +3390,119 @@ class BookmapRenderer {
       ctx.textAlign = 'right';
       ctx.fillText(`${bankLots}L`, svpX - 3, y + 3);
 
-      // ── COLUMN 3: SVP (Session Volume Profile Traded Lots in 'L') ──
+      // ── COLUMN 3: SVP(LOT) (With 3-Tier Visual Comparison: 👑 PALING KUAT vs 🔥 KUAT vs Biasa) ──
       const svpBarW = Math.max(3, Math.round((svpLots / maxSvpLots) * (svpW - 4)));
       const greenW = Math.max(1, Math.round(svpBarW * buyShare));
       const redW = Math.max(1, svpBarW - greenW);
 
-      ctx.fillStyle = isDpocRow ? 'rgba(250, 204, 21, 0.65)' : 'rgba(22, 163, 74, 0.62)';
-      ctx.fillRect(svpX + 1, y - rowH / 2 + 1, greenW, Math.max(4, rowH - 2));
-      ctx.fillStyle = isDpocRow ? 'rgba(234, 179, 8, 0.65)' : 'rgba(220, 38, 38, 0.62)';
-      ctx.fillRect(svpX + 1 + greenW, y - rowH / 2 + 1, redW, Math.max(4, rowH - 2));
+      if (isPalingKuat) {
+        // Tier 1: 👑 SVP PALING KUAT (Radiant Gold Bar + Gold Frame)
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.82)';
+        ctx.fillRect(svpX + 1, y - rowH / 2 + 1, svpBarW, Math.max(4, rowH - 2));
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 1.3;
+        ctx.strokeRect(svpX + 0.5, y - rowH / 2 + 0.5, svpW - 1.5, rowH - 1);
 
-      ctx.font = isDpocRow ? 'bold 8.5px "JetBrains Mono", monospace' : '8.5px "JetBrains Mono", monospace';
-      ctx.fillStyle = isDpocRow ? '#fde047' : '#e2e8f0';
-      ctx.textAlign = 'right';
-      ctx.fillText(`${svpLots}L`, sx + sw - 3, y + 3);
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#fef08a';
+        ctx.textAlign = 'right';
+        ctx.fillText(`★${svpLots}L`, sx + sw - 2, y + 3);
+      } else if (isSvpKuat) {
+        // Tier 2: 🔥 SVP KUAT (Electric Cyan Frame + High-Contrast Bar)
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.65)';
+        ctx.fillRect(svpX + 1, y - rowH / 2 + 1, svpBarW, Math.max(4, rowH - 2));
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1.0;
+        ctx.strokeRect(svpX + 0.5, y - rowH / 2 + 0.5, svpW - 1.5, rowH - 1);
+
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#7dd3fc';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${svpLots}L`, sx + sw - 2, y + 3);
+      } else {
+        // Tier 3: Normal / Vacuum SVP Row (Subtle muted green/red split)
+        ctx.fillStyle = 'rgba(22, 163, 74, 0.42)';
+        ctx.fillRect(svpX + 1, y - rowH / 2 + 1, greenW, Math.max(4, rowH - 2));
+        ctx.fillStyle = 'rgba(220, 38, 38, 0.42)';
+        ctx.fillRect(svpX + 1 + greenW, y - rowH / 2 + 1, redW, Math.max(4, rowH - 2));
+
+        ctx.font = '8px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#94a3b8';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${svpLots}L`, sx + sw - 3, y + 3);
+      }
+    }
+
+    // ── Draw Right-Edge On-Chart Comparison Callouts & Top Comparison Bar ('👑 SVP PALING KUAT' vs '🔥 SVP KUAT') ──
+    if (!isMob && svpPalingKuatRow) {
+      const drawSvpComparisonTag = (rowObj, label, borderCol, bgCol, textCol, rayLen) => {
+        const ry = Math.round(rowObj.y) + 0.5;
+        if (ry < 32 || ry > this.CHART_BOTTOM - 26) return;
+
+        ctx.save();
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(sx - rayLen, ry);
+        ctx.lineTo(sx, ry);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tw = Math.ceil(ctx.measureText(label).width) + 10;
+        const tx = sx - tw - 6;
+        const ty = Math.round(ry - 7.5);
+
+        ctx.fillStyle = bgCol;
+        ctx.fillRect(tx, ty, tw, 15);
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = 1.1;
+        ctx.strokeRect(tx, ty, tw, 15);
+
+        ctx.fillStyle = textCol;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, tx + tw / 2, ty + 7.5);
+        ctx.restore();
+      };
+
+      drawSvpComparisonTag(
+        svpPalingKuatRow,
+        `👑 SVP PALING KUAT: ${svpPalingKuatRow.svpLots}L`,
+        '#facc15',
+        'rgba(32, 24, 4, 0.94)',
+        '#fde047',
+        155
+      );
+
+      for (const kr of svpKuatRows) {
+        drawSvpComparisonTag(
+          kr,
+          `🔥 SVP KUAT: ${kr.svpLots}L`,
+          '#00f0ff',
+          'rgba(6, 24, 38, 0.92)',
+          '#7dd3fc',
+          125
+        );
+      }
+
+      // Top-Left Sleek Comparison Summary Pill (Instant comparison at a glance!)
+      const kuatListStr = svpKuatRows.map(k => `$${k.p.toFixed(2)} (${k.svpLots}L)`).join(' • ') || 'Tiada';
+      const hudTxt = `👑 SVP PALING KUAT: $${svpPalingKuatRow.p.toFixed(2)} (${svpPalingKuatRow.svpLots}L)   |   🔥 SVP KUAT: ${kuatListStr}`;
+      ctx.save();
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      const hudW = Math.min(sx - 16, Math.ceil(ctx.measureText(hudTxt).width) + 18);
+      ctx.fillStyle = 'rgba(10, 15, 24, 0.90)';
+      ctx.fillRect(8, 6, hudW, 20);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(8, 6, hudW, 20);
+      ctx.fillStyle = '#fde047';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(hudTxt, 16, 16);
+      ctx.restore();
     }
 
     // Live Current Price Green Highlight Box on Price Axis
