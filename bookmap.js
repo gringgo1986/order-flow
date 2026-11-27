@@ -243,10 +243,11 @@ class BookmapRenderer {
   }
 
   setBubbleCategory(tierId) {
-    if (!['noise', 'normal', 'major', 'mega', 'off'].includes(tierId)) tierId = 'noise';
+    if (!['noise', 'smart', 'normal', 'major', 'mega', 'off'].includes(tierId)) tierId = 'noise';
     this.bmBubbleCategory = tierId;
     this.bmBubbleFilter = (tierId === 'noise') ? 'all' : (tierId === 'off' ? 'off' : 'whale');
-    this.bmBubbleMinVol = tierId === 'normal' ? 12.0 : (tierId === 'major' ? 35.0 : (tierId === 'mega' ? 80.0 : 0.0));
+    const minMap = { 'noise': 5.0, 'smart': 15.0, 'normal': 30.0, 'major': 50.0, 'mega': 70.0, 'off': 9999.0 };
+    this.bmBubbleMinVol = minMap[tierId] !== undefined ? minMap[tierId] : 5.0;
     
     try {
       if (typeof localStorage !== 'undefined') localStorage.setItem('gringgo_whale_category', tierId);
@@ -1008,10 +1009,14 @@ class BookmapRenderer {
           const nodeP = +(kf0.p + (kf1.p - kf0.p) * localF).toFixed(2);
           const dirUp = (kf1.p >= kf0.p);
 
-          // Realistic institutional size distribution: mostly small/medium flow (5L-18L), with 1-2 large climax spheres (32L-85L) at turning points
+          // Realistic 6-tier institutional distribution across 5L, 15L, 30L, 50L, and 70L+ climax points
           const sizeWave = Math.abs(Math.sin(n * 2.1 + c.time * 0.37));
-          const isTurnClimax = (n === 2 || n === 6);
-          const rawV = isTurnClimax ? (28.0 + sizeWave * 56.0) : (4.0 + sizeWave * 14.0);
+          let rawV;
+          if (n === 2) rawV = 72.0 + sizeWave * 26.0;      // Bank Pusat / Extreme (>= 70L)
+          else if (n === 6) rawV = 52.0 + sizeWave * 18.0; // Bank Utama / Whale (>= 50L)
+          else if (n === 4) rawV = 32.0 + sizeWave * 16.0; // Institusi / Jerung (>= 30L)
+          else if (n % 2 === 1) rawV = 16.0 + sizeWave * 12.0; // Smart Money (>= 15L)
+          else rawV = 6.0 + sizeWave * 8.0;                // Semua Aktiviti (>= 5L)
           const bShare = dirUp ? (0.64 + (sizeWave * 0.24)) : (0.12 + (sizeWave * 0.24));
           const bv = +(rawV * bShare).toFixed(1);
           const sv = +(rawV - bv).toFixed(1);
@@ -1045,8 +1050,7 @@ class BookmapRenderer {
     /* ── 4. Vertical Dotted Timeline Grid & Bottom Time Axis (11:30, 11:35, 11:40...) ── */
     try { this._drawGrid(ctx, now); } catch (e) { console.warn('[BM Grid]', e); }
 
-    /* ── 6. Best Bid & Best Ask Spread Channel + Stepped Price Line ── */
-    try { this._drawSteppedPriceLine(ctx, effectiveTrades, now, currentPrice, snapshot.spread); } catch (e) { console.warn('[BM Price Line]', e); }
+    /* ── 6. Raw Stepped Price Line Disabled (Smooth Mid-Price Trajectory is drawn cleanly inside _drawSplitBubbles) ── */
 
     /* ── 7. Bookmap Split 3D Spherical Bubbles + Whale Callout Labels ── */
     try { this._drawSplitBubbles(ctx, effectiveTrades, now); } catch (e) { console.warn('[BM Bubbles]', e); }
@@ -1845,16 +1849,14 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── v93.1: Strict Non-Overlapping Single-Track 3D Split Bubbles (Zero Overlap, True Size Hierarchy) ─── */
+  /* ─── v96.0: 6-Tier Institutional 3D Split Bubbles + Smooth Mid-Price Line (Zero Bid-Ask Barcode Zig-Zag!) ─── */
   _drawSplitBubbles(ctx, trades, now) {
     if (!trades || !trades.length) return;
     const cat = this.bmBubbleCategory || 'noise';
     if (cat === 'off') return;
 
-    let minVol = 0.0;
-    if (cat === 'mega') minVol = 80.0;
-    else if (cat === 'major') minVol = 35.0;
-    else if (cat === 'normal') minVol = 12.0;
+    const minMap = { 'noise': 5.0, 'smart': 15.0, 'normal': 30.0, 'major': 50.0, 'mega': 70.0 };
+    const minVol = minMap[cat] !== undefined ? minMap[cat] : 5.0;
 
     ctx.save();
     ctx.beginPath();
@@ -1863,7 +1865,7 @@ class BookmapRenderer {
 
     this.hoverTrade = null;
 
-    // 1. Fixed-Window Time Slice Aggregator (Anchored to slice startX so buckets NEVER chain-snowball!)
+    // 1. Fixed-Window Time Slice Aggregator (Merges Bid & Ask ticks within 9px into their volume-weighted Mid-Price!)
     const timeSorted = [...trades].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     const mergedNodes = [];
     let cur = null;
@@ -1877,18 +1879,16 @@ class BookmapRenderer {
       const sellV = t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
       const tVol  = Math.max(0.2, buyV + sellV);
 
-      if (cur && Math.abs(cx - cur.startX) < 7.5) {
+      if (cur && Math.abs(cx - cur.startX) < 9.0) {
         const newBuy = cur.buy_vol + buyV;
         const newSell = cur.sell_vol + sellV;
         const totalRaw = Math.max(0.1, newBuy + newSell);
-        // Dominant execution price (prevents erratic vertical jumps)
-        if (tVol >= cur.maxSingle) {
-          cur.price = t.price;
-          cur.maxSingle = tVol;
-        }
+        // Volume-weighted Mid-Price eliminates Bid-Ask spread oscillation!
+        cur.price = +((cur.price * cur.rawSum + t.price * tVol) / (cur.rawSum + tVol)).toFixed(2);
+        cur.rawSum += tVol;
+        if (tVol > cur.maxSingle) cur.maxSingle = tVol;
         cur.count += 1;
-        // True Bookmap Volume: Preserve largest single print + very small 8% cluster bonus (NO snowballing to 60L-110L!)
-        const trueVol = Math.min(110.0, cur.maxSingle + (totalRaw - cur.maxSingle) * 0.08);
+        const trueVol = Math.min(115.0, cur.maxSingle + (totalRaw - cur.maxSingle) * 0.14);
         cur.volume = +trueVol.toFixed(1);
         cur.buy_vol = +(cur.volume * (newBuy / totalRaw)).toFixed(1);
         cur.sell_vol = +(cur.volume - cur.buy_vol).toFixed(1);
@@ -1902,6 +1902,7 @@ class BookmapRenderer {
         timestamp: tMs,
         startX: cx,
         price: t.price,
+        rawSum: tVol,
         volume: tVol,
         maxSingle: tVol,
         count: 1,
@@ -1912,64 +1913,75 @@ class BookmapRenderer {
     }
     if (cur) mergedNodes.push(cur);
 
-    // 2. Draw crisp single-track stepped price line connecting the execution path
-    if (mergedNodes.length >= 2) {
+    // 2. Smooth 3-Point Moving Average Mid-Price Trajectory (Completely eliminates the vertical Bid-Ask comb/barcode!)
+    if (mergedNodes.length >= 3) {
+      const smoothedPrices = mergedNodes.map((n, idx) => {
+        if (idx === 0 || idx === mergedNodes.length - 1) return n.price;
+        return +((mergedNodes[idx - 1].price + n.price * 2 + mergedNodes[idx + 1].price) / 4.0).toFixed(2);
+      });
+      for (let i = 0; i < mergedNodes.length; i++) {
+        mergedNodes[i].smoothPrice = smoothedPrices[i];
+      }
+
       ctx.save();
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.6;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
       for (let i = 0; i < mergedNodes.length - 1; i++) {
         const n1 = mergedNodes[i];
         const n2 = mergedNodes[i + 1];
         const x1 = this.timeToX(n1.timestamp, now);
         const x2 = this.timeToX(n2.timestamp, now);
-        const y1 = this.priceToY(n1.price);
-        const y2 = this.priceToY(n2.price);
-        ctx.strokeStyle = n2.price >= n1.price ? 'rgba(52, 211, 153, 0.72)' : 'rgba(248, 113, 113, 0.72)';
+        const y1 = this.priceToY(n1.smoothPrice);
+        const y2 = this.priceToY(n2.smoothPrice);
+        ctx.strokeStyle = n2.smoothPrice >= n1.smoothPrice ? 'rgba(52, 211, 153, 0.75)' : 'rgba(248, 113, 113, 0.75)';
         ctx.beginPath();
         ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
       }
       ctx.restore();
     }
 
-    // 3. STRICT 0% OVERLAP SPATIAL FILTER:
-    //    Largest institutional bubbles are placed first; any smaller bubble that touches an existing bubble (dist < p.r + r + 1.5px) is skipped!
-    const filtered = minVol > 0 ? mergedNodes.filter(b => b.volume >= minVol) : mergedNodes;
+    // 3. STRICT 0% OVERLAP SPATIAL FILTER across the selected Activity Lot Tier (minVol)
+    const filtered = mergedNodes.filter(b => b.volume >= minVol);
     const bySizeDesc = [...filtered].sort((a, b) => b.volume - a.volume);
     const placed = [];
 
     for (const cand of bySizeDesc) {
       const cx = this.timeToX(cand.timestamp, now);
-      const cy = this.priceToY(cand.price);
+      const cy = this.priceToY(cand.smoothPrice || cand.price);
       if (cx < this.CHART_LEFT - 15 || cx > this.CHART_RIGHT - 4) continue;
       if (cy < this.CHART_TOP - 15  || cy > this.CHART_BOTTOM + 15) continue;
 
-      const normV = Math.max(0.3, cand.volume);
-      // Natural Pareto Bubble Radius:
-      // - Ambient flow (< 8L): tiny 2.4px - 4.0px dots
-      // - Normal activity (8L - 28L): medium 4.8px - 8.5px spheres
-      // - Major Institutional / Bank Whale (>= 30L): 10.5px - 15.5px spheres
+      const normV = Math.max(0.5, cand.volume);
+      // Clear 6-Tier Radius Scaling:
+      // 5L-14L: 3.2px - 5.2px | 15L-29L: 6.2px - 8.8px | 30L-49L: 9.8px - 12.2px | 50L-69L: 13.0px - 14.8px | >=70L: 15.2px - 17.5px
       let baseR;
-      if (normV < 8.0) {
-        baseR = 2.2 + Math.sqrt(normV) * 0.65;
+      if (normV < 15.0) {
+        baseR = 2.8 + (normV - 5.0) * 0.24;
       } else if (normV < 30.0) {
-        baseR = 4.2 + Math.pow(normV - 7.0, 0.48) * 1.05;
+        baseR = 6.2 + (normV - 15.0) * 0.18;
+      } else if (normV < 50.0) {
+        baseR = 9.8 + (normV - 30.0) * 0.13;
+      } else if (normV < 70.0) {
+        baseR = 12.8 + (normV - 50.0) * 0.11;
       } else {
-        baseR = 9.5 + Math.pow(normV - 28.0, 0.45) * 0.95;
+        baseR = 15.2 + Math.min(2.5, (normV - 70.0) * 0.06);
       }
-      const r = Math.min(16.0, Math.max(2.2, baseR * (this.bubbleZoom || 1.0)));
+      const r = Math.min(17.8, Math.max(2.8, baseR * (this.bubbleZoom || 1.0)));
 
-      // Strict non-overlapping check: 1.5px clear gap between every bubble!
-      const overlaps = placed.some(p => Math.hypot(p.cx - cx, p.cy - cy) < (p.r + r + 1.5));
+      // Strict non-overlapping check: 1.8px clear gap between every bubble!
+      const overlaps = placed.some(p => Math.hypot(p.cx - cx, p.cy - cy) < (p.r + r + 1.8));
       if (!overlaps) {
         placed.push({ ...cand, cx, cy, r });
       }
     }
 
     const visibleBubbles = placed.sort((a, b) => a.timestamp - b.timestamp);
+    const labelMinVol = (cat === 'noise') ? 28.0 : minVol;
 
-    // 4. Render Non-Overlapping 3D Split Spheres + Lot Numbers ONLY on Major Whale Spheres (r >= 10.5px / vol >= 30L)
+    // 4. Render Non-Overlapping 3D Split Spheres + Crisp Lot Numbers inside Qualifying Spheres
     for (const t of visibleBubbles) {
       const { cx, cy, r } = t;
       const buyV  = t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
@@ -1985,7 +1997,7 @@ class BookmapRenderer {
       if (r >= 4.5) {
         ctx.beginPath();
         ctx.arc(cx + 1.0, cy + 1.2, r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.50)';
         ctx.fill();
       }
 
@@ -2044,17 +2056,17 @@ class BookmapRenderer {
 
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = (r >= 10.5) ? 'rgba(255, 255, 255, 0.50)' : 'rgba(8, 12, 18, 0.65)';
-      ctx.lineWidth = (r >= 10.5) ? 1.0 : 0.7;
+      ctx.strokeStyle = (r >= 9.0) ? 'rgba(255, 255, 255, 0.55)' : 'rgba(8, 12, 18, 0.65)';
+      ctx.lineWidth = (r >= 9.0) ? 1.0 : 0.7;
       ctx.stroke();
 
-      // Print Lot Size ONLY inside Major Whale Spheres (r >= 10.5px & totalV >= 30L)
-      if (r >= 10.5 && totalV >= 30.0) {
+      // Print Lot Size inside sphere when r >= 8.0px and totalV >= labelMinVol
+      if (r >= 8.0 && totalV >= labelMinVol) {
         const lotTxt = `${Math.round(totalV)}L`;
-        ctx.font = 'bold 8px "JetBrains Mono", monospace';
+        ctx.font = r >= 12.0 ? 'bold 8.5px "JetBrains Mono", monospace' : 'bold 7.5px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.80)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
         ctx.fillText(lotTxt, cx + 0.7, cy + 0.7);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(lotTxt, cx, cy);
@@ -2065,7 +2077,7 @@ class BookmapRenderer {
     if (visibleBubbles.length > 0) {
       const lastB = visibleBubbles[visibleBubbles.length - 1];
       const lx = Math.min(this.CHART_RIGHT - 46, this.timeToX(lastB.timestamp, now));
-      const ly = this.priceToY(lastB.price);
+      const ly = this.priceToY(lastB.smoothPrice || lastB.price);
       const lotInt = Math.max(1, Math.min(199, Math.round(lastB.volume)));
       const bInt = Math.max(1, Math.min(lotInt, Math.round(lastB.buy_vol || lotInt)));
       ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
