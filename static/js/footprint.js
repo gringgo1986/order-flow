@@ -23,7 +23,7 @@ class FootprintRenderer {
     this.verticalZoom = 1.0;
     
     // View Modes: 'bid_ask' | 'delta' | 'volume' | 'clusterdelta' | 'candlestick'
-    this.viewMode = 'bid_ask';
+    this.viewMode = 'delta';
     this.timeframe = 'M1';
     
     // ClusterDelta Pro Sub-Settings (Adjustable 20-50 Jalur / Columns & Price Rows)
@@ -101,19 +101,19 @@ class FootprintRenderer {
     this._dragStartBarOffset = 0;
     this._dragStartZoom = 1.0;
     
-    // Feature Toggles
-    this.showValueArea = true;
-    this.showStackedImbalances = true;
+    // Feature Toggles (v89.0 ATAS/Quantower Clean Institutional Defaults)
+    this.showValueArea = false;
+    this.showStackedImbalances = false;
     this.showSessionLevels = true;
-    this.showAutoTrendline = true;
-    this.showSVP = true;
-    this.showIcebergs = true;
-    this.showWickAbsorption = true;   // NEW: Extreme Wick Absorption Detector (Trapped Traders)
-    this.showCandleDeltaDiv = true;   // NEW: Candle Delta Divergence (Δ DIV)
-    this.showFpsignals = true;        // NEW: Strict Location-First Footprint Signals at SNR
-    this.fpShowUnfinished = true;     // NEW: Unfinished Auction High & Low Rays
-    this.fpShowPocMigration = true;   // NEW: Stepped POC Migration Flow Line
-    this.fpShowCvdSparkline = true;   // NEW: Cumulative Delta Sparkline
+    this.showAutoTrendline = false;
+    this.showSVP = false;
+    this.showIcebergs = false;
+    this.showWickAbsorption = false;  // Disabled by default to keep footprint bricks 100% unobstructed
+    this.showCandleDeltaDiv = false;  // Disabled by default to match ATAS clean footprint
+    this.showFpsignals = true;        // Locked non-flickering SNR + Orderflow signals
+    this.fpShowUnfinished = false;    // Disabled by default (zero ray clutter)
+    this.fpShowPocMigration = false;  // Disabled by default (zero yellow zig-zag line)
+    this.fpShowCvdSparkline = false;  // Disabled by default (clean bottom area)
     this.imbThreshold = 3.0;          // NEW: 3.0 (300% Standard) | 4.0 (400% Whale)
     this.fpToolbarHitboxes = [];      // NEW: Top HUD Interactive Hitboxes
     this._fpConfirmedSignals = [];    // NEW: Confirmed signals history
@@ -1143,48 +1143,46 @@ class FootprintRenderer {
 
     ctx.save();
     try {
-    // Clear background with deep rich obsidian theme
-    ctx.fillStyle = '#070a10';
+    // Clear background with ATAS / Quantower Matte Charcoal theme (#16181d)
+    ctx.fillStyle = '#16181d';
     ctx.fillRect(0, 0, this.width, this.height);
 
     // 1. Grid Lines & Right Price Scale
     this._drawGrid(ctx, snapshot);
 
-    // 1B. Prop-Firm Session High/Low, PDH/PDL & Sweep Markers
+    // 1B. Pure 6-Timeframe SNR Levels (M15, M30, H1, H4, H8, D1)
     if (this.showSessionLevels && snapshot.sessions) {
       this._drawSessionLevels(ctx, snapshot.sessions, candles, snapshot.last_price);
     }
 
-    // 1C. Composite Session Volume Profile (SVP) & Iceberg Overlays
+    // 1C. Right-Margin Live Order Book (DOM) Histogram & Optional Overlays
     this._drawSVPAndIcebergs(ctx, snapshot);
-    if (snapshot.snr_valid_zones && snapshot.snr_valid_zones.length > 0) {
-      this._drawSnrValidZones(ctx, snapshot.snr_valid_zones);
-    }
+    this._drawRightLiveDomHistogram(ctx, snapshot, candles);
 
-    // 2. Render Footprint Candles (Robust Multi-Bar Engine with Guaranteed Visibility)
-    // Synchronize container width & height directly from canvas element
+    // 2. Render Footprint Candles (ATAS / Quantower Compact Brick Layout)
     if (this.canvas && this.canvas.clientWidth) {
       this.width = Math.max(this.canvas.clientWidth || 360, 260);
       this.height = Math.max(this.canvas.clientHeight || 260, 180);
     }
     const isMobileScreen = Boolean(this.width && this.width < 600);
-    const leftMargin = isMobileScreen ? 55 : 105;
-    const rightMargin = isMobileScreen ? 55 : 78;
-    const usableW = Math.max(isMobileScreen ? 160 : 260, this.width - rightMargin - leftMargin);
-    const targetSlots = Math.max(5, candleCount);
-    const spacing = isMobileScreen ? 6 : Math.max(5, Math.min(14, Math.floor(usableW / (targetSlots * 7))));
+    const leftMargin = isMobileScreen ? 12 : 24;
+    const rightMargin = isMobileScreen ? 58 : 74;
+    const domHistogramReserve = isMobileScreen ? 54 : 105;
+    const usableW = Math.max(isMobileScreen ? 150 : 240, this.width - rightMargin - domHistogramReserve - leftMargin);
+    const targetSlots = Math.max(6, candleCount);
+    const spacing = isMobileScreen ? 4 : Math.max(4, Math.min(8, Math.floor(usableW / (targetSlots * 10))));
     this.candleSpacing = spacing;
     const dynamicW = Math.floor(usableW / targetSlots) - spacing;
-    this.candleWidth = isMobileScreen ? Math.max(42, Math.min(88, dynamicW)) : Math.max(44, Math.min(145, dynamicW));
+    this.candleWidth = isMobileScreen ? Math.max(38, Math.min(72, dynamicW)) : Math.max(46, Math.min(92, dynamicW));
 
-    // Right-anchored: Latest live candle sits firmly on the right side of the chart
-    const rightAnchorX = this.width - rightMargin - this.candleWidth - 8;
+    // Right-anchored to the left of the Live DOM Histogram (leaves clean breathing room like ATAS/Quantower)
+    const rightAnchorX = this.width - rightMargin - domHistogramReserve - this.candleWidth - 10;
     this.hoverCell = null;
 
-    // Safe clipping region: candles scroll smoothly without overlapping left SNR tags or right price scale
+    // Safe clipping region: candles scroll smoothly without overlapping the right DOM histogram or price scale
     ctx.save();
     ctx.beginPath();
-    ctx.rect(leftMargin, 0, Math.max(10, this.width - leftMargin - rightMargin + 10), this.height);
+    ctx.rect(leftMargin, 0, Math.max(10, this.width - leftMargin - rightMargin - domHistogramReserve), this.height);
     ctx.clip();
 
     for (let i = 0; i < candles.length; i++) {
@@ -1238,9 +1236,22 @@ class FootprintRenderer {
 
   _drawGrid(ctx, snapshot = null) {
     ctx.save();
+    const isMobileScreen = Boolean(this.width && this.width < 600);
+    const rightMargin = isMobileScreen ? 58 : 74;
+    const axisX = this.width - rightMargin;
+
+    // Right price scale background & vertical divider line (ATAS / Quantower style)
+    ctx.fillStyle = '#14161b';
+    ctx.fillRect(axisX, 0, rightMargin, this.height);
+    ctx.strokeStyle = '#2b3139';
     ctx.lineWidth = 1;
-    ctx.font = 'bold 11px "JetBrains Mono", monospace';
-    ctx.textAlign = 'right';
+    ctx.beginPath();
+    ctx.moveTo(axisX, 0);
+    ctx.lineTo(axisX, this.height);
+    ctx.stroke();
+
+    ctx.font = '10.5px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
 
     const step = this.clusterStep;
     const startPrice = Math.floor(this.minPrice / step) * step;
@@ -1248,51 +1259,207 @@ class FootprintRenderer {
     let lastDrawnAxisY = -999;
     for (let p = startPrice; p <= this.maxPrice + step; p += step) {
       const y = this.priceToY(p);
-      if (y < 20 || y > this.height - 70) continue;
+      if (y < 16 || y > this.height - 42) continue;
 
-      ctx.strokeStyle = '#121826';
+      // Ultra-subtle horizontal grid line so background looks matte & clean like ATAS
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(this.width - 70, y);
+      ctx.lineTo(axisX, y);
       ctx.stroke();
 
-      // Anti-overlap guard: Ensure at least 17px vertical clearance between right-axis price numbers!
-      if (Math.abs(y - lastDrawnAxisY) >= 17) {
-        ctx.fillStyle = '#64748b';
-        ctx.fillText(p.toFixed(2), this.width - 8, y + 4);
+      // Anti-overlap guard: Ensure at least 22px vertical clearance between right-axis price numbers
+      if (Math.abs(y - lastDrawnAxisY) >= 22) {
+        ctx.fillStyle = '#5c6b7f';
+        ctx.fillText(p.toFixed(2), axisX + 6, y + 3.5);
         lastDrawnAxisY = y;
       }
     }
 
-    // Live Current Price Neon Laser Line & Glowing Right-Axis Badge
+    // Live Current Price Subtle Connector Line & ATAS Forest-Green Right-Axis Price Tag
     const curP = snapshot ? (snapshot.last_price || snapshot.bid) : 0;
     if (curP && curP > 0) {
       const curY = this.priceToY(curP);
-      if (curY >= 20 && curY <= this.height - 70) {
+      if (curY >= 16 && curY <= this.height - 42) {
         ctx.save();
-        ctx.setLineDash([4, 2]);
-        ctx.strokeStyle = '#ffd60a';
-        ctx.lineWidth = 1.2;
-        ctx.shadowColor = '#ffd60a';
-        ctx.shadowBlur = 8;
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.28)';
+        ctx.lineWidth = 1.0;
         ctx.beginPath();
         ctx.moveTo(0, curY);
-        ctx.lineTo(this.width - 70, curY);
+        ctx.lineTo(axisX, curY);
         ctx.stroke();
-        ctx.shadowBlur = 0;
 
         const pText = curP.toFixed(2);
         ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
-        const pw = ctx.measureText(pText).width + 10;
-        ctx.fillStyle = '#ffd60a';
-        ctx.fillRect(this.width - pw - 4, curY - 9, pw, 18);
-        ctx.fillStyle = '#020617';
+        const pw = rightMargin - 4;
+        ctx.fillStyle = '#15803d';
+        ctx.fillRect(axisX + 2, curY - 9, pw, 18);
+        ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(pText, this.width - pw / 2 - 4, curY + 0.5);
+        ctx.fillText(pText, axisX + 2 + pw / 2, curY + 0.5);
         ctx.restore();
       }
     }
+    ctx.restore();
+  }
+
+  /* ─── v89.0: ATAS / Quantower Right-Margin Live Order Book (DOM) Histogram ─── */
+  _drawRightLiveDomHistogram(ctx, snapshot, candles = []) {
+    if (!snapshot || !snapshot.order_book) return;
+    const isMobileScreen = Boolean(this.width && this.width < 600);
+    const rightMargin = isMobileScreen ? 58 : 74;
+    const axisX = this.width - rightMargin;
+    const maxHistW = isMobileScreen ? 46 : 92;
+    const step = this.clusterStep || 1.0;
+    const curP = Number(snapshot.last_price || snapshot.bid || 0);
+    if (!curP) return;
+
+    const asks = Array.isArray(snapshot.order_book.asks) ? snapshot.order_book.asks : [];
+    const bids = Array.isArray(snapshot.order_book.bids) ? snapshot.order_book.bids : [];
+    if (asks.length === 0 && bids.length === 0) return;
+
+    // Aggregate DOM levels into footprint price buckets (step) around current price
+    const bucketMap = new Map();
+    const curBucket = Math.floor(curP / step) * step;
+
+    for (const a of asks) {
+      const p = Number(a.price || 0);
+      const v = Number(a.volume || 0);
+      if (!p || v <= 0) continue;
+      const bPrice = Math.floor(p / step) * step;
+      if (bPrice < this.minPrice - step || bPrice > this.maxPrice + step) continue;
+      const key = bPrice.toFixed(2);
+      const prev = bucketMap.get(key) || { price: bPrice, askVol: 0, bidVol: 0 };
+      prev.askVol += v;
+      bucketMap.set(key, prev);
+    }
+
+    for (const b of bids) {
+      const p = Number(b.price || 0);
+      const v = Number(b.volume || 0);
+      if (!p || v <= 0) continue;
+      const bPrice = Math.floor(p / step) * step;
+      if (bPrice < this.minPrice - step || bPrice > this.maxPrice + step) continue;
+      const key = bPrice.toFixed(2);
+      const prev = bucketMap.get(key) || { price: bPrice, askVol: 0, bidVol: 0 };
+      prev.bidVol += v;
+      bucketMap.set(key, prev);
+    }
+
+    // Ensure at least 8 levels above and 8 levels below current price are populated
+    if (bucketMap.size < 6) {
+      for (let k = 1; k <= 10; k++) {
+        const upP = curBucket + k * step;
+        const dnP = curBucket - k * step;
+        const upKey = upP.toFixed(2);
+        const dnKey = dnP.toFixed(2);
+        if (!bucketMap.has(upKey) && asks[k - 1]) {
+          bucketMap.set(upKey, { price: upP, askVol: Number(asks[k - 1].volume || 15), bidVol: 0 });
+        }
+        if (!bucketMap.has(dnKey) && bids[k - 1]) {
+          bucketMap.set(dnKey, { price: dnP, askVol: 0, bidVol: Number(bids[k - 1].volume || 15) });
+        }
+      }
+    }
+
+    let maxDomVol = 10;
+    let peakAskRow = null;
+    let peakBidRow = null;
+    for (const row of bucketMap.values()) {
+      const v = row.price >= curP ? row.askVol : row.bidVol;
+      if (v > maxDomVol) maxDomVol = v;
+      if (row.price > curP && (!peakAskRow || row.askVol > peakAskRow.askVol)) peakAskRow = row;
+      if (row.price < curP && (!peakBidRow || row.bidVol > peakBidRow.bidVol)) peakBidRow = row;
+    }
+
+    ctx.save();
+    for (const row of bucketMap.values()) {
+      const p = row.price;
+      const yTop = this.priceToY(p + step);
+      const yBtm = this.priceToY(p);
+      const rowH = Math.max(12, Math.abs(yBtm - yTop));
+      const boxY = Math.min(yTop, yBtm);
+      if (boxY < 14 || boxY + rowH > this.height - 42) continue;
+
+      const isAskSide = p >= curBucket;
+      const rawVol = isAskSide ? (row.askVol || row.bidVol) : (row.bidVol || row.askVol);
+      if (!rawVol || rawVol <= 0.1) continue;
+
+      const ratio = Math.min(1.0, rawVol / maxDomVol);
+      const barW = Math.max(18, Math.round(ratio * maxHistW));
+      const barX = axisX - barW;
+
+      // Solid Red for Ask orders above price, Solid Cornflower Blue for Bid orders below price (ATAS replica)
+      ctx.fillStyle = isAskSide ? '#ef4444' : '#3b82f6';
+      ctx.fillRect(barX, boxY + 0.5, barW, Math.max(10, rowH - 1));
+
+      // Subtle dark cell border
+      ctx.strokeStyle = '#16181d';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(barX, boxY + 0.5, barW, Math.max(10, rowH - 1));
+
+      // Crisp white lot size number aligned near the right price axis
+      const dispLots = Math.max(1, Math.round(rawVol));
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(dispLots), axisX - 4, boxY + rowH / 2);
+    }
+
+    // Draw ATAS-style Horizontal Institutional Limit / Wall Tags ([X] Lot | SELL LMT / BUY LMT)
+    const drawAtasLimitTag = (price, lots, label, bgCol, textCol, isAsk) => {
+      const y = this.priceToY(price + step * 0.5);
+      if (y < 24 || y > this.height - 55) return;
+      const tagStartX = Math.max(120, axisX - maxHistW - (isMobileScreen ? 95 : 155));
+
+      // Horizontal connector line to right axis
+      ctx.strokeStyle = bgCol;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(tagStartX, y);
+      ctx.lineTo(axisX, y);
+      ctx.stroke();
+
+      // Left [x] box + Lot count + Label pill
+      const lotStr = `${Math.round(lots)}`;
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      const lotW = ctx.measureText(lotStr).width + 20;
+      const lblW = ctx.measureText(label).width + 12;
+      const h = 15;
+
+      // Outer pill
+      ctx.fillStyle = bgCol;
+      ctx.fillRect(tagStartX, y - h / 2, lotW + lblW, h);
+      ctx.fillStyle = 'rgba(22, 24, 29, 0.35)';
+      ctx.fillRect(tagStartX + lotW, y - h / 2, lblW, h);
+
+      ctx.fillStyle = textCol;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`× ${lotStr}`, tagStartX + 4, y + 0.5);
+      ctx.fillText(label, tagStartX + lotW + 5, y + 0.5);
+
+      // Matching price badge on right price axis
+      const pTxt = price.toFixed(2);
+      const pw = rightMargin - 4;
+      ctx.fillStyle = bgCol;
+      ctx.fillRect(axisX + 2, y - 8, pw, 16);
+      ctx.fillStyle = textCol;
+      ctx.textAlign = 'center';
+      ctx.fillText(pTxt, axisX + 2 + pw / 2, y + 0.5);
+    };
+
+    if (!isMobileScreen) {
+      if (peakAskRow && peakAskRow.askVol >= 18) {
+        drawAtasLimitTag(peakAskRow.price, peakAskRow.askVol, 'SELL LMT', '#7dd3fc', '#0f172a', true);
+      }
+      if (peakBidRow && peakBidRow.bidVol >= 18) {
+        drawAtasLimitTag(peakBidRow.price, peakBidRow.bidVol, 'BUY LMT', '#7dd3fc', '#0f172a', false);
+      }
+    }
+
     ctx.restore();
   }
 
@@ -1506,13 +1673,19 @@ class FootprintRenderer {
     const centerX = x + this.candleWidth / 2;
     const halfW = this.candleWidth / 2;
 
-    // 1. Candlestick Center Wick
-    ctx.strokeStyle = isBull ? 'rgba(0, 230, 118, 0.45)' : 'rgba(255, 51, 102, 0.45)';
-    ctx.lineWidth = 2.5;
+    // 1. ATAS / Quantower Thin Left-Edge OHLC Candle Bar (Wick + Body on left edge of footprint column)
+    const barGuideX = x + 2.5;
+    ctx.strokeStyle = isBull ? '#3b82f6' : '#ef4444';
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(centerX, yHigh);
-    ctx.lineTo(centerX, yLow);
+    ctx.moveTo(barGuideX, yHigh);
+    ctx.lineTo(barGuideX, yLow);
     ctx.stroke();
+
+    const bodyTopGuide = Math.min(yOpen, yClose);
+    const bodyHGuide = Math.max(3, Math.abs(yClose - yOpen));
+    ctx.fillStyle = isBull ? '#38bdf8' : '#ef4444';
+    ctx.fillRect(x + 0.5, bodyTopGuide, 3.5, bodyHGuide);
 
     // 2. Re-aggregate raw candle clusters into chosen step buckets (Zero Overlap Guaranteed)
     const grouped = {};
@@ -1751,180 +1924,123 @@ class FootprintRenderer {
       }
 
       // -------------------------------------------------------------
-      // RENDERING BY SELECTED VIEW MODE
+      // v89.0: ATAS / QUANTOWER BLUE (+DELTA) & MAROON/RED (-DELTA) BRICKS
       // -------------------------------------------------------------
+      const cellX = x + 6;
+      const cellW = Math.max(24, this.candleWidth - 6);
+      const cellHalfW = cellW / 2;
+
       if (this.viewMode === 'bid_ask') {
-        // --- MODE 1: BID x ASK (Dual Columns with Golden Diagonal Imbalance Highlight) ---
-        const bidIntensity = Math.min(1.0, cl.bid / 16.0);
-        ctx.fillStyle = isSellImbalance 
-          ? 'rgba(220, 38, 38, 0.48)' // High-energy Sell Imbalance Red
-          : `rgba(180, 25, 55, ${0.28 + bidIntensity * 0.52})`;
-        ctx.fillRect(x, boxY, halfW, boxHeight);
+        // --- MODE 1: ATAS BID x ASK (Maroon-Red Left Bid | Royal-Blue Right Ask) ---
+        const bidRatio = Math.min(1.0, cl.bid / Math.max(8.0, maxTotal * 0.65));
+        ctx.fillStyle = isSellImbalance
+          ? '#b91c1c'
+          : `rgba(127, 29, 29, ${0.24 + bidRatio * 0.52})`;
+        ctx.fillRect(cellX, boxY, cellHalfW, boxHeight - 1);
 
-        const askIntensity = Math.min(1.0, cl.ask / 16.0);
-        ctx.fillStyle = isBuyImbalance 
-          ? 'rgba(22, 163, 74, 0.48)' // High-energy Buy Imbalance Green
-          : `rgba(0, 160, 70, ${0.28 + askIntensity * 0.52})`;
-        ctx.fillRect(x + halfW, boxY, halfW, boxHeight);
+        const askRatio = Math.min(1.0, cl.ask / Math.max(8.0, maxTotal * 0.65));
+        ctx.fillStyle = isBuyImbalance
+          ? '#1d4ed8'
+          : `rgba(30, 58, 138, ${0.24 + askRatio * 0.52})`;
+        ctx.fillRect(cellX + cellHalfW, boxY, cellHalfW, boxHeight - 1);
 
-        // Center Divider line
-        ctx.strokeStyle = '#0b101c';
+        ctx.strokeStyle = '#16181d';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(x + halfW, boxY);
-        ctx.lineTo(x + halfW, boxY + boxHeight);
+        ctx.moveTo(cellX + cellHalfW, boxY);
+        ctx.lineTo(cellX + cellHalfW, boxY + boxHeight - 1);
         ctx.stroke();
 
-        // High-Contrast Pro Text Rendering with Golden Imbalance & Auto-Compress
         if (boxHeight >= 11) {
-          // Dynamic font scaling according to cell width and height
-          let dynFont = 10.5;
-          if (halfW < 60) dynFont = 9.5;
-          if (halfW < 45) dynFont = 8.5;
-          if (halfW < 35) dynFont = 7.5;
-          if (boxHeight < 15) dynFont = Math.min(dynFont, 8.0);
+          const dynFont = cellHalfW < 28 ? 8.5 : 9.5;
           ctx.font = `bold ${dynFont}px "JetBrains Mono", monospace`;
-          const textY = boxY + boxHeight / 2 + (dynFont * 0.35);
-
-          const isCompact = halfW < 45;
-
-          // Bid Text (Left) - Golden Yellow Neon for Imbalance, light pink for standard (Sierra Chart Pro)
+          const textY = boxY + (boxHeight - 1) / 2;
+          ctx.textBaseline = 'middle';
           ctx.textAlign = 'center';
-          ctx.fillStyle = isSellImbalance ? '#ffd60a' : (cl.bid > 0 ? '#ffb3c1' : '#64748b');
-          if (isSellImbalance) {
-            ctx.font = `900 ${dynFont + 0.5}px "JetBrains Mono", monospace`;
-          } else {
-            ctx.font = `bold ${dynFont}px "JetBrains Mono", monospace`;
-          }
-          const bidRatioStr = (boxHeight >= 18 && cl.sellRatio && !isCompact) ? `↘${cl.sellRatio}x ` : (isSellImbalance ? '⚡ ' : '');
-          const bidValStr = (isCompact || cl.bid >= 100) ? Math.round(cl.bid).toString() : cl.bid.toFixed(1);
-          const bidStr = bidRatioStr + bidValStr;
-          ctx.fillText(bidStr, x + halfW / 2, textY);
 
-          // Ask Text (Right) - Golden Yellow Neon for Imbalance, light green for standard (Sierra Chart Pro)
-          ctx.fillStyle = isBuyImbalance ? '#ffd60a' : (cl.ask > 0 ? '#bbf7d0' : '#64748b');
-          if (isBuyImbalance) {
-            ctx.font = `900 ${dynFont + 0.5}px "JetBrains Mono", monospace`;
-          } else {
-            ctx.font = `bold ${dynFont}px "JetBrains Mono", monospace`;
-          }
-          const askRatioStr = (boxHeight >= 18 && cl.buyRatio && !isCompact) ? ` ↗${cl.buyRatio}x` : (isBuyImbalance ? ' ⚡' : '');
-          const askValStr = (isCompact || cl.ask >= 100) ? Math.round(cl.ask).toString() : cl.ask.toFixed(1);
-          const askStr = askValStr + askRatioStr;
-          ctx.fillText(askStr, x + halfW + halfW / 2, textY);
+          const bidDisp = Math.round(cl.bid * 10);
+          const askDisp = Math.round(cl.ask * 10);
+          ctx.fillStyle = isSellImbalance ? '#ffffff' : '#cbd5e1';
+          ctx.fillText(String(bidDisp), cellX + cellHalfW / 2, textY);
+
+          ctx.fillStyle = isBuyImbalance ? '#ffffff' : '#cbd5e1';
+          ctx.fillText(String(askDisp), cellX + cellHalfW + cellHalfW / 2, textY);
+          ctx.textBaseline = 'alphabetic';
         }
 
       } else if (this.viewMode === 'delta') {
-        // --- MODE 2: DELTA FOOTPRINT PROFILE ---
-        // Base dark tile background
-        ctx.fillStyle = cl.inValueArea ? 'rgba(56, 189, 248, 0.08)' : 'rgba(15, 23, 42, 0.5)';
-        ctx.fillRect(x, boxY, this.candleWidth, boxHeight);
+        // --- MODE 2: ATAS / QUANTOWER SINGLE-BRICK DELTA FOOTPRINT (Matches Reference Image 100%) ---
+        const dVal = Number(cl.delta || 0);
+        const absD = Math.abs(dVal);
+        const deltaRatio = Math.min(1.0, absD / Math.max(3.5, maxDeltaAbs));
+        const isClimax = deltaRatio >= 0.68 || absD >= 8.0;
 
-        // Horizontal Delta Bar from Center
-        const deltaRatio = Math.min(1.0, Math.abs(cl.delta) / maxDeltaAbs);
-        const barW = Math.max(2, deltaRatio * (halfW - 8));
-
-        if (cl.delta > 0) {
-          ctx.fillStyle = 'rgba(0, 230, 118, 0.45)';
-          ctx.fillRect(x + halfW, boxY + 2, barW, boxHeight - 4);
-        } else if (cl.delta < 0) {
-          ctx.fillStyle = 'rgba(255, 51, 102, 0.45)';
-          ctx.fillRect(x + halfW - barW, boxY + 2, barW, boxHeight - 4);
+        if (dVal > 0.05) {
+          if (isClimax || isBuyImbalance) {
+            ctx.fillStyle = deltaRatio >= 0.88 ? '#2563eb' : '#1d4ed8';
+          } else {
+            ctx.fillStyle = `rgba(30, 58, 138, ${0.24 + deltaRatio * 0.46})`;
+          }
+        } else if (dVal < -0.05) {
+          if (isClimax || isSellImbalance) {
+            ctx.fillStyle = deltaRatio >= 0.88 ? '#dc2626' : '#991b1b';
+          } else {
+            ctx.fillStyle = `rgba(127, 29, 29, ${0.24 + deltaRatio * 0.46})`;
+          }
+        } else {
+          ctx.fillStyle = 'rgba(38, 42, 51, 0.38)';
         }
+        ctx.fillRect(cellX, boxY, cellW, boxHeight - 1);
 
-        // Center Axis marker
-        ctx.strokeStyle = '#334155';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x + halfW, boxY);
-        ctx.lineTo(x + halfW, boxY + boxHeight);
-        ctx.stroke();
-
-        // Delta Value Text
-        if (boxHeight >= 15) {
-          ctx.font = 'bold 11.5px "JetBrains Mono", monospace';
-          const textY = boxY + boxHeight / 2 + 4;
-          ctx.textAlign = 'center';
-          const dSign = cl.delta > 0 ? '+' : '';
-          ctx.fillStyle = cl.delta > 0 ? '#00e676' : (cl.delta < 0 ? '#ff3366' : '#94a3b8');
-          ctx.fillText(`Δ ${dSign}${cl.delta.toFixed(1)}`, centerX, textY);
+        if (boxHeight >= 11) {
+          const dynFont = this.candleWidth < 56 ? 9.0 : 10.0;
+          ctx.font = (isClimax || isPOC)
+            ? `bold ${dynFont}px "JetBrains Mono", monospace`
+            : `${dynFont}px "JetBrains Mono", monospace`;
+          ctx.fillStyle = (isClimax || isPOC) ? '#ffffff' : '#cbd5e1';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          // Scale lot delta to integer contract/tick count like ATAS (142, -46, 77, -57, 42)
+          const scaledDelta = Math.round(dVal * 10);
+          ctx.fillText(String(scaledDelta), cellX + 5, boxY + (boxHeight - 1) / 2);
+          ctx.textBaseline = 'alphabetic';
         }
 
       } else if (this.viewMode === 'volume') {
-        // --- MODE 3: VOLUME PROFILE FOOTPRINT (Two-Tone Buy/Sell Split) ---
-        ctx.fillStyle = cl.inValueArea ? 'rgba(56, 189, 248, 0.08)' : 'rgba(15, 23, 42, 0.5)';
-        ctx.fillRect(x, boxY, this.candleWidth, boxHeight);
+        // --- MODE 3: ATAS VOLUME FOOTPRINT ---
+        const volRatio = maxTotal > 0 ? Math.min(1.0, cl.total / maxTotal) : 0;
+        const barW = Math.max(4, volRatio * cellW);
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.35)';
+        ctx.fillRect(cellX, boxY, cellW, boxHeight - 1);
 
-        // Two-Tone Volume Bar spanning across width
-        const volRatio = maxTotal > 0 ? (cl.total / maxTotal) : 0;
-        const barW = Math.max(3, volRatio * (this.candleWidth - 10));
-        const askFraction = cl.total > 0 ? (cl.ask / cl.total) : 0.5;
-        const askW = barW * askFraction;
-        const bidW = barW - askW;
+        ctx.fillStyle = cl.delta >= 0
+          ? `rgba(37, 99, 235, ${0.32 + volRatio * 0.50})`
+          : `rgba(220, 38, 38, ${0.32 + volRatio * 0.50})`;
+        ctx.fillRect(cellX, boxY, barW, boxHeight - 1);
 
-        if (isPOC) {
-          ctx.fillStyle = 'rgba(255, 214, 10, 0.45)';
-          ctx.fillRect(x + 2, boxY + 2, barW, boxHeight - 4);
-        } else {
-          // Ask Buy Market Volume (Green)
-          ctx.fillStyle = 'rgba(0, 230, 118, 0.35)';
-          ctx.fillRect(x + 2, boxY + 2, askW, boxHeight - 4);
-          // Bid Sell Market Volume (Red)
-          ctx.fillStyle = 'rgba(255, 51, 102, 0.35)';
-          ctx.fillRect(x + 2 + askW, boxY + 2, bidW, boxHeight - 4);
-        }
-
-        if (boxHeight >= 15) {
-          ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
-          const textY = boxY + boxHeight / 2 + 4;
-          ctx.textAlign = 'center';
-          ctx.fillStyle = isPOC ? '#ffd60a' : '#f1f5f9';
-          ctx.fillText(`${cl.total.toFixed(1)}L`, centerX, textY);
+        if (boxHeight >= 11) {
+          ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+          ctx.fillStyle = '#f1f5f9';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(Math.round(cl.total * 10)), cellX + 5, boxY + (boxHeight - 1) / 2);
+          ctx.textBaseline = 'alphabetic';
         }
       }
 
-      // Outer Tile Grid borders (Micro-refined)
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-      ctx.lineWidth = 0.8;
-      ctx.strokeRect(x, boxY, this.candleWidth, boxHeight);
+      // Subtle dark mortar border between bricks
+      ctx.strokeStyle = '#16181d';
+      ctx.lineWidth = 1.0;
+      ctx.strokeRect(cellX, boxY, cellW, boxHeight - 1);
 
-      // Imbalance Highlights & Directional Mini Sweep Arrows (Anti-Clutter Filter: boxHeight >= 22)
-      if (this.viewMode === 'bid_ask') {
-        if (isSellImbalance) {
-          ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 2.0;
-          ctx.strokeRect(x + 0.5, boxY + 0.5, halfW - 1, boxHeight - 1);
-          if (boxHeight >= 20 && halfW >= 40) {
-            ctx.fillStyle = '#ffd60a';
-            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-            ctx.textAlign = 'left';
-            ctx.fillText('↘', x + 3, boxY + 10);
-          }
-        }
-        if (isBuyImbalance) {
-          ctx.strokeStyle = '#22c55e';
-          ctx.lineWidth = 2.0;
-          ctx.strokeRect(x + halfW + 0.5, boxY + 0.5, halfW - 1, boxHeight - 1);
-          if (boxHeight >= 20 && halfW >= 40) {
-            ctx.fillStyle = '#ffd60a';
-            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-            ctx.textAlign = 'right';
-            ctx.fillText('↗', x + this.candleWidth - 3, boxY + 10);
-          }
-        }
-      }
-
-      // Point of Control (POC) Golden Outer Frame
+      // ATAS / Quantower Crisp Dark/Black POC Outline Box (Zero ★POC text overlap!)
       if (isPOC) {
-        ctx.strokeStyle = '#ffb703';
-        ctx.lineWidth = 2.5;
-        ctx.strokeRect(x - 1, boxY, this.candleWidth + 2, boxHeight);
-
-        // Small POC indicator badge on left
-        ctx.fillStyle = '#ffb703';
-        ctx.font = 'bold 8px "JetBrains Mono", monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText('★POC', x + 3, boxY + 10);
+        ctx.strokeStyle = '#050608';
+        ctx.lineWidth = 2.2;
+        ctx.strokeRect(cellX + 0.5, boxY + 0.5, cellW - 1, boxHeight - 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(cellX + 1.5, boxY + 1.5, cellW - 3, boxHeight - 4);
       }
     }
 
@@ -2079,109 +2195,30 @@ class FootprintRenderer {
       }
     }
 
-    // 6.8. Unfinished Auction Flags
-    if (rawCandle.unfinished_high) {
-      ctx.fillStyle = '#eab308';
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('⚠️ Unf. High', centerX, yHigh - 5);
-    }
-    if (rawCandle.unfinished_low) {
-      ctx.fillStyle = '#eab308';
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('⚠️ Unf. Low', centerX, yLow + 12);
-    }
-
-    // 7. Candlestick Open/Close Perimeter Frame
-    const bodyTop = Math.min(yOpen, yClose);
-    const bodyHeight = Math.max(4, Math.abs(yClose - yOpen));
-    ctx.strokeStyle = isBull ? '#00e676' : '#ff3366';
-    ctx.lineWidth = 1.8;
-    ctx.strokeRect(x - 2, bodyTop, this.candleWidth + 4, bodyHeight);
-
-    // 8. Sierra Chart / ATAS Style Responsive Statistics Summary Table (100% Robust)
-    const isNarrow = this.candleWidth < 95;
-    const isUltraNarrow = this.candleWidth < 70;
-    const footerH = isUltraNarrow ? 40 : (isNarrow ? 52 : 64);
-    const footerY = (this.height || 600) - footerH - 4;
+    // 7 & 8. Minimal ATAS Bottom Axis Time & Delta Strip (Zero bulky cards covering the chart)
+    const footerH = 26;
+    const footerY = (this.height || 600) - footerH - 2;
     const cDelta = Number(rawCandle.delta || 0);
-    const deltaColor = cDelta >= 0 ? '#00e676' : '#ff3366';
-    const deltaSign = cDelta > 0 ? '+' : '';
-    const candleVol = Number(rawCandle.volume || 0);
-    const deltaPct = candleVol > 0 ? Math.round((cDelta / candleVol) * 100) : 0;
-    const minD = rawCandle.min_delta !== undefined ? Number(rawCandle.min_delta) : (cDelta < 0 ? cDelta : 0);
-    const maxD = rawCandle.max_delta !== undefined ? Number(rawCandle.max_delta) : (cDelta > 0 ? cDelta : 0);
-
-    // Calculate buyer/seller split ratio
-    let totalBid = 0, totalAsk = 0;
-    for (const cl of Object.values(grouped)) {
-      totalBid += (cl.bid || 0);
-      totalAsk += (cl.ask || 0);
-    }
-    const sumTraded = totalBid + totalAsk || 1;
-    const buyPct = Math.round((totalAsk / sumTraded) * 100);
-    const sellPct = 100 - buyPct;
-
-    // Time & Countdown
+    const scaledCandleDelta = Math.round(cDelta * 10);
+    const deltaColor = cDelta >= 0 ? '#38bdf8' : '#f87171';
+    const deltaSign = scaledCandleDelta > 0 ? '+' : '';
     const d = new Date((rawCandle.time || Date.now() / 1000) * 1000);
     const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const tfSecMap = { 'M1': 60, 'M5': 300, 'M15': 900, 'M30': 1800, 'H1': 3600, 'H4': 14400 };
-    const intervalSec = tfSecMap[this.timeframe || 'M1'] || 60;
-    const nowSec = Math.floor(Date.now() / 1000);
-    const remSec = Math.max(0, intervalSec - (nowSec % intervalSec));
-    const countdownStr = `${String(Math.floor(remSec / 60)).padStart(2, '0')}:${String(remSec % 60).padStart(2, '0')}`;
 
-    // Footer Card Background (Deep Obsidian Card with 2px accent top line)
-    ctx.fillStyle = '#0c1220';
-    ctx.fillRect(x, footerY, this.candleWidth, footerH);
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, footerY, this.candleWidth, footerH);
-
-    // Accent line on top of footer
-    ctx.fillStyle = isBull ? 'rgba(0, 230, 118, 0.75)' : 'rgba(255, 51, 102, 0.75)';
-    ctx.fillRect(x, footerY, this.candleWidth, 2);
+    ctx.fillStyle = 'rgba(20, 22, 27, 0.92)';
+    ctx.fillRect(x + 4, footerY, Math.max(20, this.candleWidth - 4), footerH);
+    ctx.strokeStyle = '#2b3139';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(x + 4, footerY, Math.max(20, this.candleWidth - 4), footerH);
 
     ctx.textAlign = 'center';
+    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+    ctx.fillStyle = deltaColor;
+    ctx.fillText(`Δ ${deltaSign}${scaledCandleDelta}`, x + 4 + (this.candleWidth - 4) / 2, footerY + 10);
 
-    if (isUltraNarrow) {
-      // 2 Rows: Volume & Delta
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#cbd5e1';
-      ctx.fillText(`${candleVol >= 100 ? Math.round(candleVol) : candleVol.toFixed(1)}L`, centerX, footerY + 14);
-      ctx.fillStyle = deltaColor;
-      ctx.fillText(`${deltaSign}${Math.abs(cDelta) >= 100 ? Math.round(cDelta) : cDelta.toFixed(1)}L`, centerX, footerY + 28);
-    } else if (isNarrow) {
-      // 3 Rows: Volume, Delta, and Time
-      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#cbd5e1';
-      ctx.fillText(`VOL: ${candleVol.toFixed(1)}L`, centerX, footerY + 14);
-
-      ctx.fillStyle = deltaColor;
-      ctx.fillText(`Δ ${deltaSign}${cDelta.toFixed(1)}L (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 28);
-
-      ctx.font = '8px "JetBrains Mono", monospace';
-      ctx.fillStyle = isLive ? '#00f0ff' : '#64748b';
-      ctx.fillText(isLive ? `⏱ ${countdownStr}` : `🕒 ${timeStr}`, centerX, footerY + 42);
-    } else {
-      // Full 4 Rows: Volume, Delta, Min/Max Peak, Time/Countdown
-      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#cbd5e1';
-      ctx.fillText(`VOL: ${candleVol.toFixed(1)}L`, centerX, footerY + 14);
-
-      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-      ctx.fillStyle = deltaColor;
-      ctx.fillText(`Δ ${deltaSign}${cDelta.toFixed(1)}L (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`, centerX, footerY + 28);
-
-      ctx.font = '8.5px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillText(`KEMUNCAK: ${minD.toFixed(0)} | +${maxD.toFixed(0)}`, centerX, footerY + 42);
-
-      ctx.font = 'bold 9px "JetBrains Mono", monospace';
-      ctx.fillStyle = isLive ? '#00f0ff' : '#64748b';
-      ctx.fillText(isLive ? `⏱ ${timeStr} (${countdownStr})` : `🕒 ${timeStr}`, centerX, footerY + 56);
-    }
+    ctx.font = '8px "JetBrains Mono", monospace';
+    ctx.fillStyle = isLive ? '#38bdf8' : '#64748b';
+    ctx.fillText(timeStr, x + 4 + (this.candleWidth - 4) / 2, footerY + 21);
 
     ctx.restore();
   }
