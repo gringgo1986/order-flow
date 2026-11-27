@@ -535,10 +535,11 @@ class App {
             this.bookmap.render(this.latestSnapshot);
           }
         }
-        const toastMsg = tier === 'noise' ? '🫧 Kategori: Semua Transaksi Pasaran (Termasuk Noise <10L)'
-          : (tier === 'normal' ? '🐋 Kategori: Normal Whale (≥12.0 Lot) [Potensi Win: 65%+]'
-          : (tier === 'major' ? '🏛️ Kategori: Major Institutional (≥35.0 Lot) [Potensi Win: 78%+]'
-          : (tier === 'mega' ? '👑 Kategori: Mega Shark (≥80.0 Lot) [Potensi Win: 88%-93%]' : '🚫 Buih: Dimatikan (Heatmap Sahaja)')));
+        const toastMsg = tier === 'noise' ? '🫧 Aktiviti: Semua Transaksi (≥5.0 Lot • Habuk <5L Ditapis)'
+          : (tier === 'smart' ? '🐟 Aktiviti: Smart Money / Scalping (≥15.0 Lot)'
+          : (tier === 'normal' ? '🦈 Aktiviti: Institusi / Jerung (≥30.0 Lot) [Potensi Win: 75%+]'
+          : (tier === 'major' ? '🏦 Aktiviti: Bank Utama / Whale (≥50.0 Lot) [Potensi Win: 85%+]'
+          : (tier === 'mega' ? '👑 Aktiviti: Bank Pusat / Extreme (≥70.0 Lot) [Potensi Win: 92%+]' : '🚫 Buih: Dimatikan (Heatmap Sahaja)'))));
         this.showToast(toastMsg);
       });
     }
