@@ -14,7 +14,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Gringgo Orderflow - Bookmap & Order Flow Trading Terminal</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=99.0">
+  <link rel="stylesheet" href="/static/css/style.css?v=99.1">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -297,10 +297,11 @@
             </select>
           </div>
 
-          <!-- Bubble Size Slider (Context-Aware: Bookmap Only) -->
-          <div id="bookmapBubbleWrap" style="display:inline-flex; align-items:center; gap:3px; margin-right:2px;" title="Sensitiviti saiz buble order flow">
+          <!-- Bubble Size Slider + Official Bookmap Heatmap Colormap Indicator (Context-Aware: Bookmap Only) -->
+          <div id="bookmapBubbleWrap" style="display:inline-flex; align-items:center; gap:5px; margin-right:2px;" title="Skala Warna Heatmap Bookmap: Hitam/Biru (Rendah) → Putih (Sederhana) → Kuning → Oren → Merah Pekat (Dinding Bank Maksimum)">
             <span class="tool-tag" style="font-size:9.5px; color:#38bdf8; font-weight:700;">🫧 Buih:</span>
-            <input type="range" id="sliderBubbleZoom" min="0.4" max="2.5" step="0.1" value="1.0" style="width:40px; cursor:pointer;">
+            <input type="range" id="sliderBubbleZoom" min="0.4" max="2.5" step="0.1" value="1.0" style="width:38px; cursor:pointer;">
+            <span style="display:inline-block; width:64px; height:11px; border-radius:2px; border:1px solid #475569; background:linear-gradient(90deg, #081524 0%, #0077b6 30%, #ffffff 50%, #ffe600 68%, #ff7700 84%, #e60000 100%);" title="Skala Kecairan Heatmap: Biru → Putih → Kuning → Oren → Merah (Paling Tebal)"></span>
           </div>
 
           <button class="tool-btn active" id="btnToggleSound" title="Makluman Bunyi Audio (Whale Ping & Sentuhan Zon)">🔊</button>
@@ -1010,10 +1011,10 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/static/js/bookmap.js?v=99.0"></script>
-  <script src="/static/js/footprint.js?v=99.0"></script>
-  <script src="/static/js/dom.js?v=99.0"></script>
-  <script src="/static/js/app.js?v=99.0"></script>
+  <script src="/static/js/bookmap.js?v=99.1"></script>
+  <script src="/static/js/footprint.js?v=99.1"></script>
+  <script src="/static/js/dom.js?v=99.1"></script>
+  <script src="/static/js/app.js?v=99.1"></script>
   <!-- Admin SaaS & User Management Modal (Customer Control Center) -->
   <div id="adminModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); z-index:99999; align-items:center; justify-content:center; padding:15px;">
     <div style="background:#090e1a; border:1px solid #f59e0b; border-radius:12px; width:100%; max-width:860px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 16px 48px rgba(0,0,0,0.9), 0 0 24px rgba(245,158,11,0.25); overflow:hidden; font-family:var(--font-sans);">
@@ -1154,7 +1155,7 @@
   <script>
     if ('serviceWorker' in navigator && !window.location.hostname.endsWith('.hf.space')) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=99.0').then(reg => {
+        navigator.serviceWorker.register('/sw.js?v=99.1').then(reg => {
           console.log('[PWA] Service Worker aktif:', reg.scope);
           // Check for immediate update
           reg.update();
