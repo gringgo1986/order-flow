@@ -31,7 +31,7 @@ class BookmapRenderer {
 
     // Controls & Toggles
     this.bubbleZoom = 1.0;
-    this.showVolumeZones = true;
+    this.showVolumeZones = false; // Bookmap X-Ray Clean Canvas: Zero BUY/SELL ZONE boxes over heatmap
     this.showVWAP = true;
     this.showPositions = true;
     this.showSessionLevels = true;
@@ -48,9 +48,9 @@ class BookmapRenderer {
     // Bookmap Pro v7.5 Interactive Settings (Clean Default Mode)
     this.bmPaletteMode = 'thermo'; // 'thermo' | 'cyber' | 'gold'
     this.bmWallFilterOnly = false; // false = all depth, true = >=30L walls only
-    this.bmShowBidAskChannel = false; // Default OFF so 1 crisp stepped price line is shown
+    this.bmShowBidAskChannel = true;  // Bookmap X-Ray Default ON: Dual Green Best Bid & Red Best Ask stepped lines
     this.bmShowWhaleLabels = true;    // Default ON so Whale & Jerung lot callouts are clearly visible
-    this.bmShowSharkWalls = true;     // Highlight top resting Shark/Jerung limit walls directly on Heatmap
+    this.bmShowSharkWalls = false;    // Bookmap X-Ray Clean Projection: Sizes are shown in Dual COB columns, zero floating text over heatmap
     this.bmShowCvdCurve = true;
     this.bmHalfSpan = 4.5; // Vertical price span (±$4.50 default)
     this.priceOffset = 0.0; // Vertical pan offset ($ above/below live price)
@@ -80,7 +80,7 @@ class BookmapRenderer {
     this.bmBubbleMinVol = 12.0;  // Threshold for bold lot size numbers on trade bubbles
     this._occupiedBadgeSlots = []; // Frame-by-frame anti-collision vertical slot registry
     this.bmContrastMode = 'MED'; // 'AUTO' | 'LOW' | 'MED' | 'HIGH'
-    this.bmShowSweeps = true;    // Liquidity Sweeps & Voids Visualizer
+    this.bmShowSweeps = false;   // Bookmap X-Ray Clean Canvas: Zero SWEEP & VOID text boxes over heatmap
     this._bmSweepEvents = [];    // Cached sweep events [{ id, price, time, vol, bias, badge }]
     this._prevDepthSnapshot = null;
     this._autoMinCut = 12.0;     // Dynamic threshold for AUTO contrast
@@ -678,14 +678,13 @@ class BookmapRenderer {
         [115.0, 225,  29,  72, 0.97]  // Ruby Red Institutional Wall
       ];
     } else {
-      // Authentic Bookmap Global+ CME MBO Thermal Spectrum (Zero Barcode / Pure Dark Void)
+      // Authentic Bookmap X-Ray Thermal Spectrum (Deep Slate Blue -> Cyan Blue -> Vivid Orange -> Bright Yellow -> Pure White Wall Core)
       stops = [
-        [22.0,  14,  38,  78, 0.28],  // Subtle Deep Navy Transition
-        [34.0,   0, 130, 195, 0.52],  // Steel Blue / Cyan Liquidity Shelf
-        [52.0,   0, 205, 240, 0.68],  // Bright Aqua Institutional Shelf
-        [72.0, 255, 196,  18, 0.84],  // Radiant Gold Major Wall
-        [94.0, 255,  92,   0, 0.92],  // Fiery Orange Jerung Wall
-        [118.0, 245,  25,  42, 0.96]  // Vivid Crimson Mega Shark Wall
+        [18.0,  16,  46,  82, 0.36],  // Deep X-Ray Slate Blue
+        [32.0,  28,  96, 152, 0.60],  // Medium X-Ray Steel Blue
+        [50.0, 235,  88,  14, 0.88],  // Bookmap X-Ray Vivid Orange Wall
+        [72.0, 250, 204,  21, 0.94],  // Bookmap X-Ray Bright Yellow Wall
+        [96.0, 255, 252, 225, 0.98]   // Bookmap X-Ray Pure White-Hot Institutional Wall
       ];
     }
 
@@ -1203,18 +1202,14 @@ class BookmapRenderer {
       ctx.setLineDash([3, 6]);
     }
 
-    // Draw Iconic Bookmap "NOW" Vertical Laser Time Line (Separating History Tape vs Live Resting Book Projection)
-    ctx.setLineDash([5, 3]);
-    ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 1.4;
-    ctx.shadowColor = '#fbbf24';
-    ctx.shadowBlur = 4;
+    // Draw Authentic Bookmap X-Ray Crisp White Vertical Timeline (Separating Historical Depth vs Current Order Book Projection)
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(226, 232, 240, 0.78)';
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.moveTo(this.NOW_X, this.CHART_TOP);
     ctx.lineTo(this.NOW_X, this.CHART_BOTTOM);
     ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.setLineDash([]);
 
     // Top label inside Live Resting Projection Zone
     ctx.fillStyle = '#fbbf24';
@@ -1240,7 +1235,7 @@ class BookmapRenderer {
 
     const PRICE_STEP = 0.10;
     const pxPerStep  = Math.max(2.4, Math.abs(this.priceToY(0) - this.priceToY(PRICE_STEP)));
-    const drawH = Math.max(1.8, pxPerStep * 0.85);
+    const drawH = Math.max(2.4, pxPerStep * 0.96);
 
     // 1. Historical Heatmap (CHART_LEFT -> NOW_X) with Authentic MBO Consumption Caps
     if (history && history.length >= 2) {
@@ -1754,117 +1749,100 @@ class BookmapRenderer {
     ctx.rect(this.CHART_LEFT, this.CHART_TOP, this.CHART_WIDTH, this.CHART_HEIGHT);
     ctx.clip();
 
-    const halfSpread = Math.max(0.08, (currentSpread || 0.24) * 0.5);
+    const halfSpread = Math.max(0.12, (currentSpread || 0.30) * 0.5);
 
-    // 1. Optional Bookmap Best Bid (Green) & Best Ask (Red) Spread Channel
+    // 1. Authentic Bookmap X-Ray Dual Best Ask (Red) & Best Bid (Green) Stepped Lines
     if (this.bmShowBidAskChannel) {
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'square';
       for (let i = 0; i < trades.length - 1; i++) {
         const t1 = trades[i];
         const t2 = trades[i + 1];
         const x1 = this.timeToX(t1.timestamp, now);
-        const x2 = this.timeToX(t2.timestamp, now);
-        if (x2 < this.CHART_LEFT - 10 || x1 > this.NOW_X + 5) continue;
+        const x2 = Math.min(this.NOW_X, this.timeToX(t2.timestamp, now));
+        if (x2 < this.CHART_LEFT - 10 || x1 > this.NOW_X + 2) continue;
 
         const askY1 = this.priceToY(t1.price + halfSpread);
         const askY2 = this.priceToY(t2.price + halfSpread);
         const bidY1 = this.priceToY(t1.price - halfSpread);
         const bidY2 = this.priceToY(t2.price - halfSpread);
 
-        // Subtle spread ribbon fill
-        ctx.fillStyle = 'rgba(0, 240, 255, 0.04)';
-        ctx.fillRect(x1, askY1, Math.max(1, x2 - x1), Math.max(1, bidY1 - askY1));
-
-        // Best Ask step (Red)
-        ctx.strokeStyle = 'rgba(255, 51, 102, 0.68)';
+        // Best Ask Stepped Line (Crisp Bookmap Red)
+        ctx.strokeStyle = '#ef4444';
         ctx.beginPath();
         ctx.moveTo(x1, askY1);
         ctx.lineTo(x2, askY1);
         ctx.lineTo(x2, askY2);
         ctx.stroke();
 
-        // Best Bid step (Green)
-        ctx.strokeStyle = 'rgba(0, 230, 118, 0.68)';
+        // Best Bid Stepped Line (Crisp Bookmap Green)
+        ctx.strokeStyle = '#22c55e';
         ctx.beginPath();
         ctx.moveTo(x1, bidY1);
         ctx.lineTo(x2, bidY1);
         ctx.lineTo(x2, bidY2);
         ctx.stroke();
       }
-    }
 
-    // 2. Center Stepped Last Trade Price Line
-    ctx.lineWidth = 2.0;
-    ctx.lineCap   = 'square';
+      // Connect last trade to NOW_X and project Dashed Current Best Bid & Ask across Projection Zone to CHART_RIGHT!
+      if (trades.length > 0 && currentPrice) {
+        const lastT = trades[trades.length - 1];
+        const lx = Math.min(this.NOW_X, this.timeToX(lastT.timestamp, now));
+        const curAskY = this.priceToY(currentPrice + halfSpread);
+        const curBidY = this.priceToY(currentPrice - halfSpread);
+        const lastAskY = this.priceToY(lastT.price + halfSpread);
+        const lastBidY = this.priceToY(lastT.price - halfSpread);
 
-    for (let i = 0; i < trades.length - 1; i++) {
-      const t1 = trades[i];
-      const t2 = trades[i + 1];
-
-      const x1 = this.timeToX(t1.timestamp, now);
-      const x2 = this.timeToX(t2.timestamp, now);
-      if (x2 < this.CHART_LEFT - 10 || x1 > this.NOW_X + 10) continue;
-
-      const y1 = this.priceToY(t1.price);
-      const y2 = this.priceToY(t2.price);
-      const isUp = t2.price >= t1.price;
-
-      ctx.strokeStyle = isUp ? '#00e676' : '#ff3366';
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y1);
-      ctx.stroke();
-
-      if (Math.abs(y2 - y1) > 0.4) {
+        ctx.strokeStyle = '#ef4444';
         ctx.beginPath();
-        ctx.moveTo(x2, y1);
+        ctx.moveTo(lx, lastAskY);
+        ctx.lineTo(this.NOW_X, lastAskY);
+        ctx.lineTo(this.NOW_X, curAskY);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.moveTo(lx, lastBidY);
+        ctx.lineTo(this.NOW_X, lastBidY);
+        ctx.lineTo(this.NOW_X, curBidY);
+        ctx.stroke();
+
+        // Dashed Current Best Ask (Red) & Best Bid (Green) in Projection Zone (NOW_X -> CHART_RIGHT)
+        ctx.save();
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 1.5;
+
+        ctx.strokeStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.moveTo(this.NOW_X, curAskY);
+        ctx.lineTo(this.CHART_RIGHT, curAskY);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.moveTo(this.NOW_X, curBidY);
+        ctx.lineTo(this.CHART_RIGHT, curBidY);
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else {
+      // Fallback Single Center Stepped Price Line
+      ctx.lineWidth = 1.8;
+      for (let i = 0; i < trades.length - 1; i++) {
+        const t1 = trades[i];
+        const t2 = trades[i + 1];
+        const x1 = this.timeToX(t1.timestamp, now);
+        const x2 = this.timeToX(t2.timestamp, now);
+        if (x2 < this.CHART_LEFT - 10 || x1 > this.NOW_X + 10) continue;
+        const y1 = this.priceToY(t1.price);
+        const y2 = this.priceToY(t2.price);
+        ctx.strokeStyle = t2.price >= t1.price ? '#22c55e' : '#ef4444';
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
       }
-
-      // Micro-Absorption Beacon (🛡️) on Stepped Price Line
-      const isAbsorptionBuy = (t2.buy_vol >= 10.0 && t2.price <= t1.price);
-      const isAbsorptionSell = (t2.sell_vol >= 10.0 && t2.price >= t1.price);
-      if (isAbsorptionBuy || isAbsorptionSell) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(x2, y2, 3.5, 0, Math.PI * 2);
-        ctx.fillStyle = isAbsorptionBuy ? '#00f0ff' : '#ff0077';
-        ctx.shadowColor = isAbsorptionBuy ? '#00f0ff' : '#ff0077';
-        ctx.shadowBlur = 5;
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.0;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.restore();
-      }
-    }
-
-    if (trades.length > 0 && currentPrice) {
-      const lastT = trades[trades.length - 1];
-      const lx = Math.min(this.NOW_X, this.timeToX(lastT.timestamp, now));
-      const ly = this.priceToY(lastT.price);
-      const cy = this.priceToY(currentPrice);
-      const isUp = currentPrice >= lastT.price;
-
-      ctx.strokeStyle = isUp ? '#00e676' : '#ff3366';
-      ctx.beginPath();
-      ctx.moveTo(lx, ly);
-      ctx.lineTo(this.NOW_X, ly);
-      if (Math.abs(cy - ly) > 0.4) {
-        ctx.lineTo(this.NOW_X, cy);
-      }
-      ctx.stroke();
-
-      // Live Pulsing Beacon Dot at NOW_X
-      ctx.beginPath();
-      ctx.arc(this.NOW_X, cy, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = isUp ? '#00e676' : '#ff3366';
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.4;
-      ctx.stroke();
     }
     ctx.restore();
   }
@@ -1956,11 +1934,13 @@ class BookmapRenderer {
       const cy = this.priceToY(cand.price);
       if (cx < this.CHART_LEFT - 40 || cx > this.NOW_X + 16) continue;
       if (cy < this.CHART_TOP - 20  || cy > this.CHART_BOTTOM + 20) continue;
-      const baseR = Math.sqrt(Math.max(0.2, cand.volume)) * 1.62 * (this.bubbleZoom || 1.0);
-      const r = Math.min(17.5, Math.max(3.2, baseR));
+      // Authentic Bookmap X-Ray Proportional 3D Bubble Radius (Tiny dots for ambient flow, large 3D spheres for institutional bursts)
+      const normV = Math.max(0.2, cand.volume);
+      const baseR = (normV < 12.0 ? (2.2 + Math.sqrt(normV) * 0.95) : (4.0 + Math.pow(normV - 10.0, 0.54) * 1.45)) * (this.bubbleZoom || 1.0);
+      const r = Math.min(20.5, Math.max(2.4, baseR));
 
-      // Skip smaller bubble if it physically overlaps an already-placed larger institutional bubble (stricter clearance on M15/M30/H1/H4)
-      const clearancePad = isHtfView ? 3.5 : -1.5;
+      // Skip smaller bubble if it physically overlaps an already-placed larger institutional bubble
+      const clearancePad = isHtfView ? 2.5 : -2.5;
       const overlaps = placedNodes.some(p => Math.hypot(p.cx - cx, p.cy - cy) < (p.r + r + clearancePad));
       if (!overlaps) {
         placedNodes.push({ ...cand, cx, cy, r });
@@ -1987,146 +1967,79 @@ class BookmapRenderer {
         this.hoverTrade = { ...t, cx, cy, r, buyV, sellV };
       }
 
-      // Outer Glow for Whale Trades (>= 14px radius)
-      if (r >= 14) {
-        const glowR = r * 1.65;
-        const glow = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, glowR);
-        const glowColor = buyRatio >= 0.5 ? 'rgba(0, 230, 118, 0.20)' : 'rgba(255, 51, 102, 0.20)';
-        glow.addColorStop(0, glowColor);
-        glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      // Authentic Bookmap X-Ray Matte 3D Sphere Shading (Seafoam Mint Green for Aggressive Buyers, Coral Brick Red for Aggressive Sellers)
+      const hx = cx - r * 0.30;
+      const hy = cy - r * 0.30;
+
+      // Soft drop shadow beneath 3D sphere
+      if (r >= 5.0) {
+        ctx.save();
         ctx.beginPath();
-        ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
-        ctx.fillStyle = glow;
+        ctx.arc(cx + 1.2, cy + 1.5, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
         ctx.fill();
+        ctx.restore();
       }
 
-      const hx = cx - r * 0.32;
-      const hy = cy - r * 0.32;
+      const makeBuyGrad = () => {
+        const g = ctx.createRadialGradient(hx, hy, r * 0.08, cx, cy, r);
+        g.addColorStop(0.00, '#86efac');
+        g.addColorStop(0.35, '#34d399');
+        g.addColorStop(0.75, '#059669');
+        g.addColorStop(1.00, '#064e3b');
+        return g;
+      };
+      const makeSellGrad = () => {
+        const g = ctx.createRadialGradient(hx, hy, r * 0.08, cx, cy, r);
+        g.addColorStop(0.00, '#fca5a5');
+        g.addColorStop(0.35, '#e15b5b');
+        g.addColorStop(0.75, '#991b1b');
+        g.addColorStop(1.00, '#450a0a');
+        return g;
+      };
 
-      if (buyRatio >= 0.92) {
-        const gBuy = ctx.createRadialGradient(hx, hy, r * 0.05, cx, cy, r);
-        gBuy.addColorStop(0.00, '#e8fdf0');
-        gBuy.addColorStop(0.18, '#4ade80');
-        gBuy.addColorStop(0.52, '#16a34a');
-        gBuy.addColorStop(0.82, '#14532d');
-        gBuy.addColorStop(1.00, '#042a15');
+      if (buyRatio >= 0.90) {
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fillStyle = gBuy;
+        ctx.fillStyle = makeBuyGrad();
         ctx.fill();
-      } else if (buyRatio <= 0.08) {
-        const gSell = ctx.createRadialGradient(hx, hy, r * 0.05, cx, cy, r);
-        gSell.addColorStop(0.00, '#fee2e2');
-        gSell.addColorStop(0.18, '#f87171');
-        gSell.addColorStop(0.52, '#dc2626');
-        gSell.addColorStop(0.82, '#7f1d1d');
-        gSell.addColorStop(1.00, '#3b0707');
+      } else if (buyRatio <= 0.10) {
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fillStyle = gSell;
+        ctx.fillStyle = makeSellGrad();
         ctx.fill();
       } else {
-        const splitY = cy - r + (2 * r * (1 - buyRatio));
+        // Authentic Bookmap X-Ray Angled 3D Split Sphere (Green Aggressive Buyers vs Red Aggressive Sellers)
+        const startAngle = -Math.PI * 0.75;
+        const buySweepAngle = Math.PI * 2 * buyRatio;
 
-        // Upper Buy Hemisphere
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(cx - r, cy - r, 2 * r, splitY - (cy - r));
-        ctx.clip();
-        const gBuy = ctx.createRadialGradient(hx, hy, r * 0.05, cx, cy, r);
-        gBuy.addColorStop(0.00, '#e8fdf0');
-        gBuy.addColorStop(0.18, '#4ade80');
-        gBuy.addColorStop(0.52, '#16a34a');
-        gBuy.addColorStop(0.82, '#14532d');
-        gBuy.addColorStop(1.00, '#042a15');
+        // 1. Base Sell Sphere
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fillStyle = gBuy;
+        ctx.fillStyle = makeSellGrad();
         ctx.fill();
-        ctx.restore();
 
-        // Lower Sell Hemisphere
+        // 2. Clipped Buy Sector
         ctx.save();
         ctx.beginPath();
-        ctx.rect(cx - r, splitY, 2 * r, (cy + r) - splitY);
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r + 0.5, startAngle, startAngle + buySweepAngle);
+        ctx.closePath();
         ctx.clip();
-        const gSell = ctx.createRadialGradient(hx, hy, r * 0.05, cx, cy, r);
-        gSell.addColorStop(0.00, '#fee2e2');
-        gSell.addColorStop(0.18, '#f87171');
-        gSell.addColorStop(0.52, '#dc2626');
-        gSell.addColorStop(0.82, '#7f1d1d');
-        gSell.addColorStop(1.00, '#3b0707');
+
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fillStyle = gSell;
+        ctx.fillStyle = makeBuyGrad();
         ctx.fill();
         ctx.restore();
-
-        // Crisp dividing seam line
-        ctx.beginPath();
-        ctx.moveTo(cx - r, splitY);
-        ctx.lineTo(cx + r, splitY);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
       }
 
-      // Specular highlight gloss
-      ctx.save();
+      // Subtle dark rim contour so overlapping 3D spheres stay distinct without garish yellow rings
       ctx.beginPath();
-      ctx.arc(hx, hy, Math.max(1.5, r * 0.28), 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-      ctx.fill();
-      ctx.restore();
-
-      // Bold lot volume label in center of bubble (for visible whales >= 14L or if filtered)
-      if (r >= 6.0 && (t.volume >= 14.0 || minVol > 0)) {
-        const fontSize = r >= 14 ? 9.5 : (r >= 10 ? 8.0 : 7.0);
-        ctx.font         = `bold ${fontSize}px "JetBrains Mono", monospace`;
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle    = '#ffffff';
-        ctx.shadowColor  = '#000000';
-        ctx.shadowBlur   = 5;
-        ctx.fillText(t.volume.toFixed(1), cx, cy + 1);
-        ctx.shadowBlur   = 0;
-      }
-
-      // Institutional Halo Rings for Whale Categories
-      if (t.volume >= 80.0) {
-        // Mega Shark (≥80L): Double Crimson-Gold Crown Halo
-        ctx.save();
-        ctx.strokeStyle = '#f43f5e';
-        ctx.lineWidth = 2.0;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 2.5, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.strokeStyle = '#ffd60a';
-        ctx.lineWidth = 1.3;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 5, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      } else if (t.volume >= 35.0) {
-        // Major Institutional (≥35L): Radiant Amber Halo
-        ctx.save();
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 2.2, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      } else if (t.is_large && r >= 13) {
-        // Normal Whale (≥12L): Subtle Cyan Ring
-        ctx.save();
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 1.4, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(5, 10, 20, 0.55)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -3229,168 +3142,150 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── High-Resolution Right COB: Harga & Lot Pesanan Bank (Bida & Tanya) ─── */
+  /* ─── Authentic Bookmap X-Ray Dual COB Columns: Price | COB (Order Book) | COB (Cumulated Order Book) ─── */
   _drawCOB(ctx, orderBook, currentPrice, bid, ask) {
     ctx.save();
     const sx = this.CHART_RIGHT;
     const sw = this.COB_WIDTH;
+    const isMob = this.isMobileScreen;
 
-    // Dark sleek background
-    ctx.fillStyle = '#060a14';
+    // Bookmap X-Ray dark slate panel background
+    ctx.fillStyle = '#18222f';
     ctx.fillRect(sx, 0, sw, this.height);
 
-    // High-tech Neon Vertical Separator
-    ctx.strokeStyle = '#00d4ff';
-    ctx.lineWidth   = 1.5;
-    ctx.shadowColor = '#00d4ff';
-    ctx.shadowBlur  = 6;
-    ctx.beginPath();
-    ctx.moveTo(sx, 0);
-    ctx.lineTo(sx, this.height);
-    ctx.stroke();
-    ctx.shadowBlur  = 0;
+    // Sub-column layout: Price Axis | COB 1 (Limit Order Book) | COB 2 (Cumulated Order Book)
+    const priceW = isMob ? 38 : 46;
+    const cob1W  = isMob ? 40 : 41;
+    const cob2W  = isMob ? 0  : (sw - priceW - cob1W);
+    const col1X  = sx + priceW;
+    const col2X  = col1X + cob1W;
 
-    // Header: HARGA ($) | LOT BANK (L)
-    const hdrH = 22;
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
-    ctx.fillRect(sx, 0, sw, hdrH);
-    ctx.strokeStyle = '#1e293b';
+    // Vertical column dividers
+    ctx.strokeStyle = 'rgba(71, 85, 105, 0.45)';
     ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx, 0); ctx.lineTo(sx, this.height);
+    ctx.moveTo(col1X, 0); ctx.lineTo(col1X, this.height);
+    if (cob2W > 0) {
+      ctx.moveTo(col2X, 0); ctx.lineTo(col2X, this.height);
+    }
+    ctx.stroke();
+
+    // Header Strip: PRICE | COB | COB
+    const hdrH = 20;
+    ctx.fillStyle = '#0f1722';
+    ctx.fillRect(sx, 0, sw, hdrH);
+    ctx.strokeStyle = '#334155';
     ctx.strokeRect(sx, 0, sw, hdrH);
 
     ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('HARGA', sx + 5, 14.5);
-
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillText('LOT BANK', sx + sw - 5, 14.5);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'center';
+    ctx.fillText('COB', col1X + cob1W / 2, 13.5);
+    if (cob2W > 0) {
+      ctx.fillText('COB', col2X + cob2W / 2, 13.5);
+    }
 
     const bids = (orderBook && orderBook.bids) || {};
     const asks = (orderBook && orderBook.asks) || {};
-    const effectivePrice = currentPrice || this.lastKnownPrice;
-    const cyLive = (effectivePrice && Number.isFinite(effectivePrice)) ? this.priceToY(effectivePrice) : -999;
+    const effectivePrice = currentPrice || this.lastKnownPrice || 3560.0;
+    const cyLive = this.priceToY(effectivePrice);
 
-    let maxDepth = 40;
-    for (const v of Object.values(bids)) maxDepth = Math.max(maxDepth, parseFloat(v) || 0);
-    for (const v of Object.values(asks)) maxDepth = Math.max(maxDepth, parseFloat(v) || 0);
-    maxDepth = Math.max(maxDepth, 45);
-
-    const minP = Number.isFinite(this.minPrice) ? this.minPrice : (effectivePrice || 3880) - 4.5;
-    const maxP = Number.isFinite(this.maxPrice) ? this.maxPrice : (effectivePrice || 3880) + 4.5;
+    const minP = Number.isFinite(this.minPrice) ? this.minPrice : effectivePrice - 4.5;
+    const maxP = Number.isFinite(this.maxPrice) ? this.maxPrice : effectivePrice + 4.5;
 
     // Dynamic price step based on visible chart zoom
     const pxPer10 = Math.abs(this.priceToY(minP) - this.priceToY(minP + 0.10));
-    let ladderStep = 0.50;
+    let ladderStep = 0.25;
     if (pxPer10 >= 12) ladderStep = 0.10;
-    else if (pxPer10 * 2 >= 13) ladderStep = 0.20;
+    else if (pxPer10 * 2.5 >= 13) ladderStep = 0.25;
     else if (pxPer10 * 5 >= 13) ladderStep = 0.50;
     else ladderStep = 1.00;
 
     const startP = Math.floor(minP / ladderStep) * ladderStep;
+    const rows = [];
+    let maxSingleVol = 40;
 
     for (let p = startP; p <= maxP + ladderStep; p = Math.round((p + ladderStep) * 100) / 100) {
       const y = this.priceToY(p);
-      if (y < this.CHART_TOP + hdrH + 4 || y > this.CHART_BOTTOM - 6) continue;
+      if (y < this.CHART_TOP + hdrH + 4 || y > this.CHART_BOTTOM - 4) continue;
 
-      const pStr = p.toFixed(2);
-      let bVol = parseFloat(bids[pStr] ?? bids[p.toFixed(1)] ?? bids[p] ?? 0);
-      let aVol = parseFloat(asks[pStr] ?? asks[p.toFixed(1)] ?? asks[p] ?? 0);
-
-      // Aggregate nearby resting orders if ladder step is larger than 10 cents
-      if (ladderStep > 0.10 && bVol === 0 && aVol === 0) {
-        const half = ladderStep / 2;
-        for (const bp of Object.keys(bids)) {
-          if (Math.abs(parseFloat(bp) - p) < half) bVol = Math.max(bVol, parseFloat(bids[bp]));
-        }
-        for (const ap of Object.keys(asks)) {
-          if (Math.abs(parseFloat(ap) - p) < half) aVol = Math.max(aVol, parseFloat(asks[ap]));
-        }
+      let bVol = 0;
+      let aVol = 0;
+      const half = ladderStep * 0.52;
+      for (const [bp, bv] of Object.entries(bids)) {
+        if (Math.abs(parseFloat(bp) - p) <= half) bVol = Math.max(bVol, parseFloat(bv) || 0);
+      }
+      for (const [ap, av] of Object.entries(asks)) {
+        if (Math.abs(parseFloat(ap) - p) <= half) aVol = Math.max(aVol, parseFloat(av) || 0);
       }
 
-      const isAsk = p >= (currentPrice || 0);
-      const vol = isAsk ? (aVol || bVol || 0) : (bVol || aVol || 0);
-      const isWholeDollar = Math.abs(Math.round(p) - p) < 0.01;
-      const isHalfDollar = Math.abs(Math.round(p * 2) - p * 2) < 0.01;
-
-      // 1. Visual Liquidity Depth Bar (Silhouette representing bank resting order size)
-      if (vol > 0) {
-        const barW = Math.min(sw - 4, (vol / maxDepth) * (sw - 4));
-        const isMega = vol >= 80.0;
-        const isMajor = vol >= 35.0;
-
-        if (isMega) {
-          ctx.fillStyle = isAsk ? 'rgba(244, 63, 94, 0.55)' : 'rgba(0, 230, 118, 0.55)';
-          ctx.fillRect(sx + sw - barW - 2, y - 6, barW, 12);
-          ctx.strokeStyle = '#ffd60a';
-          ctx.lineWidth = 1.2;
-          ctx.strokeRect(sx + sw - barW - 2, y - 6, barW, 12);
-        } else if (isMajor) {
-          ctx.fillStyle = isAsk ? 'rgba(251, 191, 36, 0.45)' : 'rgba(16, 185, 129, 0.45)';
-          ctx.fillRect(sx + sw - barW - 2, y - 6, barW, 12);
-          ctx.strokeStyle = '#fbbf24';
-          ctx.lineWidth = 1.0;
-          ctx.strokeRect(sx + sw - barW - 2, y - 6, barW, 12);
-        } else {
-          ctx.fillStyle = isAsk ? 'rgba(255, 51, 102, 0.22)' : 'rgba(0, 230, 118, 0.22)';
-          ctx.fillRect(sx + sw - barW - 2, y - 6, barW, 12);
-        }
-      }
-
-      // 2. Horizontal Tick on Scale Border
-      ctx.strokeStyle = isWholeDollar ? 'rgba(56, 189, 248, 0.45)' : 'rgba(71, 85, 105, 0.30)';
-      ctx.lineWidth = isWholeDollar ? 1.0 : 0.6;
-      ctx.beginPath();
-      ctx.moveTo(sx, y);
-      ctx.lineTo(sx + (isWholeDollar ? 5 : 3), y);
-      ctx.stroke();
-
-      // 3. Print Harga ($) & Lot Bank (L)
-      if (Math.abs(y - cyLive) > 9) {
-        // Harga ($) - Sebelah Kiri Lajur
-        ctx.textAlign = 'left';
-        ctx.font = isWholeDollar ? 'bold 9.5px "JetBrains Mono", monospace' : '8.5px "JetBrains Mono", monospace';
-        ctx.fillStyle = isWholeDollar ? '#ffffff' : (isHalfDollar ? '#cbd5e1' : '#94a3b8');
-        ctx.fillText(p.toFixed(2), sx + 5, y + 3.5);
-
-        // Lot Bank (L) - Sebelah Kanan Lajur (Tepat di sebelah DOM)
-        ctx.textAlign = 'right';
-        if (vol > 0) {
-          if (vol >= 80.0) {
-            ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-            ctx.fillStyle = '#ffd60a';
-            ctx.fillText(`👑 ${vol.toFixed(1)}L`, sx + sw - 4, y + 3.5);
-          } else if (vol >= 35.0) {
-            ctx.font = 'bold 9px "JetBrains Mono", monospace';
-            ctx.fillStyle = '#fbbf24';
-            ctx.fillText(`🏛️ ${vol.toFixed(1)}L`, sx + sw - 4, y + 3.5);
-          } else {
-            ctx.font = '8.5px "JetBrains Mono", monospace';
-            ctx.fillStyle = isAsk ? '#ff6b8b' : '#00e676';
-            ctx.fillText(`${vol.toFixed(1)}L`, sx + sw - 4, y + 3.5);
-          }
-        } else {
-          ctx.font = '8px "JetBrains Mono", monospace';
-          ctx.fillStyle = '#475569';
-          ctx.fillText('-', sx + sw - 6, y + 3.5);
-        }
-      }
+      const isAsk = p > effectivePrice + 0.02;
+      const isBid = p < effectivePrice - 0.02;
+      const vol = Math.round(isAsk ? (aVol || bVol || 12) : (bVol || aVol || 12));
+      if (vol > maxSingleVol) maxSingleVol = vol;
+      rows.push({ p, y, vol, isAsk, isBid });
     }
 
-    // Always-on Live Current Price Tag
-    if (currentPrice) {
-      const cy = this.priceToY(currentPrice);
-      if (cy > this.CHART_TOP && cy < this.CHART_BOTTOM) {
-        ctx.fillStyle = '#ffd60a';
-        ctx.fillRect(sx + 1, cy - 9, sw - 2, 18);
+    // Compute Cumulated Order Book (COB Column 2) outward from current price!
+    const askRows = rows.filter(r => r.isAsk).sort((a, b) => a.p - b.p);
+    let cumAsk = 0;
+    for (const r of askRows) {
+      cumAsk += r.vol;
+      r.cumVol = cumAsk;
+    }
 
-        ctx.fillStyle    = '#000000';
-        ctx.font         = 'bold 10px "JetBrains Mono", monospace';
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`⚡ $${currentPrice.toFixed(2)}`, sx + sw / 2, cy);
-        ctx.textBaseline = 'alphabetic';
+    const bidRows = rows.filter(r => !r.isAsk).sort((a, b) => b.p - a.p);
+    let cumBid = 0;
+    for (const r of bidRows) {
+      cumBid += r.vol;
+      r.cumVol = cumBid;
+    }
+
+    const maxCumVol = Math.max(100, cumAsk, cumBid);
+    const rowH = Math.max(11, Math.min(18, Math.abs(this.priceToY(minP) - this.priceToY(minP + ladderStep)) - 1));
+
+    for (const r of rows) {
+      const { p, y, vol, cumVol, isAsk } = r;
+      const isNearLive = Math.abs(y - cyLive) <= rowH * 0.65;
+      const barCol = isAsk ? '#ef2310' : '#1fd619';
+
+      // Highlight live best bid/ask row
+      if (isNearLive) {
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.25)';
+        ctx.fillRect(sx, y - rowH / 2, sw, rowH);
+      }
+
+      // 1. Price Label in Sub-Column 0
+      ctx.font = isNearLive ? 'bold 8.5px "JetBrains Mono", monospace' : '8.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = isNearLive ? '#ffffff' : '#94a3b8';
+      ctx.textAlign = 'right';
+      ctx.fillText(p.toFixed(2), col1X - 3, y + 3);
+      if (isNearLive) {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx + 1, y - rowH / 2, priceW - 2, rowH);
+      }
+
+      // 2. COB 1: Current Order Book Bar (Left-Aligned Red Ask / Green Bid Bar + Number)
+      const w1 = Math.max(2, Math.min(cob1W - 2, (vol / maxSingleVol) * (cob1W - 2)));
+      ctx.fillStyle = barCol;
+      ctx.fillRect(col1X + 1, y - rowH / 2 + 0.5, w1, rowH - 1);
+
+      ctx.font = '8.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.fillText(String(vol), col1X + 3, y + 3);
+
+      // 3. COB 2: Cumulated Order Book Staircase Bar + Cumulated Number
+      if (cob2W > 0) {
+        const w2 = Math.max(2, Math.min(cob2W - 2, ((cumVol || vol) / maxCumVol) * (cob2W - 2)));
+        ctx.fillStyle = barCol;
+        ctx.fillRect(col2X + 1, y - rowH / 2 + 0.5, w2, rowH - 1);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'left';
+        ctx.fillText(String(cumVol || vol), col2X + 3, y + 3);
       }
     }
 
