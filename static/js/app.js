@@ -914,7 +914,7 @@ class App {
         document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const step = parseFloat(btn.dataset.step) || 1.00;
-        this.footprint.setClusterStep(step);
+        this.footprint.setClusterStep(step, true);
         this.showToast(`Footprint diubah ke blok $${step.toFixed(2)}`);
       });
     });
@@ -1548,12 +1548,12 @@ class App {
       if (this.footprint) {
         this.footprint.setViewMode('delta');
         this.footprint.centerVertical();
-        this.footprint.setClusterStep(1.00);
+        this.footprint.setClusterStep(0.25, false);
         document.querySelectorAll('.fp-mode-btn').forEach(b => {
           b.classList.toggle('active', b.dataset.mode === 'delta');
         });
         document.querySelectorAll('.step-btn').forEach(b => {
-          b.classList.toggle('active', b.dataset.step === '1.00');
+          b.classList.toggle('active', b.dataset.step === '0.25');
         });
         if (this.latestSnapshot) {
           this.footprint.render(this.latestSnapshot);
