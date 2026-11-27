@@ -349,6 +349,9 @@ class BookmapRenderer {
     if (tfMap[tf]) {
       this.timeframe = tf;
       this.timeWindowMs = tfMap[tf];
+      if (this._tradesHistoryBuffer) {
+        this._tradesHistoryBuffer = this._tradesHistoryBuffer.filter(t => !String(t.id || '').startsWith('c_tr_'));
+      }
     }
   }
 
@@ -937,12 +940,19 @@ class BookmapRenderer {
 
     this._drawHeatmap(ctx, effectiveHeatmap, snapshot.order_book, now, snapshot.spoof_events || []);
 
-    /* ── 3B. Persistent Rolling Trades Buffer + Dense 20-Node Per-Candle 3D Bubble Chain Reconstructor ── */
+    /* ── 3B. Persistent Rolling Trades Buffer (Strict Single-Track: Purge Synthetic c_tr_ Overlap!) ── */
     if (!this._tradesHistoryBuffer) this._tradesHistoryBuffer = [];
     if (snapshot.trades && snapshot.trades.length) {
       const trMap = new Map();
-      for (const t of this._tradesHistoryBuffer) trMap.set(t.id != null ? t.id : `${t.timestamp}_${t.price}`, t);
-      for (const t of snapshot.trades) trMap.set(t.id != null ? t.id : `${t.timestamp}_${t.price}`, t);
+      // First keep only real server trades from existing buffer
+      for (const t of this._tradesHistoryBuffer) {
+        if (!String(t.id || '').startsWith('c_tr_')) {
+          trMap.set(t.id != null ? t.id : `${t.timestamp}_${t.price}`, t);
+        }
+      }
+      for (const t of snapshot.trades) {
+        trMap.set(t.id != null ? t.id : `${t.timestamp}_${t.price}`, t);
+      }
       const visibleHorizonMs = Math.max(1200000, (this.timeWindowMs || 180000) * 3.5);
       const pruneCutoff = now - visibleHorizonMs;
       this._tradesHistoryBuffer = Array.from(trMap.values())
@@ -951,11 +961,16 @@ class BookmapRenderer {
           return tMs >= pruneCutoff;
         })
         .sort((a, b) => a.timestamp - b.timestamp)
-        .slice(-4500);
+        .slice(-3500);
     }
 
-    const oldestTradeTs = this._tradesHistoryBuffer.length > 0 ? this._tradesHistoryBuffer[0].timestamp : now;
-    if (srcCandles.length > 2 && oldestTradeTs > windowStartMs + 3000) {
+    const realTrades = this._tradesHistoryBuffer.filter(t => !String(t.id || '').startsWith('c_tr_'));
+    const oldestTradeTs = realTrades.length > 0
+      ? ((realTrades[0].timestamp < 1e11) ? realTrades[0].timestamp * 1000 : realTrades[0].timestamp)
+      : now;
+    const oldestRealPrice = realTrades.length > 0 ? realTrades[0].price : currentPrice;
+
+    if (srcCandles.length > 2 && oldestTradeTs > windowStartMs + 5000) {
       const candleTrades = [];
       const barSpanSec = srcCandles.length >= 2 ? Math.max(60, srcCandles[1].time - srcCandles[0].time) : 60;
       for (const c of srcCandles) {
@@ -1014,7 +1029,13 @@ class BookmapRenderer {
         }
       }
       if (candleTrades.length > 0) {
-        this._tradesHistoryBuffer = [...candleTrades, ...this._tradesHistoryBuffer];
+        // Smoothly align the last 3 synthetic candle nodes to oldestRealPrice so there is zero vertical jump
+        const nCt = candleTrades.length;
+        for (let k = Math.max(0, nCt - 3); k < nCt; k++) {
+          const blend = (k - (nCt - 4)) / 4.0;
+          candleTrades[k].price = +(candleTrades[k].price * (1 - blend) + oldestRealPrice * blend).toFixed(2);
+        }
+        this._tradesHistoryBuffer = [...candleTrades, ...realTrades];
       }
     }
     const effectiveTrades = (this._tradesHistoryBuffer && this._tradesHistoryBuffer.length > 0)
@@ -1062,10 +1083,7 @@ class BookmapRenderer {
       try { this._drawIcebergOrders(ctx, snapshot.icebergs); } catch (e) { console.warn('[BM Icebergs]', e); }
     }
 
-    /* ── 8H2. DDBTC 4 Sifat SNR Valid Auto-Marking Zones ── */
-    if (snapshot.snr_valid_zones && snapshot.snr_valid_zones.length > 0) {
-      try { this._drawSnrValidZones(ctx, snapshot.snr_valid_zones); } catch (e) { console.warn('[BM SNR Valid Zones]', e); }
-    }
+    /* ── 8H2. SNR Valid Zones are highlighted on the Right Price Axis in Bookmap [1] ── */
 
     /* ── 8I. Real-Time Institutional Order Flow Buy/Sell Signals (Strict Location-First) ── */
     if (this.bmShowSignals !== false) {
@@ -1870,7 +1888,7 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── v93.0: Authentic Single-Track 3D Split Bubble Stream + Whale Lot Callouts ─── */
+  /* ─── v93.1: Strict Non-Overlapping Single-Track 3D Split Bubbles (Zero Overlap, True Size Hierarchy) ─── */
   _drawSplitBubbles(ctx, trades, now) {
     if (!trades || !trades.length) return;
     const cat = this.bmBubbleCategory || 'noise';
@@ -1888,8 +1906,7 @@ class BookmapRenderer {
 
     this.hoverTrade = null;
 
-    // 1. Merge simultaneous Bid & Ask executions within 11px horizontal window & $0.85 spread window
-    //    into ONE single-track 3D Split Sphere (Eliminates the double-track Green-on-top / Red-on-bottom caterpillar!)
+    // 1. Fixed-Window Time Slice Aggregator (Anchored to slice startX so buckets NEVER chain-snowball!)
     const timeSorted = [...trades].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     const mergedNodes = [];
     let cur = null;
@@ -1903,46 +1920,45 @@ class BookmapRenderer {
       const sellV = t.sell_vol !== undefined ? t.sell_vol : (t.side === 'sell' ? t.volume : 0);
       const tVol  = Math.max(0.2, buyV + sellV);
 
-      if (cur) {
-        const prevX = this.timeToX(cur.timestamp, now);
-        // Merge Bid & Ask ticks that belong to the same time slice (< 11px) and spread (< $0.85) into ONE Split Bubble!
-        if (Math.abs(cx - prevX) < 11.0 && Math.abs(cur.price - t.price) < 0.85) {
-          const newBuy = cur.buy_vol + buyV;
-          const newSell = cur.sell_vol + sellV;
-          const totalRaw = Math.max(0.1, newBuy + newSell);
-          // Volume-weighted average price between Bid and Ask so the bubble sits on the true mid-execution track
-          cur.price = +((cur.price * cur.rawSum + t.price * tVol) / (cur.rawSum + tVol)).toFixed(2);
-          cur.rawSum += tVol;
-          // Dampened institutional volume so normal ticks don't inflate into giant spheres
-          const dampened = Math.min(115.0, Math.max(cur.maxSingle, tVol) + Math.min(cur.volume, tVol) * 0.25);
-          cur.volume = +dampened.toFixed(1);
-          cur.buy_vol = +(cur.volume * (newBuy / totalRaw)).toFixed(1);
-          cur.sell_vol = +(cur.volume - cur.buy_vol).toFixed(1);
-          if (tVol > cur.maxSingle) cur.maxSingle = tVol;
-          cur.timestamp = Math.max(cur.timestamp, tMs);
-          cur.is_large = cur.volume >= 24.0;
-          continue;
+      if (cur && Math.abs(cx - cur.startX) < 7.5) {
+        const newBuy = cur.buy_vol + buyV;
+        const newSell = cur.sell_vol + sellV;
+        const totalRaw = Math.max(0.1, newBuy + newSell);
+        // Dominant execution price (prevents erratic vertical jumps)
+        if (tVol >= cur.maxSingle) {
+          cur.price = t.price;
+          cur.maxSingle = tVol;
         }
+        cur.count += 1;
+        // True Bookmap Volume: Preserve largest single print + very small 8% cluster bonus (NO snowballing to 60L-110L!)
+        const trueVol = Math.min(110.0, cur.maxSingle + (totalRaw - cur.maxSingle) * 0.08);
+        cur.volume = +trueVol.toFixed(1);
+        cur.buy_vol = +(cur.volume * (newBuy / totalRaw)).toFixed(1);
+        cur.sell_vol = +(cur.volume - cur.buy_vol).toFixed(1);
+        cur.is_large = cur.volume >= 30.0;
+        continue;
       }
+
       if (cur) mergedNodes.push(cur);
       cur = {
         id: t.id || `${tMs}_${t.price}`,
         timestamp: tMs,
+        startX: cx,
         price: t.price,
         volume: tVol,
-        rawSum: tVol,
         maxSingle: tVol,
+        count: 1,
         buy_vol: buyV,
         sell_vol: sellV,
-        is_large: t.is_large || tVol >= 24.0
+        is_large: t.is_large || tVol >= 30.0
       };
     }
     if (cur) mergedNodes.push(cur);
 
-    // 2. Draw crisp connecting price line beneath the 3D spheres so the price trajectory is always 100% clear
+    // 2. Draw crisp single-track stepped price line connecting the execution path
     if (mergedNodes.length >= 2) {
       ctx.save();
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = 1.5;
       for (let i = 0; i < mergedNodes.length - 1; i++) {
         const n1 = mergedNodes[i];
         const n2 = mergedNodes[i + 1];
@@ -1950,7 +1966,7 @@ class BookmapRenderer {
         const x2 = this.timeToX(n2.timestamp, now);
         const y1 = this.priceToY(n1.price);
         const y2 = this.priceToY(n2.price);
-        ctx.strokeStyle = n2.price >= n1.price ? 'rgba(52, 211, 153, 0.55)' : 'rgba(248, 113, 113, 0.55)';
+        ctx.strokeStyle = n2.price >= n1.price ? 'rgba(52, 211, 153, 0.72)' : 'rgba(248, 113, 113, 0.72)';
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y1);
@@ -1960,7 +1976,8 @@ class BookmapRenderer {
       ctx.restore();
     }
 
-    // 3. Spatial de-crowding so giant bubbles never pile on top of each other into a messy blob
+    // 3. STRICT 0% OVERLAP SPATIAL FILTER:
+    //    Largest institutional bubbles are placed first; any smaller bubble that touches an existing bubble (dist < p.r + r + 1.5px) is skipped!
     const filtered = minVol > 0 ? mergedNodes.filter(b => b.volume >= minVol) : mergedNodes;
     const bySizeDesc = [...filtered].sort((a, b) => b.volume - a.volume);
     const placed = [];
@@ -1968,27 +1985,34 @@ class BookmapRenderer {
     for (const cand of bySizeDesc) {
       const cx = this.timeToX(cand.timestamp, now);
       const cy = this.priceToY(cand.price);
-      if (cx < this.CHART_LEFT - 20 || cx > this.CHART_RIGHT - 2) continue;
-      if (cy < this.CHART_TOP - 20  || cy > this.CHART_BOTTOM + 20) continue;
+      if (cx < this.CHART_LEFT - 15 || cx > this.CHART_RIGHT - 4) continue;
+      if (cy < this.CHART_TOP - 15  || cy > this.CHART_BOTTOM + 15) continue;
 
       const normV = Math.max(0.3, cand.volume);
-      // Clear visual hierarchy: small ticks = 2.8px-5px, medium = 6px-10px, major bank/whale trades = 12px-18.5px
-      const baseR = (normV < 10.0
-        ? (2.5 + Math.sqrt(normV) * 0.90)
-        : (4.8 + Math.pow(normV - 8.0, 0.50) * 1.38)
-      ) * (this.bubbleZoom || 1.0);
-      const r = Math.min(18.5, Math.max(2.5, baseR));
+      // Natural Pareto Bubble Radius:
+      // - Ambient flow (< 8L): tiny 2.4px - 4.0px dots
+      // - Normal activity (8L - 28L): medium 4.8px - 8.5px spheres
+      // - Major Institutional / Bank Whale (>= 30L): 10.5px - 15.5px spheres
+      let baseR;
+      if (normV < 8.0) {
+        baseR = 2.2 + Math.sqrt(normV) * 0.65;
+      } else if (normV < 30.0) {
+        baseR = 4.2 + Math.pow(normV - 7.0, 0.48) * 1.05;
+      } else {
+        baseR = 9.5 + Math.pow(normV - 28.0, 0.45) * 0.95;
+      }
+      const r = Math.min(16.0, Math.max(2.2, baseR * (this.bubbleZoom || 1.0)));
 
-      // Allow gentle 35% edge overlap like Bookmap 7, but block heavy center-on-center piling
-      const tooClose = placed.some(p => Math.hypot(p.cx - cx, p.cy - cy) < (p.r + r) * 0.62);
-      if (!tooClose) {
+      // Strict non-overlapping check: 1.5px clear gap between every bubble!
+      const overlaps = placed.some(p => Math.hypot(p.cx - cx, p.cy - cy) < (p.r + r + 1.5));
+      if (!overlaps) {
         placed.push({ ...cand, cx, cy, r });
       }
     }
 
     const visibleBubbles = placed.sort((a, b) => a.timestamp - b.timestamp);
 
-    // 4. Render 3D Split Spheres + Lot Numbers on Institutional Whale Spheres (>= 24L)
+    // 4. Render Non-Overlapping 3D Split Spheres + Lot Numbers ONLY on Major Whale Spheres (r >= 10.5px / vol >= 30L)
     for (const t of visibleBubbles) {
       const { cx, cy, r } = t;
       const buyV  = t.buy_vol  !== undefined ? t.buy_vol  : (t.side === 'buy' ? t.volume : 0);
@@ -2001,11 +2025,10 @@ class BookmapRenderer {
         this.hoverTrade = { ...t, cx, cy, r, buyV, sellV };
       }
 
-      // Soft 3D drop shadow
       if (r >= 4.5) {
         ctx.beginPath();
-        ctx.arc(cx + 1.1, cy + 1.4, r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.50)';
+        ctx.arc(cx + 1.0, cy + 1.2, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
         ctx.fill();
       }
 
@@ -2062,27 +2085,26 @@ class BookmapRenderer {
         ctx.restore();
       }
 
-      // Crisp dark rim contour
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = (r >= 11.5) ? 'rgba(255, 255, 255, 0.45)' : 'rgba(8, 12, 18, 0.60)';
-      ctx.lineWidth = (r >= 11.5) ? 1.0 : 0.7;
+      ctx.strokeStyle = (r >= 10.5) ? 'rgba(255, 255, 255, 0.50)' : 'rgba(8, 12, 18, 0.65)';
+      ctx.lineWidth = (r >= 10.5) ? 1.0 : 0.7;
       ctx.stroke();
 
-      // Display exact Institutional Lot Size ('45L', '78L') inside Large Whale Spheres (r >= 11.5px / vol >= 24L)!
-      if (r >= 11.5 && totalV >= 22.0) {
+      // Print Lot Size ONLY inside Major Whale Spheres (r >= 10.5px & totalV >= 30L)
+      if (r >= 10.5 && totalV >= 30.0) {
         const lotTxt = `${Math.round(totalV)}L`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.font = 'bold 8px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        ctx.fillText(lotTxt, cx + 0.8, cy + 0.8);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.80)';
+        ctx.fillText(lotTxt, cx + 0.7, cy + 0.7);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(lotTxt, cx, cy);
       }
     }
 
-    // 5. Live Trade Lot Callout ('12L (+8L)') next to the Latest Bubble at the Right Edge
+    // 5. Live Trade Lot Callout next to the Latest Bubble at the Right Edge
     if (visibleBubbles.length > 0) {
       const lastB = visibleBubbles[visibleBubbles.length - 1];
       const lx = Math.min(this.CHART_RIGHT - 46, this.timeToX(lastB.timestamp, now));
@@ -3304,7 +3326,7 @@ class BookmapRenderer {
         svpVol = 45 + bell * wave * 340;
         svpBuy = svpVol * (0.38 + 0.26 * Math.abs(Math.cos(p * 7.3)));
       }
-      const svpLots = Math.max(18, Math.round(svpVol));
+      const svpLots = Math.max(18, Math.min(485, Math.round(svpVol > 480 ? (280 + Math.sqrt(svpVol) * 3.5) : svpVol)));
       const buyShare = svpVol > 0 ? Math.min(0.85, Math.max(0.15, svpBuy / svpVol)) : 0.5;
       if (svpLots > maxSvpLots) maxSvpLots = svpLots;
 
