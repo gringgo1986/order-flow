@@ -352,6 +352,12 @@ class BookmapRenderer {
     }
   }
 
+  setHistoricalCandles(candles) {
+    if (Array.isArray(candles) && candles.length > 0) {
+      this._deepHistoricalCandles = candles;
+    }
+  }
+
   /* ─── HiDPI Responsive Canvas Resize ───────────────────────────── */
   _setupResize() {
     const handleResize = () => {
@@ -869,9 +875,53 @@ class BookmapRenderer {
       for (const h of snapshot.heatmap) hmMap.set(h.timestamp, h);
       this._heatmapHistoryBuffer = Array.from(hmMap.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-1800);
     }
-    const effectiveHeatmap = (this._heatmapHistoryBuffer && this._heatmapHistoryBuffer.length >= 2) 
+    // Deep 24/7 Historical Candle-to-Bookmap Reconstructor (Fills 100% of M1, M5, M15, M30, H1, H4 from CHART_LEFT to NOW_X even after hours offline!)
+    const windowStartMs = now - (this.timeOffsetMs || 0) - (this.timeWindowMs || 180000);
+    const srcCandles = (this._deepHistoricalCandles && this._deepHistoricalCandles.length > 20)
+      ? this._deepHistoricalCandles
+      : (snapshot.candles || []);
+
+    let effectiveHeatmap = (this._heatmapHistoryBuffer && this._heatmapHistoryBuffer.length >= 2) 
       ? this._heatmapHistoryBuffer 
       : (snapshot.heatmap || []);
+
+    const oldestHmTs = effectiveHeatmap.length > 0 ? effectiveHeatmap[0].timestamp : now;
+    if (srcCandles.length > 2 && oldestHmTs > windowStartMs + 5000) {
+      const synthHm = [];
+      const barSpanSec = srcCandles.length >= 2 ? Math.max(60, srcCandles[1].time - srcCandles[0].time) : 60;
+      for (const c of srcCandles) {
+        const cStartMs = c.time * 1000;
+        const cEndMs = cStartMs + barSpanSec * 1000;
+        if (cEndMs < windowStartMs - 60000 || cStartMs >= oldestHmTs - 1500) continue;
+        const steps = 3;
+        for (let s = 0; s < steps; s++) {
+          const sliceTs = Math.round(cStartMs + (s / steps) * barSpanSec * 1000);
+          if (sliceTs >= oldestHmTs - 1000) break;
+          const prog = s / steps;
+          const midP = +(c.open + (c.close - c.open) * prog).toFixed(2);
+          const bids = {};
+          const asks = {};
+          const baseLow = Math.floor((c.low - 1.5) * 2) / 2;
+          const baseHigh = Math.ceil((c.high + 1.5) * 2) / 2;
+          for (let lp = baseLow - 2.0; lp <= baseHigh + 2.0; lp += 0.50) {
+            const pKey = lp.toFixed(2);
+            const isRound = (Math.round(lp * 100) % 100 === 0);
+            const wallV = isRound ? 54.0 : 28.0;
+            if (lp <= midP - 0.10) bids[pKey] = wallV;
+            else if (lp >= midP + 0.10) asks[pKey] = wallV;
+          }
+          if (c.poc) {
+            const pocKey = (Math.round(c.poc * 10) / 10).toFixed(2);
+            if (c.close >= c.open) bids[pocKey] = 72.0;
+            else asks[pocKey] = 72.0;
+          }
+          synthHm.push({ timestamp: sliceTs, mid_price: midP, bids, asks });
+        }
+      }
+      if (synthHm.length > 0) {
+        effectiveHeatmap = [...synthHm, ...effectiveHeatmap];
+      }
+    }
 
     this._drawHeatmap(ctx, effectiveHeatmap, snapshot.order_book, now, snapshot.spoof_events || []);
 
@@ -891,26 +941,45 @@ class BookmapRenderer {
         .sort((a, b) => a.timestamp - b.timestamp)
         .slice(-3500);
     }
-    // Bridge any left-side time gap using heatmap mid_price history so Bookmap price line & histogram always span 100% from CHART_LEFT to NOW_X!
-    if (effectiveHeatmap.length >= 2 && this._tradesHistoryBuffer.length > 0) {
-      const oldestTradeTs = this._tradesHistoryBuffer[0].timestamp;
-      const hmOlder = effectiveHeatmap.filter(h => h.timestamp < oldestTradeTs - 800 && h.mid_price > 0);
-      if (hmOlder.length > 0) {
-        const bridged = hmOlder.map((h, idx) => {
-          const prevP = idx > 0 ? hmOlder[idx - 1].mid_price : h.mid_price;
-          const isUp = h.mid_price >= prevP;
-          return {
-            id: `hm_bridge_${h.timestamp}`,
-            timestamp: h.timestamp,
-            price: h.mid_price,
-            volume: 3.5,
-            buy_vol: isUp ? 2.4 : 1.1,
-            sell_vol: isUp ? 1.1 : 2.4,
-            side: isUp ? 'buy' : 'sell',
-            is_large: false
-          };
+
+    // Reconstruct deep historical trade bubbles & price path from 24/7 server candles whenever windowStartMs is older than oldest live trade!
+    const oldestTradeTs = this._tradesHistoryBuffer.length > 0 ? this._tradesHistoryBuffer[0].timestamp : now;
+    if (srcCandles.length > 2 && oldestTradeTs > windowStartMs + 4000) {
+      const candleTrades = [];
+      const barSpanSec = srcCandles.length >= 2 ? Math.max(60, srcCandles[1].time - srcCandles[0].time) : 60;
+      for (const c of srcCandles) {
+        const cStartMs = c.time * 1000;
+        const cEndMs = cStartMs + barSpanSec * 1000;
+        if (cEndMs < windowStartMs - 60000 || cStartMs >= oldestTradeTs - 1200) continue;
+        const isBull = c.close >= c.open;
+        const pts = [
+          { dt: 0.12, p: c.open, w: 0.22 },
+          { dt: 0.38, p: isBull ? c.low : c.high, w: 0.26 },
+          { dt: 0.66, p: c.poc || ((c.high + c.low) * 0.5), w: 0.32 },
+          { dt: 0.90, p: c.close, w: 0.20 }
+        ];
+        const rawBarVol = Math.max(14.0, Math.min(180.0, (c.volume || 60.0) * 0.35));
+        const bRatio = isBull ? 0.64 : 0.36;
+        pts.forEach((pt, idx) => {
+          const tMs = Math.round(cStartMs + pt.dt * barSpanSec * 1000);
+          if (tMs >= oldestTradeTs - 800) return;
+          const v = +(rawBarVol * pt.w).toFixed(1);
+          const bv = +(v * (idx === 1 ? (isBull ? 0.75 : 0.25) : bRatio)).toFixed(1);
+          const sv = +(v - bv).toFixed(1);
+          candleTrades.push({
+            id: `c_tr_${tMs}`,
+            timestamp: tMs,
+            price: +pt.p.toFixed(2),
+            volume: v,
+            buy_vol: bv,
+            sell_vol: sv,
+            side: bv >= sv ? 'buy' : 'sell',
+            is_large: v >= 14.0
+          });
         });
-        this._tradesHistoryBuffer = [...bridged, ...this._tradesHistoryBuffer];
+      }
+      if (candleTrades.length > 0) {
+        this._tradesHistoryBuffer = [...candleTrades, ...this._tradesHistoryBuffer];
       }
     }
     const effectiveTrades = (this._tradesHistoryBuffer && this._tradesHistoryBuffer.length > 0)
@@ -1827,7 +1896,9 @@ class BookmapRenderer {
     const timeSorted = [...trades].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     const aggregated = [];
     let cur = null;
-    const minPixelGap = 28;
+    const isHtfView = (this.timeWindowMs || 180000) >= 1200000; // M15, M30, H1, H4
+    const minPixelGap = isHtfView ? 38 : 28;
+    const maxPriceCluster = isHtfView ? 0.55 : 0.22;
 
     for (const t of timeSorted) {
       const tMs = (t.timestamp && t.timestamp < 1e11) ? t.timestamp * 1000 : (t.timestamp || 0);
@@ -1841,7 +1912,7 @@ class BookmapRenderer {
         const pDiff = Math.abs(cur.price - t.price);
         const xDiff = Math.abs(curX - prevX);
 
-        if (pDiff < 0.22 && xDiff < minPixelGap) {
+        if (pDiff < maxPriceCluster && xDiff < minPixelGap) {
           const rawBuySum = cur.buy_vol + buyV;
           const rawSellSum = cur.sell_vol + sellV;
           const rawTotal = Math.max(0.1, rawBuySum + rawSellSum);
@@ -1888,8 +1959,9 @@ class BookmapRenderer {
       const baseR = Math.sqrt(Math.max(0.2, cand.volume)) * 1.62 * (this.bubbleZoom || 1.0);
       const r = Math.min(17.5, Math.max(3.2, baseR));
 
-      // Skip smaller bubble if it physically overlaps an already-placed larger institutional bubble
-      const overlaps = placedNodes.some(p => Math.hypot(p.cx - cx, p.cy - cy) < (p.r + r - 1.5));
+      // Skip smaller bubble if it physically overlaps an already-placed larger institutional bubble (stricter clearance on M15/M30/H1/H4)
+      const clearancePad = isHtfView ? 3.5 : -1.5;
+      const overlaps = placedNodes.some(p => Math.hypot(p.cx - cx, p.cy - cy) < (p.r + r + clearancePad));
       if (!overlaps) {
         placedNodes.push({ ...cand, cx, cy, r });
       }
@@ -2155,11 +2227,11 @@ class BookmapRenderer {
       }
     }
 
-    // ZON RAMAI SELLER with 8-Second Anti-Flicker Latch (Prevents rapid blinking when price ticks near zone)
+    // ZON RAMAI SELLER with 8-Second Anti-Flicker Latch & >= $2.50 Separation from BUY ZONE (Never stack BUY & SELL zones side-by-side!)
     const rawSellZoneOk = topSell && topSell.sell >= 80.0 &&
                           (topSell.sell > topSell.buy * 1.20) &&
                           (!currentPrice || currentPrice <= topSell.price + 0.35) &&
-                          (!topBuy || Math.abs(topSell.price - topBuy.price) >= 0.50);
+                          (!activeBuyZone || Math.abs(topSell.price - activeBuyZone.price) >= 2.50);
     if (rawSellZoneOk) {
       this._latchedSellZone = { bucket: topSell, ts: now };
     }
@@ -2508,42 +2580,21 @@ class BookmapRenderer {
     if (!this._snrTouchTracker) this._snrTouchTracker = {};
 
     const tfCfg = window.snrTfFilter;
+    // Strictly 6 Institutional SNR Timeframes ONLY: M15, M30, H1, H4, H8, D1 (Zero Session/Asian/London/Weekly clutter!)
     const rawLevels = [
-      // 1W (Previous Week High/Low)
-      { price: sessions.pwh,         label: 'PWH (1W HIGH)', tf: 'W1', strength: '95%', col: '#f43f5e', bg: 'rgba(244, 63, 94, 0.26)', isHtf: true },
-      { price: sessions.pwl,         label: 'PWL (1W LOW)',  tf: 'W1', strength: '95%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.26)', isHtf: true },
-
-      // 1D (Previous Day High/Low & Daily Open)
-      // D1 SNR
-      { price: sessions.pdh,         label: 'D1 SNR RES', tf: 'D1', strength: '95%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.pdl,         label: 'D1 SNR SUP', tf: 'D1', strength: '95%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-
-      // H8 SNR
-      { price: sessions.h8_res || sessions.h8_high, label: 'H8 SNR RES', tf: 'H8', strength: '90%', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.25)', isHtf: true },
-      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SNR SUP', tf: 'H8', strength: '90%', col: '#059669', bg: 'rgba(5, 150, 105, 0.25)', isHtf: true },
-
-      // H4 SNR
-      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SNR RES', tf: 'H4', strength: '85%', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
-      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SNR SUP', tf: 'H4', strength: '85%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
-
-      // H1 SNR
-      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SNR RES', tf: 'H1', strength: '78%', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
-      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SNR SUP', tf: 'H1', strength: '78%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
-
-      // M30 SNR
+      { price: sessions.pdh,                        label: 'D1 SNR RES',  tf: 'D1',  strength: '95%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.pdl,                        label: 'D1 SNR SUP',  tf: 'D1',  strength: '95%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
+      { price: sessions.h8_res || sessions.h8_high, label: 'H8 SNR RES',  tf: 'H8',  strength: '90%', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.25)', isHtf: true },
+      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SNR SUP',  tf: 'H8',  strength: '90%', col: '#059669', bg: 'rgba(5, 150, 105, 0.25)', isHtf: true },
+      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SNR RES',  tf: 'H4',  strength: '85%', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
+      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SNR SUP',  tf: 'H4',  strength: '85%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
+      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SNR RES',  tf: 'H1',  strength: '78%', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
+      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SNR SUP',  tf: 'H1',  strength: '78%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
       { price: sessions.m30_res || sessions.m30_high, label: 'M30 SNR RES', tf: 'M30', strength: '70%', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
       { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SNR SUP', tf: 'M30', strength: '70%', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
-
-      // M15 SNR
       { price: sessions.m15_res || sessions.m15_high, label: 'M15 SNR RES', tf: 'M15', strength: '65%', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
-      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SNR SUP', tf: 'M15', strength: '65%', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true },
-
-      // Session Extremes (Asian / London)
-      { price: sessions.asian_high,  label: 'ASIA HIGH', tf: 'SESSION', strength: '72%', col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
-      { price: sessions.asian_low,   label: 'ASIA LOW',  tf: 'SESSION', strength: '72%', col: '#f59e0b', bg: 'rgba(245, 158, 11, 0.18)', isHtf: false },
-      { price: sessions.london_high, label: 'LDN HIGH',  tf: 'SESSION', strength: '74%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false },
-      { price: sessions.london_low,  label: 'LDN LOW',   tf: 'SESSION', strength: '74%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)', isHtf: false }
-    ].filter(r => r.price > 0 && tfCfg[r.tf] !== false);
+      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SNR SUP', tf: 'M15', strength: '65%', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true }
+    ].filter(r => r.price && r.price > 0);
 
     const currentPrice = this._currentPrice || (this._latestSnapshot && (this._latestSnapshot.last_price || this._latestSnapshot.bid)) || 0;
     const nowTs = Date.now();
