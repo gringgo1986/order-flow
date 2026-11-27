@@ -3,7 +3,7 @@
    Cache-Busting & Immediate Update Engine
    ==================================================================== */
 
-const CACHE_NAME = 'gringgo-orderflow-v98.1';
+const CACHE_NAME = 'gringgo-orderflow-v98.2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
