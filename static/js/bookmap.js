@@ -69,9 +69,9 @@ class BookmapRenderer {
 
     // Bookmap World-Class Enhancements:
     this.bmZenMode = false;      // Zen Pro Mode: Pristine view without floating banners or small trade noise
-    let savedTier = 'noise';
+    let savedTier = 'normal';
     try {
-      if (typeof localStorage !== 'undefined') savedTier = localStorage.getItem('gringgo_whale_category') || 'noise';
+      if (typeof localStorage !== 'undefined') savedTier = localStorage.getItem('gringgo_whale_category_v96') || 'normal';
       const selEl = typeof document !== 'undefined' ? document.getElementById('selWhaleCategory') : null;
       if (selEl && selEl.value) savedTier = selEl.value;
     } catch(e) {}
@@ -243,14 +243,14 @@ class BookmapRenderer {
   }
 
   setBubbleCategory(tierId) {
-    if (!['noise', 'smart', 'normal', 'major', 'mega', 'off'].includes(tierId)) tierId = 'noise';
+    if (!['noise', 'smart', 'normal', 'major', 'mega', 'off'].includes(tierId)) tierId = 'normal';
     this.bmBubbleCategory = tierId;
     this.bmBubbleFilter = (tierId === 'noise') ? 'all' : (tierId === 'off' ? 'off' : 'whale');
-    const minMap = { 'noise': 5.0, 'smart': 15.0, 'normal': 30.0, 'major': 50.0, 'mega': 70.0, 'off': 9999.0 };
-    this.bmBubbleMinVol = minMap[tierId] !== undefined ? minMap[tierId] : 5.0;
+    const minMap = { 'noise': 10.0, 'smart': 25.0, 'normal': 45.0, 'major': 60.0, 'mega': 75.0, 'off': 9999.0 };
+    this.bmBubbleMinVol = minMap[tierId] !== undefined ? minMap[tierId] : 45.0;
     
     try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem('gringgo_whale_category', tierId);
+      if (typeof localStorage !== 'undefined') localStorage.setItem('gringgo_whale_category_v96', tierId);
       const sel = typeof document !== 'undefined' ? document.getElementById('selWhaleCategory') : null;
       if (sel && sel.value !== tierId) {
         sel.value = tierId;
@@ -1009,14 +1009,14 @@ class BookmapRenderer {
           const nodeP = +(kf0.p + (kf1.p - kf0.p) * localF).toFixed(2);
           const dirUp = (kf1.p >= kf0.p);
 
-          // Realistic 6-tier institutional distribution across 5L, 15L, 30L, 50L, and 70L+ climax points
+          // Realistic 6-tier institutional distribution across 10L, 25L, 45L, 60L, and 75L+ climax points
           const sizeWave = Math.abs(Math.sin(n * 2.1 + c.time * 0.37));
           let rawV;
-          if (n === 2) rawV = 72.0 + sizeWave * 26.0;      // Bank Pusat / Extreme (>= 70L)
-          else if (n === 6) rawV = 52.0 + sizeWave * 18.0; // Bank Utama / Whale (>= 50L)
-          else if (n === 4) rawV = 32.0 + sizeWave * 16.0; // Institusi / Jerung (>= 30L)
-          else if (n % 2 === 1) rawV = 16.0 + sizeWave * 12.0; // Smart Money (>= 15L)
-          else rawV = 6.0 + sizeWave * 8.0;                // Semua Aktiviti (>= 5L)
+          if (n === 2) rawV = 76.0 + sizeWave * 24.0;      // Bank Pusat / Extreme (>= 75L)
+          else if (n === 6) rawV = 61.0 + sizeWave * 13.0; // Bank Utama / Whale (>= 60L)
+          else if (n === 4) rawV = 46.0 + sizeWave * 13.0; // Institusi / Jerung (>= 45L)
+          else if (n % 2 === 1) rawV = 26.0 + sizeWave * 17.0; // Smart Money (>= 25L)
+          else rawV = 11.0 + sizeWave * 12.0;              // Semua Aktiviti (>= 10L)
           const bShare = dirUp ? (0.64 + (sizeWave * 0.24)) : (0.12 + (sizeWave * 0.24));
           const bv = +(rawV * bShare).toFixed(1);
           const sv = +(rawV - bv).toFixed(1);
@@ -1855,8 +1855,8 @@ class BookmapRenderer {
     const cat = this.bmBubbleCategory || 'noise';
     if (cat === 'off') return;
 
-    const minMap = { 'noise': 5.0, 'smart': 15.0, 'normal': 30.0, 'major': 50.0, 'mega': 70.0 };
-    const minVol = minMap[cat] !== undefined ? minMap[cat] : 5.0;
+    const minMap = { 'noise': 10.0, 'smart': 25.0, 'normal': 45.0, 'major': 60.0, 'mega': 75.0 };
+    const minVol = minMap[cat] !== undefined ? minMap[cat] : 45.0;
 
     ctx.save();
     ctx.beginPath();
@@ -1955,19 +1955,18 @@ class BookmapRenderer {
       if (cy < this.CHART_TOP - 15  || cy > this.CHART_BOTTOM + 15) continue;
 
       const normV = Math.max(0.5, cand.volume);
-      // Clear 6-Tier Radius Scaling:
-      // 5L-14L: 3.2px - 5.2px | 15L-29L: 6.2px - 8.8px | 30L-49L: 9.8px - 12.2px | 50L-69L: 13.0px - 14.8px | >=70L: 15.2px - 17.5px
+      // Clear 6-Tier Radius Scaling across 10L, 25L, 45L, 60L, 75L:
       let baseR;
-      if (normV < 15.0) {
-        baseR = 2.8 + (normV - 5.0) * 0.24;
-      } else if (normV < 30.0) {
-        baseR = 6.2 + (normV - 15.0) * 0.18;
-      } else if (normV < 50.0) {
-        baseR = 9.8 + (normV - 30.0) * 0.13;
-      } else if (normV < 70.0) {
-        baseR = 12.8 + (normV - 50.0) * 0.11;
+      if (normV < 25.0) {
+        baseR = 4.2 + Math.max(0, normV - 10.0) * 0.22;
+      } else if (normV < 45.0) {
+        baseR = 7.8 + (normV - 25.0) * 0.16;
+      } else if (normV < 60.0) {
+        baseR = 11.2 + (normV - 45.0) * 0.15;
+      } else if (normV < 75.0) {
+        baseR = 13.6 + (normV - 60.0) * 0.12;
       } else {
-        baseR = 15.2 + Math.min(2.5, (normV - 70.0) * 0.06);
+        baseR = 15.5 + Math.min(2.3, (normV - 75.0) * 0.06);
       }
       const r = Math.min(17.8, Math.max(2.8, baseR * (this.bubbleZoom || 1.0)));
 
