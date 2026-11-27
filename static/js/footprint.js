@@ -4714,13 +4714,14 @@ class FootprintRenderer {
       const lastPrice = (snapshot && (snapshot.last_price || snapshot.bid)) || (lastCandle ? lastCandle.close : 0);
       if (!lastPrice) return;
 
-    // Layout geometry (World-Class TradingView Obsidian Layout)
+    // Layout geometry (World-Class TradingView Obsidian Layout with Dual High-Visibility Time Axis)
     const topBarH = 0; // Clean Zen Canvas: 0px padding, no double toolbar
     const rightAxisW = 76;
-    const bottomTimeH = 22;
-    const volPaneH = Math.max(54, Math.floor((this.height - topBarH - bottomTimeH) * 0.18));
+    const midTimeH = 20;    // Primary Time Axis directly under the Candlestick Chart!
+    const bottomTimeH = 22; // Secondary Time Axis at bottom of Volume & Delta pane
+    const volPaneH = Math.max(52, Math.floor((this.height - topBarH - bottomTimeH - midTimeH) * 0.17));
     const mainChartTop = topBarH;
-    const mainChartBottom = this.height - bottomTimeH - volPaneH;
+    const mainChartBottom = this.height - bottomTimeH - volPaneH - midTimeH;
     const mainChartH = mainChartBottom - mainChartTop;
     const chartW = this.width - rightAxisW;
 
@@ -4960,33 +4961,85 @@ class FootprintRenderer {
 
     const getBarX = (idx) => Math.round(leftPad + idx * slotW + slotW / 2) + 0.5;
 
-    // Bottom Time Axis Strip
+    // Primary Candlestick Time Axis (Directly below candlesticks) & Bottom Time Axis Strip
+    const midTimeY = mainChartBottom;
     const timeStripY = this.height - bottomTimeH;
+
+    // Draw backgrounds for both Time Axes
+    ctx.fillStyle = '#0b1324';
+    ctx.fillRect(0, midTimeY, chartW, midTimeH);
     ctx.fillStyle = '#090f1c';
     ctx.fillRect(0, timeStripY, chartW, bottomTimeH);
+
     ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
     ctx.beginPath();
+    ctx.moveTo(0, midTimeY);
+    ctx.lineTo(chartW, midTimeY);
+    ctx.moveTo(0, midTimeY + midTimeH);
+    ctx.lineTo(chartW, midTimeY + midTimeH);
     ctx.moveTo(0, timeStripY);
     ctx.lineTo(chartW, timeStripY);
     ctx.stroke();
 
-    const timeStride = Math.max(3, Math.floor(candles.length / 6));
-    for (let i = 0; i < candles.length; i++) {
-      if (i % timeStride === 0 || i === candles.length - 1) {
+    const lastBarX = getBarX(candles.length - 1);
+    const timeStride = Math.max(2, Math.floor(candles.length / 8));
+    let lastDrawnTimeX = -999;
+
+    for (let i = 0; i < candles.length - 1; i++) {
+      if (i % timeStride === 0) {
         const cx = getBarX(i);
+        // Anti-overlap guard: keep >= 68px between labels and >= 64px away from the rightmost Live Time Pill
+        if (cx - lastDrawnTimeX < 68 || Math.abs(lastBarX - cx) < 64) continue;
+        lastDrawnTimeX = cx;
+
+        // Vertical time grid line
         ctx.strokeStyle = 'rgba(30, 41, 59, 0.45)';
         ctx.beginPath();
         ctx.moveTo(cx, mainChartTop);
+        ctx.lineTo(cx, mainChartBottom);
+        ctx.moveTo(cx, midTimeY + midTimeH);
         ctx.lineTo(cx, timeStripY);
         ctx.stroke();
 
+        // Crisp 4px Tick Marks on Primary & Bottom Time Axes
+        ctx.strokeStyle = '#475569';
+        ctx.beginPath();
+        ctx.moveTo(cx, midTimeY);
+        ctx.lineTo(cx, midTimeY + 4);
+        ctx.moveTo(cx, timeStripY);
+        ctx.lineTo(cx, timeStripY + 4);
+        ctx.stroke();
+
         const d = new Date(candles[i].time * 1000);
-        const tStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        ctx.fillStyle = i === candles.length - 1 ? '#00f0ff' : '#64748b';
-        ctx.font = i === candles.length - 1 ? 'bold 9px "JetBrains Mono", monospace' : '9px "JetBrains Mono", monospace';
+        const tStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(tStr, cx, timeStripY + 14);
+        ctx.fillText(tStr, cx, midTimeY + 14);
+        ctx.fillText(tStr, cx, timeStripY + 15);
       }
+    }
+
+    // Always draw the Latest Live Candle Time Pill on the right so trader knows exact current bar time
+    if (candles.length > 0) {
+      const liveC = candles[candles.length - 1];
+      const dLive = new Date(liveC.time * 1000);
+      const liveTStr = dLive.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      const pillW = Math.ceil(ctx.measureText(liveTStr).width) + 12;
+      const pillX = Math.min(chartW - pillW - 2, Math.max(4, lastBarX - pillW / 2));
+
+      // Primary Candlestick Time Axis Live Pill
+      drawRoundedRect(pillX, midTimeY + 2, pillW, midTimeH - 4, 3, 'rgba(8, 47, 73, 0.95)', '#00f0ff', 1.0);
+      ctx.fillStyle = '#00f0ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(liveTStr, pillX + pillW / 2, midTimeY + 13.5);
+
+      // Bottom Time Axis Live Pill
+      drawRoundedRect(pillX, timeStripY + 3, pillW, bottomTimeH - 6, 3, 'rgba(8, 47, 73, 0.95)', '#00f0ff', 1.0);
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillText(liveTStr, pillX + pillW / 2, timeStripY + 15);
     }
 
     // 7.5. Institutional Fair Value Gaps (FVG) & Order Blocks (OB) - Streamlined Max 4 Active
@@ -5949,8 +6002,8 @@ class FootprintRenderer {
       this._drawAutoTrendlines(ctx, candles, getBarX, pToY, chartW);
     }
 
-    // 10. Bottom Volume + Order Flow Delta Sub-Pane + CVD Curve
-    const volTop = mainChartBottom;
+    // 10. Bottom Volume + Order Flow Delta Sub-Pane + CVD Curve (Starts below Primary Candlestick Time Axis)
+    const volTop = mainChartBottom + midTimeH;
     ctx.fillStyle = '#060a12';
     ctx.fillRect(0, volTop, chartW, volPaneH);
     ctx.strokeStyle = '#1e293b';
@@ -6147,35 +6200,64 @@ class FootprintRenderer {
       }
     }
 
-    // 12. Crosshair on Hover
-    if (this.mousePos.x > 0 && this.mousePos.x < chartW && this.mousePos.y > mainChartTop && this.mousePos.y < mainChartBottom) {
+    // 12. Interactive Crosshair & High-Contrast Hovered Candle Time Pill (TradingView / MT5 Style)
+    if (this.mousePos.x > 0 && this.mousePos.x < chartW && this.mousePos.y > mainChartTop && this.mousePos.y < this.height - bottomTimeH) {
+      const snapX = hoveredCandle ? hoveredCandle.cx : this.mousePos.x;
       ctx.save();
       ctx.setLineDash([3, 4]);
-      ctx.strokeStyle = 'rgba(226, 232, 240, 0.40)';
+      ctx.strokeStyle = 'rgba(226, 232, 240, 0.45)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(0, this.mousePos.y);
-      ctx.lineTo(chartW, this.mousePos.y);
-      ctx.moveTo(this.mousePos.x, mainChartTop);
-      ctx.lineTo(this.mousePos.x, this.height - bottomTimeH);
+      if (this.mousePos.y <= mainChartBottom) {
+        ctx.moveTo(0, this.mousePos.y);
+        ctx.lineTo(chartW, this.mousePos.y);
+      }
+      ctx.moveTo(snapX, mainChartTop);
+      ctx.lineTo(snapX, this.height - bottomTimeH);
       ctx.stroke();
       ctx.restore();
 
-      const cursorP = yToP(this.mousePos.y);
-      ctx.fillStyle = '#38bdf8';
-      ctx.fillRect(chartW + 1, this.mousePos.y - 8, rightAxisW - 2, 16);
-      ctx.fillStyle = '#04101e';
-      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(cursorP.toFixed(2), chartW + rightAxisW / 2, this.mousePos.y + 3.5);
+      if (this.mousePos.y <= mainChartBottom) {
+        const cursorP = yToP(this.mousePos.y);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(chartW + 1, this.mousePos.y - 8, rightAxisW - 2, 16);
+        ctx.fillStyle = '#04101e';
+        ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(cursorP.toFixed(2), chartW + rightAxisW / 2, this.mousePos.y + 3.5);
+      }
+
+      // Draw Glowing Gold/Cyan Time Pill directly under the hovered candle on BOTH Time Axes!
+      if (hoveredCandle && hoveredCandle.time) {
+        const hd = new Date(hoveredCandle.time * 1000);
+        const hDateStr = hd.toLocaleDateString('ms-MY', { day: '2-digit', month: 'short' });
+        const hTimeStr = hd.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const fullTimeBadge = `🕒 ${hTimeStr} (${hDateStr})`;
+        ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+        const bw = Math.ceil(ctx.measureText(fullTimeBadge).width) + 14;
+        const bx = Math.max(4, Math.min(chartW - bw - 4, snapX - bw / 2));
+
+        // Primary Time Axis Hover Pill (Directly under Candlesticks)
+        drawRoundedRect(bx, midTimeY + 1, bw, midTimeH - 2, 3, '#facc15', '#ffffff', 1.0);
+        ctx.fillStyle = '#020617';
+        ctx.textAlign = 'center';
+        ctx.fillText(fullTimeBadge, bx + bw / 2, midTimeY + 13.5);
+
+        // Bottom Time Axis Hover Pill
+        drawRoundedRect(bx, timeStripY + 2, bw, bottomTimeH - 4, 3, '#facc15', '#ffffff', 1.0);
+        ctx.fillStyle = '#020617';
+        ctx.fillText(fullTimeBadge, bx + bw / 2, timeStripY + 15);
+      }
     }
 
-    // 13. Clean Top-Left OHLC Strip & Compact Top-Right Layer Pills (Zero Overlap)
+    // 13. Clean Top-Left OHLC + Candle Time Strip & Compact Top-Right Layer Pills (Zero Overlap)
     const chg = dispC.close - dispC.open;
     const isUpC = chg >= 0;
+    const dispDate = new Date((dispC.time || Date.now() / 1000) * 1000);
+    const dispTimeLabel = dispDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-    // Top-Left Translucent HUD Pill (Instrument + OHLC + Delta)
-    const ohlcTxt = `🕯️ XAUUSD [${this.timeframe || 'M1'}]   O:${dispC.open.toFixed(2)}  H:${dispC.high.toFixed(2)}  L:${dispC.low.toFixed(2)}  C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})  Δ:${(dispC.delta || 0) >= 0 ? '+' : ''}${(dispC.delta || 0).toFixed(1)}L`;
+    // Top-Left Translucent HUD Pill (Instrument + Candle Time + OHLC + Delta)
+    const ohlcTxt = `🕯️ XAUUSD [${this.timeframe || 'M1'}] 🕒 ${dispTimeLabel}   O:${dispC.open.toFixed(2)}  H:${dispC.high.toFixed(2)}  L:${dispC.low.toFixed(2)}  C:${dispC.close.toFixed(2)} (${isUpC ? '+' : ''}${chg.toFixed(2)})  Δ:${(dispC.delta || 0) >= 0 ? '+' : ''}${(dispC.delta || 0).toFixed(1)}L`;
     ctx.font = 'bold 9px "JetBrains Mono", monospace';
     const hudW = Math.min(chartW - 16, Math.ceil(ctx.measureText(ohlcTxt).width) + 18);
     drawRoundedRect(8, 6, hudW, 20, 4, 'rgba(9, 15, 28, 0.88)', '#1e293b', 0.9);
@@ -6462,7 +6544,7 @@ class FootprintRenderer {
     const barW = 186;
     const barH = 28;
     const bx = Math.floor((this.width - barW) / 2);
-    const volPaneOffset = (this.viewMode === 'candlestick') ? Math.max(54, Math.floor((this.height - 22) * 0.18)) + 28 : 0;
+    const volPaneOffset = (this.viewMode === 'candlestick') ? Math.max(52, Math.floor((this.height - 42) * 0.17)) + 48 : 0;
     const by = (this.viewMode === 'clusterdelta') ? (this.height - barH - 32) : (this.viewMode === 'candlestick' ? (this.height - barH - volPaneOffset) : (this.height - barH - 8));
 
     // Glowing background capsule
