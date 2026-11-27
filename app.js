@@ -1472,7 +1472,7 @@ class App {
       if (csTechBar) csTechBar.style.display = 'none';
     } else if (view === 'footprint') {
       if (fpTools) fpTools.style.display = 'inline-flex';
-      if (clusterWrap) clusterWrap.style.display = 'inline-flex';
+      if (clusterWrap) clusterWrap.style.display = 'none';
       const clusterModeWrap = document.getElementById('clusterModeWrap');
       if (clusterModeWrap) clusterModeWrap.style.display = 'none';
       if (bookmapWrap) bookmapWrap.style.display = 'none';
