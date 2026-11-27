@@ -1201,18 +1201,20 @@ class OrderFlowEngine:
         c_delta = c.get("delta", 0.0)
 
         high_targets = [
-            ("ASIAN HIGH", ah),
-            ("PDH (PREV DAY HIGH)", pdh),
-            ("EQUAL HIGH (EQH)", eqh),
-            ("LONDON HIGH", lh),
-            ("SESSION NY HIGH", nh)
+            ("D1 SNR RESISTANCE", pdh),
+            ("H8 SNR RESISTANCE", self.sessions_data.get("h8_res", 0.0)),
+            ("H4 SNR RESISTANCE", self.sessions_data.get("h4_res", 0.0)),
+            ("H1 SNR RESISTANCE", self.sessions_data.get("h1_res", 0.0)),
+            ("M30 SNR RESISTANCE", self.sessions_data.get("m30_res", 0.0)),
+            ("M15 SNR RESISTANCE", self.sessions_data.get("m15_res", 0.0))
         ]
         low_targets = [
-            ("ASIAN LOW", al),
-            ("PDL (PREV DAY LOW)", pdl),
-            ("EQUAL LOW (EQL)", eql),
-            ("LONDON LOW", ll),
-            ("SESSION NY LOW", nl)
+            ("D1 SNR SUPPORT", pdl),
+            ("H8 SNR SUPPORT", self.sessions_data.get("h8_sup", 0.0)),
+            ("H4 SNR SUPPORT", self.sessions_data.get("h4_sup", 0.0)),
+            ("H1 SNR SUPPORT", self.sessions_data.get("h1_sup", 0.0)),
+            ("M30 SNR SUPPORT", self.sessions_data.get("m30_sup", 0.0)),
+            ("M15 SNR SUPPORT", self.sessions_data.get("m15_sup", 0.0))
         ]
 
         # Check High Sweeps vs Breakout
