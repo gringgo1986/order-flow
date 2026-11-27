@@ -3297,8 +3297,12 @@ class BookmapRenderer {
         const dist = Math.abs(p - effectivePrice) / Math.max(1.0, (maxP - minP) * 0.5);
         const bell = Math.max(0.22, Math.exp(-dist * dist * 1.3));
         const wave = 0.70 + 0.30 * Math.abs(Math.sin(p * 13.1));
-        svpVol = 45 + bell * wave * 340;
+        svpVol = 45 + bell * wave * 310;
         svpBuy = svpVol * (0.38 + 0.26 * Math.abs(Math.cos(p * 7.3)));
+      }
+      // Institutional Confluence: Where Banks stack large resting Limit Orders (bankLots >= 65L), absorbed session volume also clusters
+      if (bankLots >= 65) {
+        svpVol = Math.max(svpVol, 240 + (bankLots - 60) * 3.2);
       }
       const svpLots = Math.max(18, Math.min(485, Math.round(svpVol > 480 ? (280 + Math.sqrt(svpVol) * 3.5) : svpVol)));
       const buyShare = svpVol > 0 ? Math.min(0.85, Math.max(0.15, svpBuy / svpVol)) : 0.5;
@@ -3307,17 +3311,19 @@ class BookmapRenderer {
       rows.push({ p, y, isAsk, bankLots, svpLots, buyShare });
     }
 
-    // ── v94.0: Rank SVP Rows into '👑 SVP PALING KUAT' (#1 Peak) vs '🔥 SVP KUAT' (Top 2 Secondary Strong Nodes) ──
+    // ── v98.0: Rank SVP Rows & Detect Overlapping Large LOT BANK + Large SVP(LOT) Rows ──
     const sortedBySvp = [...rows].sort((a, b) => b.svpLots - a.svpLots);
     const svpPalingKuatRow = sortedBySvp.length > 0 ? sortedBySvp[0] : null;
     const svpKuatRows = [];
     for (const cand of sortedBySvp.slice(1)) {
       if (cand.svpLots < 180) break;
-      if (svpPalingKuatRow && Math.abs(cand.y - svpPalingKuatRow.y) < 24) continue;
-      if (svpKuatRows.some(k => Math.abs(k.y - cand.y) < 24)) continue;
+      if (svpPalingKuatRow && Math.abs(cand.y - svpPalingKuatRow.y) < 20) continue;
+      if (svpKuatRows.some(k => Math.abs(k.y - cand.y) < 20)) continue;
       svpKuatRows.push(cand);
-      if (svpKuatRows.length >= 2) break;
+      if (svpKuatRows.length >= 3) break;
     }
+
+    const overlapSignals = [];
 
     for (const r of rows) {
       const { p, y, isAsk, bankLots, svpLots, buyShare } = r;
@@ -3405,9 +3411,87 @@ class BookmapRenderer {
         ctx.textAlign = 'right';
         ctx.fillText(`${svpLots}L`, sx + sw - 3, y + 3);
       }
+
+      // ── v98.0: Check if Large LOT BANK and Large SVP(LOT) OVERLAP on this exact price row! ──
+      const isLargeBank = isMajorBankWall || bankLots >= 60;
+      const isLargeSvp  = isPalingKuat || isSvpKuat || svpLots >= 260;
+      if (isLargeBank && isLargeSvp) {
+        overlapSignals.push({
+          p,
+          y,
+          isSell: isAsk,
+          bankLots,
+          svpLots,
+          isPalingKuat,
+          score: bankLots * 2.5 + svpLots
+        });
+      }
     }
 
-    // v94.1: Zero on-chart SVP text! 'SVP PALING KUAT' (Gold Box) and 'SVP KUAT' (Cyan Box) are marked strictly by boxes inside the SVP(LOT) column, just like LOT BANK.
+    // ── v98.0: Render On-Chart BUY / SELL Signal Badge When Large LOT BANK & Large SVP(LOT) Overlap! ──
+    if (overlapSignals.length > 0) {
+      // Pick the strongest SELL overlap above price and strongest BUY overlap below price
+      const sellOverlaps = overlapSignals.filter(o => o.isSell).sort((a, b) => b.score - a.score);
+      const buyOverlaps  = overlapSignals.filter(o => !o.isSell).sort((a, b) => b.score - a.score);
+      const activeOverlaps = [];
+      if (sellOverlaps.length > 0) activeOverlaps.push(sellOverlaps[0]);
+      if (buyOverlaps.length > 0)  activeOverlaps.push(buyOverlaps[0]);
+
+      for (const sig of activeOverlaps) {
+        const sy = Math.round(sig.y) + 0.5;
+        if (sy < this.CHART_TOP + 22 || sy > this.CHART_BOTTOM - 22) continue;
+
+        const isSell = sig.isSell;
+        const mainCol = isSell ? '#ff2a55' : '#00e676';
+        const bgCol   = isSell ? 'rgba(48, 6, 18, 0.95)' : 'rgba(4, 38, 22, 0.95)';
+        const dirWord = isSell ? 'SELL' : 'BUY';
+        const arrowCh = isSell ? '▼' : '▲';
+
+        // 1. Unified Outer Frame locking LOT BANK Box + SVP(LOT) Box together on the right panel
+        ctx.save();
+        ctx.strokeStyle = mainCol;
+        ctx.lineWidth = 1.6;
+        ctx.strokeRect(bankX + 0.5, sy - rowH / 2, (bankW + svpW) - 1, rowH);
+
+        // 2. Horizontal Laser Line projecting from the overlapping LOT BANK + SVP row into the Bookmap chart
+        const rayLen = isMob ? 135 : 235;
+        const rayStartX = Math.max(this.CHART_LEFT + 20, sx - rayLen);
+        ctx.setLineDash([5, 3]);
+        ctx.strokeStyle = mainCol;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(rayStartX, sy);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 3. Glowing Directional Signal Pill inside the Bookmap Chart
+        const badgeTxt = isMob
+          ? `${arrowCh} ${dirWord} $${sig.p.toFixed(2)} [${sig.bankLots}L+${sig.svpLots}L]`
+          : `🎯 SIGNAL ${dirWord} @ $${sig.p.toFixed(2)} [BANK ${sig.bankLots}L + SVP ${sig.svpLots}L] ${arrowCh}`;
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        const tw = Math.ceil(ctx.measureText(badgeTxt).width) + 14;
+        const bh = 17;
+        const bx = Math.max(this.CHART_LEFT + 10, sx - tw - 10);
+        const by = Math.round(sy - bh / 2);
+
+        ctx.fillStyle = bgCol;
+        ctx.fillRect(bx, by, tw, bh);
+        ctx.strokeStyle = mainCol;
+        ctx.lineWidth = 1.3;
+        ctx.strokeRect(bx, by, tw, bh);
+
+        // Gold confluence accent bar on left & right edge of badge
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(bx, by, 3.5, bh);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeTxt, bx + 8, by + bh / 2 + 0.5);
+        ctx.restore();
+      }
+    }
 
     // Live Current Price Green Highlight Box on Price Axis
     if (cyLive >= hdrH + 8 && cyLive <= this.CHART_BOTTOM - 8) {
