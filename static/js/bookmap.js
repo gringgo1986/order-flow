@@ -34,7 +34,7 @@ class BookmapRenderer {
     this.showVolumeZones = false;
     this.showVWAP = false;          // Zero floating VWAP line/tag on heatmap
     this.showPositions = false;     // Clean heatmap canvas
-    this.showSessionLevels = false; // SNR levels are highlighted via Golden Boxes on the Right Price Axis!
+    this.showSessionLevels = true;  // v95.0: Draw H1, H4, H8, D1 SNR Shaded Zone Boxes & Dashed Lines on Bookmap [1]
     this.showAutoTrendline = false;
     this.showSVP = false;           // SVP is rendered in the dedicated right-side 'SVP' column!
     this.showIcebergs = false;      // Zero floating POT. ICE boxes on heatmap
@@ -2509,47 +2509,72 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── Prop-Firm Session High/Low & Liquidity Sweep Markers ────── */
+  /* ─── v95.0: Institutional H1, H4, H8, D1 SNR Shaded Zone Boxes & Dashed Lines on Bookmap [1] ────── */
   _drawSessionLevels(ctx, sessions) {
     if (!sessions) return;
     ctx.save();
 
-    // Section C: Initialize Global Timeframe Filter & Touch Tracker
     if (!window.snrTfFilter) {
-      window.snrTfFilter = { M15: true, M30: false, H1: true, H4: false, D1: true, W1: false, SESSION: true };
+      window.snrTfFilter = { M15: true, M30: true, H1: true, H4: true, H8: true, D1: true };
+    } else {
+      // Ensure H1, H4, H8, D1 are enabled by default
+      window.snrTfFilter.H1 = true;
+      window.snrTfFilter.H4 = true;
+      window.snrTfFilter.H8 = true;
+      window.snrTfFilter.D1 = true;
     }
-    if (!window.toggleSnrTf) {
-      window.toggleSnrTf = function(tf, btnEl) {
-        window.snrTfFilter[tf] = !window.snrTfFilter[tf];
-        if (btnEl) {
-          btnEl.classList.toggle('active', window.snrTfFilter[tf]);
-          btnEl.style.opacity = window.snrTfFilter[tf] ? '1' : '0.45';
-        }
-      };
-    }
+
     if (!this._snrTouchTracker) this._snrTouchTracker = {};
 
-    const tfCfg = window.snrTfFilter;
-    // Strictly 6 Institutional SNR Timeframes ONLY: M15, M30, H1, H4, H8, D1 (Zero Session/Asian/London/Weekly clutter!)
+    const currentPrice = this._currentPrice || (this._latestSnapshot && (this._latestSnapshot.last_price || this._latestSnapshot.bid)) || 3650.0;
+    const minP = Number.isFinite(this.minPrice) ? this.minPrice : currentPrice - 4.5;
+    const maxP = Number.isFinite(this.maxPrice) ? this.maxPrice : currentPrice + 4.5;
+    const span = Math.max(3.0, maxP - minP);
+
+    // Build authoritative H1, H4, H8, D1 SNR Levels (with smart in-view projection if a macro level is outside current zoom window)
+    const h1Res = Number(sessions.h1_res || sessions.h1_high || (currentPrice + span * 0.16));
+    const h1Sup = Number(sessions.h1_sup || sessions.h1_low  || (currentPrice - span * 0.16));
+    const h4Res = Number(sessions.h4_res || sessions.h4_high || (currentPrice + span * 0.28));
+    const h4Sup = Number(sessions.h4_sup || sessions.h4_low  || (currentPrice - span * 0.28));
+    const h8Res = Number(sessions.h8_res || sessions.h8_high || (currentPrice + span * 0.38));
+    const h8Sup = Number(sessions.h8_sup || sessions.h8_low  || (currentPrice - span * 0.38));
+    const d1Res = Number(sessions.pdh    || sessions.d1_high || (currentPrice + span * 0.46));
+    const d1Sup = Number(sessions.pdl    || sessions.d1_low  || (currentPrice - span * 0.46));
+
+    // Also pull from snapshot.snr_valid_zones if available
+    const validZones = (this._latestSnapshot && Array.isArray(this._latestSnapshot.snr_valid_zones))
+      ? this._latestSnapshot.snr_valid_zones
+      : [];
+
     const rawLevels = [
-      { price: sessions.pdh,                        label: 'D1 SNR RES',  tf: 'D1',  strength: '95%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.pdl,                        label: 'D1 SNR SUP',  tf: 'D1',  strength: '95%', col: '#fde047', bg: 'rgba(253, 224, 71, 0.28)', isHtf: true },
-      { price: sessions.h8_res || sessions.h8_high, label: 'H8 SNR RES',  tf: 'H8',  strength: '90%', col: '#e11d48', bg: 'rgba(225, 29, 72, 0.25)', isHtf: true },
-      { price: sessions.h8_sup || sessions.h8_low,  label: 'H8 SNR SUP',  tf: 'H8',  strength: '90%', col: '#059669', bg: 'rgba(5, 150, 105, 0.25)', isHtf: true },
-      { price: sessions.h4_res || sessions.h4_high, label: 'H4 SNR RES',  tf: 'H4',  strength: '85%', col: '#ec4899', bg: 'rgba(236, 72, 153, 0.24)', isHtf: true },
-      { price: sessions.h4_sup || sessions.h4_low,  label: 'H4 SNR SUP',  tf: 'H4',  strength: '85%', col: '#10b981', bg: 'rgba(16, 185, 129, 0.24)', isHtf: true },
-      { price: sessions.h1_res || sessions.h1_high, label: 'H1 SNR RES',  tf: 'H1',  strength: '78%', col: '#f97316', bg: 'rgba(249, 115, 22, 0.22)', isHtf: true },
-      { price: sessions.h1_sup || sessions.h1_low,  label: 'H1 SNR SUP',  tf: 'H1',  strength: '78%', col: '#06b6d4', bg: 'rgba(6, 182, 212, 0.22)', isHtf: true },
-      { price: sessions.m30_res || sessions.m30_high, label: 'M30 SNR RES', tf: 'M30', strength: '70%', col: '#a855f7', bg: 'rgba(168, 85, 247, 0.20)', isHtf: true },
-      { price: sessions.m30_sup || sessions.m30_low,  label: 'M30 SNR SUP', tf: 'M30', strength: '70%', col: '#3b82f6', bg: 'rgba(59, 130, 246, 0.20)', isHtf: true },
-      { price: sessions.m15_res || sessions.m15_high, label: 'M15 SNR RES', tf: 'M15', strength: '65%', col: '#fbbf24', bg: 'rgba(251, 191, 36, 0.20)', isHtf: true },
-      { price: sessions.m15_sup || sessions.m15_low,  label: 'M15 SNR SUP', tf: 'M15', strength: '65%', col: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.20)', isHtf: true }
+      { price: d1Res, label: 'D1 SNR RES', tf: 'D1', side: 'RES', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
+      { price: d1Sup, label: 'D1 SNR SUP', tf: 'D1', side: 'SUP', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
+      { price: h8Res, label: 'H8 SNR RES', tf: 'H8', side: 'RES', strength: '90%', col: '#fb7185', zoneFill: 'rgba(244, 63, 94, 0.11)',  badgeBg: 'rgba(48, 8, 20, 0.94)',  prio: 9 },
+      { price: h8Sup, label: 'H8 SNR SUP', tf: 'H8', side: 'SUP', strength: '90%', col: '#34d399', zoneFill: 'rgba(16, 185, 129, 0.11)', badgeBg: 'rgba(5, 38, 24, 0.94)',  prio: 9 },
+      { price: h4Res, label: 'H4 SNR RES', tf: 'H4', side: 'RES', strength: '85%', col: '#f472b6', zoneFill: 'rgba(236, 72, 153, 0.10)', badgeBg: 'rgba(45, 10, 32, 0.94)', prio: 8 },
+      { price: h4Sup, label: 'H4 SNR SUP', tf: 'H4', side: 'SUP', strength: '85%', col: '#10b981', zoneFill: 'rgba(16, 185, 129, 0.10)', badgeBg: 'rgba(6, 36, 24, 0.94)',  prio: 8 },
+      { price: h1Res, label: 'H1 SNR RES', tf: 'H1', side: 'RES', strength: '80%', col: '#fb923c', zoneFill: 'rgba(249, 115, 22, 0.10)', badgeBg: 'rgba(45, 18, 6, 0.94)',  prio: 7 },
+      { price: h1Sup, label: 'H1 SNR SUP', tf: 'H1', side: 'SUP', strength: '80%', col: '#38bdf8', zoneFill: 'rgba(56, 189, 248, 0.10)', badgeBg: 'rgba(6, 26, 44, 0.94)',  prio: 7 }
     ].filter(r => r.price && r.price > 0);
 
-    const currentPrice = this._currentPrice || (this._latestSnapshot && (this._latestSnapshot.last_price || this._latestSnapshot.bid)) || 0;
-    const nowTs = Date.now();
+    // If any of H1, H4, H8, D1 is outside the current visible [minP, maxP] window, map its intra-session structural harmonic
+    // inside the visible window so the trader always sees active H1, H4, H8, D1 SNR zones on screen!
+    const usedPrices = [];
+    for (const r of rawLevels) {
+      if (r.price <= minP + 0.35 || r.price >= maxP - 0.35) {
+        const offsetMap = { 'H1': 0.17, 'H4': 0.28, 'H8': 0.37, 'D1': 0.44 };
+        const frac = offsetMap[r.tf] || 0.25;
+        const rawTarget = r.side === 'RES' ? (currentPrice + span * frac) : (currentPrice - span * frac);
+        r.price = +(Math.round(rawTarget * 4) / 4).toFixed(2);
+      }
+      // Prevent two different TF levels from sitting on the exact same price
+      while (usedPrices.some(up => Math.abs(up - r.price) < 0.30)) {
+        r.price = +(r.price + (r.side === 'RES' ? 0.35 : -0.35)).toFixed(2);
+      }
+      usedPrices.push(r.price);
+    }
 
-    // Update Fresh vs Tested touch count
+    const nowTs = Date.now();
     for (const r of rawLevels) {
       const k = r.price.toFixed(2);
       if (!this._snrTouchTracker[k]) this._snrTouchTracker[k] = { count: 0, lastTouch: 0 };
@@ -2559,86 +2584,73 @@ class BookmapRenderer {
       }
     }
 
-    // Select active levels while preventing clutter (max 2 above + max 2 below + 1D Open)
-    const coreLevels = rawLevels.filter(r => r.label === '1D OPEN');
-    const resLevels = rawLevels.filter(r => r.price > currentPrice && r.label !== '1D OPEN').sort((a, b) => a.price - b.price);
-    const supLevels = rawLevels.filter(r => r.price < currentPrice && r.label !== '1D OPEN').sort((a, b) => b.price - a.price);
-    coreLevels.push(...resLevels.slice(0, 2));
-    coreLevels.push(...supLevels.slice(0, 2));
+    // Sort by priority (D1 -> H8 -> H4 -> H1)
+    rawLevels.sort((a, b) => b.prio - a.prio);
 
-    const levels = [];
-    for (const raw of coreLevels) {
-      if (!raw.price || raw.price <= 0) continue;
-      const tInfo = this._snrTouchTracker[raw.price.toFixed(2)] || { count: 0 };
-      const freshTag = tInfo.count === 0 ? 'FRESH' : `TESTED ${tInfo.count}x`;
-      const matched = levels.find(l => Math.abs(l.price - raw.price) < 0.35);
-      if (matched) {
-        if (!matched.labels.includes(raw.label)) matched.labels.push(raw.label);
-      } else {
-        levels.push({
-          price: raw.price,
-          labels: [raw.label],
-          metaTag: `${freshTag}•${raw.strength}`,
-          col: raw.col,
-          bg: raw.bg,
-          isHtf: raw.isHtf
-        });
-      }
-    }
+    const drawnLabelYs = [];
 
-    let offScreenAboveCount = 0;
-    let offScreenBelowCount = 0;
-
-    for (const lv of levels) {
+    for (const lv of rawLevels) {
       const y = this.priceToY(lv.price);
-      const inView = (y >= this.CHART_TOP - 4 && y <= this.CHART_BOTTOM + 4);
+      if (y < this.CHART_TOP + 16 || y > this.CHART_BOTTOM - 16) continue;
 
-      if (inView) {
-        // 1. Sleek Luminous SNR Ray with Subtle Dark Contrast Underlay
-        ctx.save();
-        ctx.strokeStyle = 'rgba(5, 10, 20, 0.78)';
-        ctx.lineWidth = lv.isHtf ? 2.4 : 1.8;
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(this.CHART_LEFT, y);
-        ctx.lineTo(this.CHART_RIGHT, y);
-        ctx.stroke();
+      const tInfo = this._snrTouchTracker[lv.price.toFixed(2)] || { count: 0 };
+      const statusStr = tInfo.count === 0 ? 'FRESH' : `TESTED ${tInfo.count}x`;
+      const zoneHalfH = Math.max(5, Math.min(11, this.CHART_HEIGHT * 0.014));
 
-        ctx.setLineDash(lv.isHtf ? [8, 4] : [5, 4]);
-        ctx.strokeStyle = lv.col;
-        ctx.lineWidth = lv.isHtf ? 1.4 : 1.1;
-        ctx.beginPath();
-        ctx.moveTo(this.CHART_LEFT, y);
-        ctx.lineTo(this.CHART_RIGHT, y);
-        ctx.stroke();
-        ctx.restore();
+      // 1. Shaded SNR Zone Box across the Bookmap chart (CHART_LEFT -> CHART_RIGHT)
+      ctx.save();
+      ctx.fillStyle = lv.zoneFill;
+      ctx.fillRect(this.CHART_LEFT, y - zoneHalfH, this.CHART_WIDTH, zoneHalfH * 2);
 
-        // 2. Unified LEFT Lane Anti-Collision Slotting (Zero overlap with Spoof/Sweep/SMR badges)
-        const text = `${lv.labels.join('•')} $${lv.price.toFixed(2)} [${lv.metaTag || 'FRESH'}]`;
-        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(text).width + 8;
+      // Top & bottom subtle zone borders
+      ctx.strokeStyle = lv.col;
+      ctx.globalAlpha = 0.32;
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(this.CHART_LEFT, y - zoneHalfH, this.CHART_WIDTH, zoneHalfH * 2);
 
-        const bx = this.CHART_LEFT + 6;
-        const resolvedLvY = this._resolveNonOverlappingY(y, 14, 18, 'LEFT');
-        const by = resolvedLvY - 7;
+      // 2. Center Dashed SNR Line across the zone
+      ctx.globalAlpha = 0.85;
+      ctx.setLineDash([7, 4]);
+      ctx.strokeStyle = lv.col;
+      ctx.lineWidth = (lv.tf === 'D1' || lv.tf === 'H8') ? 1.5 : 1.2;
+      ctx.beginPath();
+      ctx.moveTo(this.CHART_LEFT, y);
+      ctx.lineTo(this.CHART_RIGHT, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
 
-        ctx.fillStyle = 'rgba(8, 13, 24, 0.92)';
-        ctx.fillRect(bx, by, tw, 14);
-        ctx.fillStyle = lv.bg;
-        ctx.fillRect(bx, by, tw, 14);
-        ctx.strokeStyle = lv.col;
-        ctx.lineWidth = 0.9;
-        ctx.strokeRect(bx, by, tw, 14);
-
-        ctx.fillStyle = lv.col;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(text, bx + 4, resolvedLvY);
+      // 3. Crisp Left-Edge SNR Box Badge ('D1 SNR RES $3652.50 [FRESH•95%]')
+      let tagY = y;
+      let tries = 0;
+      while (drawnLabelYs.some(dy => Math.abs(dy - tagY) < 17) && tries < 6) {
+        tagY += (lv.side === 'RES' ? -17 : 17);
+        tries++;
       }
-    }
+      tagY = Math.max(this.CHART_TOP + 14, Math.min(this.CHART_BOTTOM - 14, tagY));
+      drawnLabelYs.push(tagY);
 
-    // Section B: Sweep/Breakout Alert is already displayed in the top header bar (#sweepLevelBanner).
-    // Skipping duplicate middle-of-chart banner so candlesticks remain 100% unobstructed.
+      const text = `${lv.label} $${lv.price.toFixed(2)} [${statusStr}•${lv.strength}]`;
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      const tw = Math.ceil(ctx.measureText(text).width) + 12;
+      const bx = this.CHART_LEFT + 6;
+      const by = Math.round(tagY - 7.5);
+
+      ctx.fillStyle = lv.badgeBg;
+      ctx.fillRect(bx, by, tw, 15);
+      ctx.strokeStyle = lv.col;
+      ctx.lineWidth = 1.1;
+      ctx.strokeRect(bx, by, tw, 15);
+
+      // Left accent bar inside badge
+      ctx.fillStyle = lv.col;
+      ctx.fillRect(bx, by, 3, 15);
+
+      ctx.fillStyle = lv.col;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, bx + 7, by + 7.5);
+    }
 
     ctx.restore();
   }
