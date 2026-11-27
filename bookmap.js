@@ -749,14 +749,15 @@ class BookmapRenderer {
         [115.0, 225,  29,  72, 0.97]  // Ruby Red Institutional Wall
       ];
     } else {
-      // Authentic Bookmap 7 BMD High-Contrast Thermal Spectrum (Deep Navy -> Vivid Cyan -> Yellow -> Orange -> Red -> Pure White)
+      // Official Bookmap Heatmap Colormap (Black -> Deep Blue -> Cyan Blue -> WHITE -> YELLOW -> ORANGE -> DEEP RED)
       stops = [
-        [16.0,  12,  45,  88, 0.42],  // Deep Navy Blue
-        [28.0,  14, 135, 215, 0.78],  // Vivid Bookmap Cyan-Blue
-        [46.0, 250, 204,  21, 0.92],  // Bright Golden Yellow
-        [64.0, 249, 115,  22, 0.95],  // Fiery Orange Wall
-        [82.0, 239,  35,  20, 0.97],  // Vivid Crimson Red Wall
-        [102.0, 255, 255, 255, 0.99]  // Pure White-Hot Institutional Wall Core
+        [16.0,   8,  26,  46, 0.45],  // 1. Dark Navy-Black (Low Liquidity)
+        [26.0,   5,  68, 122, 0.72],  // 2. Deep Ocean Blue
+        [38.0,   0, 136, 204, 0.88],  // 3. Vivid Bookmap Cyan-Blue
+        [52.0, 248, 250, 252, 0.94],  // 4. Pure White (Center Transition!)
+        [66.0, 255, 230,   0, 0.96],  // 5. Vivid Yellow (High Liquidity)
+        [82.0, 255, 119,   0, 0.98],  // 6. Fiery Orange (Major Bank Wall)
+        [98.0, 230,   0,   0, 0.99]   // 7. Extreme Crimson Red (Maximum Institutional Bank Wall!)
       ];
     }
 
