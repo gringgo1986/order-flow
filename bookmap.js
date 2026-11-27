@@ -115,13 +115,9 @@ class BookmapRenderer {
     const minTop = (this.CHART_TOP || 0) + (lane === 'LEFT' ? 30 : 16);
     const maxBot = (this.CHART_BOTTOM || 500) - badgeH - 6;
 
-    // Protect live price & active 3D trade bubble corridor in CENTER and RIGHT lanes
-    const liveY = this._currentPrice ? this.priceToY(this._currentPrice) : -999;
-    const protectLiveCorridor = (lane === 'RIGHT' || lane === 'CENTER') && liveY > minTop && liveY < maxBot;
-
+    // Stable Anti-Collision Slotting (Zero vertical jumping when live price ticks by 1 cent)
     const isColliding = (candY) => {
       if (candY < minTop || candY > maxBot) return true;
-      if (protectLiveCorridor && Math.abs(candY - liveY) < 22) return true;
       return slots.some(slotY => Math.abs(slotY - candY) < minGap);
     };
 
@@ -1335,8 +1331,16 @@ class BookmapRenderer {
         }
         this._pulledGhostWalls = this._pulledGhostWalls.filter(g => now - g.time < 9000).slice(-1);
 
-        const topAskWalls = pickTopWalls(asks, 60, 2);
-        const topBidWalls = pickTopWalls(bids, 60, 2);
+        if (!this._lastWallPickTs || (now - this._lastWallPickTs >= 1800) || !this._cachedTopAskWalls || !this._cachedTopBidWalls) {
+          this._cachedTopAskWalls = pickTopWalls(asks, 60, 2);
+          this._cachedTopBidWalls = pickTopWalls(bids, 60, 2);
+          this._lastWallPickTs = now;
+        } else {
+          for (const w of this._cachedTopAskWalls) w.wy = this.priceToY(w.p);
+          for (const w of this._cachedTopBidWalls) w.wy = this.priceToY(w.p);
+        }
+        const topAskWalls = this._cachedTopAskWalls;
+        const topBidWalls = this._cachedTopBidWalls;
 
         const drawSharkWallOverlay = (wall, isAsk, rankIdx) => {
           const wy = wall.wy;
@@ -2101,11 +2105,16 @@ class BookmapRenderer {
     // to prevent duplicate overlapping histograms and duplicate POC lines.
     const bandThickness = Math.max(8, Math.min(16, Math.abs(this.priceToY(0) - this.priceToY(step)) * 0.75));
 
-    // ZON RAMAI BUYER (2-Condition Confirmed: Volume >=80L + Buying Dominance + Price Holding/Bouncing Above Zone)
-    const isBuyZoneConfirmed = topBuy && topBuy.buy >= 80.0 &&
-                               (topBuy.buy > topBuy.sell * 1.20) &&
-                               (!currentPrice || currentPrice >= topBuy.price - 0.10);
-    if (isBuyZoneConfirmed) {
+    // ZON RAMAI BUYER with 8-Second Anti-Flicker Latch (Prevents rapid blinking when price ticks near zone)
+    const rawBuyZoneOk = topBuy && topBuy.buy >= 80.0 &&
+                         (topBuy.buy > topBuy.sell * 1.20) &&
+                         (!currentPrice || currentPrice >= topBuy.price - 0.35);
+    if (rawBuyZoneOk) {
+      this._latchedBuyZone = { bucket: topBuy, ts: now };
+    }
+    const activeBuyZone = rawBuyZoneOk ? topBuy : ((this._latchedBuyZone && (now - this._latchedBuyZone.ts < 8000)) ? this._latchedBuyZone.bucket : null);
+    if (activeBuyZone) {
+      topBuy = activeBuyZone;
       const buyY = this.priceToY(topBuy.price);
       if (buyY >= this.CHART_TOP + 14 && buyY <= this.CHART_BOTTOM - 14) {
         if (currentPrice && Math.abs(currentPrice - topBuy.price) < 0.20) {
@@ -2146,12 +2155,17 @@ class BookmapRenderer {
       }
     }
 
-    // ZON RAMAI SELLER (2-Condition Confirmed: Volume >=80L + Selling Dominance + Price Holding/Rejecting Below Zone)
-    const isSellZoneConfirmed = topSell && topSell.sell >= 80.0 &&
-                                (topSell.sell > topSell.buy * 1.20) &&
-                                (!currentPrice || currentPrice <= topSell.price + 0.10) &&
-                                (!topBuy || Math.abs(topSell.price - topBuy.price) >= 0.50);
-    if (isSellZoneConfirmed) {
+    // ZON RAMAI SELLER with 8-Second Anti-Flicker Latch (Prevents rapid blinking when price ticks near zone)
+    const rawSellZoneOk = topSell && topSell.sell >= 80.0 &&
+                          (topSell.sell > topSell.buy * 1.20) &&
+                          (!currentPrice || currentPrice <= topSell.price + 0.35) &&
+                          (!topBuy || Math.abs(topSell.price - topBuy.price) >= 0.50);
+    if (rawSellZoneOk) {
+      this._latchedSellZone = { bucket: topSell, ts: now };
+    }
+    const activeSellZone = rawSellZoneOk ? topSell : ((this._latchedSellZone && (now - this._latchedSellZone.ts < 8000)) ? this._latchedSellZone.bucket : null);
+    if (activeSellZone) {
+      topSell = activeSellZone;
       const sellY = this.priceToY(topSell.price);
       if (sellY >= this.CHART_TOP + 14 && sellY <= this.CHART_BOTTOM - 14) {
         if (currentPrice && Math.abs(currentPrice - topSell.price) < 0.20) {
