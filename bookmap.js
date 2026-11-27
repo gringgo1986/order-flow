@@ -3524,10 +3524,8 @@ class BookmapRenderer {
       }
       drawnBankSigYs.push(badgeCenterY);
 
-      // C. Persistent 'BANK SELL' / 'BANK BUY' Badge inside the Bookmap Chart
-      const badgeTxt = isMob
-        ? `${arrowCh} ${labelWord} $${sig.p.toFixed(2)} [${sig.bankLots}L•${sig.svpLots}L]`
-        : `🏦 ${labelWord} @ $${sig.p.toFixed(2)} [BANK ${sig.bankLots}L • SVP ${sig.svpLots}L] ${arrowCh}`;
+      // C. Persistent 'BANK SELL 125L + 420L' / 'BANK BUY 108L + 435L' Badge inside the Bookmap Chart
+      const badgeTxt = `${labelWord} ${sig.bankLots}L + ${sig.svpLots}L`;
       ctx.font = 'bold 9px "JetBrains Mono", monospace';
       const tw = Math.ceil(ctx.measureText(badgeTxt).width) + 14;
       const bh = 17;
