@@ -2531,48 +2531,52 @@ class BookmapRenderer {
     const maxP = Number.isFinite(this.maxPrice) ? this.maxPrice : currentPrice + 4.5;
     const span = Math.max(3.0, maxP - minP);
 
-    // Build authoritative H1, H4, H8, D1 SNR Levels (with smart in-view projection if a macro level is outside current zoom window)
-    const h1Res = Number(sessions.h1_res || sessions.h1_high || (currentPrice + span * 0.16));
-    const h1Sup = Number(sessions.h1_sup || sessions.h1_low  || (currentPrice - span * 0.16));
-    const h4Res = Number(sessions.h4_res || sessions.h4_high || (currentPrice + span * 0.28));
-    const h4Sup = Number(sessions.h4_sup || sessions.h4_low  || (currentPrice - span * 0.28));
-    const h8Res = Number(sessions.h8_res || sessions.h8_high || (currentPrice + span * 0.38));
-    const h8Sup = Number(sessions.h8_sup || sessions.h8_low  || (currentPrice - span * 0.38));
-    const d1Res = Number(sessions.pdh    || sessions.d1_high || (currentPrice + span * 0.46));
-    const d1Sup = Number(sessions.pdl    || sessions.d1_low  || (currentPrice - span * 0.46));
+    // v95.1: Lock H1, H4, H8, D1 SNR levels to a STATIONARY Structural Anchor Price!
+    // Never recalculate SNR prices from tick-by-tick `currentPrice` so SNR lines stay 100% rock-solid and stationary!
+    if (!this._lockedSnrAnchorPrice || !this._lockedHtfSnrLevels || Math.abs(currentPrice - this._lockedSnrAnchorPrice) > 6.50) {
+      const anchorP = Math.round(currentPrice * 2) / 2; // Fixed $0.50 institutional anchor
+      this._lockedSnrAnchorPrice = anchorP;
 
-    // Also pull from snapshot.snr_valid_zones if available
-    const validZones = (this._latestSnapshot && Array.isArray(this._latestSnapshot.snr_valid_zones))
-      ? this._latestSnapshot.snr_valid_zones
-      : [];
+      const pickFixedLevel = (rawServerP, defaultOffset, side) => {
+        const p = Number(rawServerP || 0);
+        // Use server level if it lies within reasonable visible range (±$4.20 of anchor); otherwise lock to fixed $0.50 structural harmonic
+        if (p > 0 && Math.abs(p - anchorP) >= 0.40 && Math.abs(p - anchorP) <= 4.20) {
+          return +(Math.round(p * 4) / 4).toFixed(2);
+        }
+        return +(anchorP + (side === 'RES' ? defaultOffset : -defaultOffset)).toFixed(2);
+      };
 
-    const rawLevels = [
-      { price: d1Res, label: 'D1 SNR RES', tf: 'D1', side: 'RES', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
-      { price: d1Sup, label: 'D1 SNR SUP', tf: 'D1', side: 'SUP', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
-      { price: h8Res, label: 'H8 SNR RES', tf: 'H8', side: 'RES', strength: '90%', col: '#fb7185', zoneFill: 'rgba(244, 63, 94, 0.11)',  badgeBg: 'rgba(48, 8, 20, 0.94)',  prio: 9 },
-      { price: h8Sup, label: 'H8 SNR SUP', tf: 'H8', side: 'SUP', strength: '90%', col: '#34d399', zoneFill: 'rgba(16, 185, 129, 0.11)', badgeBg: 'rgba(5, 38, 24, 0.94)',  prio: 9 },
-      { price: h4Res, label: 'H4 SNR RES', tf: 'H4', side: 'RES', strength: '85%', col: '#f472b6', zoneFill: 'rgba(236, 72, 153, 0.10)', badgeBg: 'rgba(45, 10, 32, 0.94)', prio: 8 },
-      { price: h4Sup, label: 'H4 SNR SUP', tf: 'H4', side: 'SUP', strength: '85%', col: '#10b981', zoneFill: 'rgba(16, 185, 129, 0.10)', badgeBg: 'rgba(6, 36, 24, 0.94)',  prio: 8 },
-      { price: h1Res, label: 'H1 SNR RES', tf: 'H1', side: 'RES', strength: '80%', col: '#fb923c', zoneFill: 'rgba(249, 115, 22, 0.10)', badgeBg: 'rgba(45, 18, 6, 0.94)',  prio: 7 },
-      { price: h1Sup, label: 'H1 SNR SUP', tf: 'H1', side: 'SUP', strength: '80%', col: '#38bdf8', zoneFill: 'rgba(56, 189, 248, 0.10)', badgeBg: 'rgba(6, 26, 44, 0.94)',  prio: 7 }
-    ].filter(r => r.price && r.price > 0);
+      const d1Res = pickFixedLevel(sessions.pdh    || sessions.d1_high, 3.50, 'RES');
+      const d1Sup = pickFixedLevel(sessions.pdl    || sessions.d1_low,  3.50, 'SUP');
+      const h8Res = pickFixedLevel(sessions.h8_res || sessions.h8_high, 2.75, 'RES');
+      const h8Sup = pickFixedLevel(sessions.h8_sup || sessions.h8_low,  2.75, 'SUP');
+      const h4Res = pickFixedLevel(sessions.h4_res || sessions.h4_high, 2.00, 'RES');
+      const h4Sup = pickFixedLevel(sessions.h4_sup || sessions.h4_low,  2.00, 'SUP');
+      const h1Res = pickFixedLevel(sessions.h1_res || sessions.h1_high, 1.25, 'RES');
+      const h1Sup = pickFixedLevel(sessions.h1_sup || sessions.h1_low,  1.25, 'SUP');
 
-    // If any of H1, H4, H8, D1 is outside the current visible [minP, maxP] window, map its intra-session structural harmonic
-    // inside the visible window so the trader always sees active H1, H4, H8, D1 SNR zones on screen!
-    const usedPrices = [];
-    for (const r of rawLevels) {
-      if (r.price <= minP + 0.35 || r.price >= maxP - 0.35) {
-        const offsetMap = { 'H1': 0.17, 'H4': 0.28, 'H8': 0.37, 'D1': 0.44 };
-        const frac = offsetMap[r.tf] || 0.25;
-        const rawTarget = r.side === 'RES' ? (currentPrice + span * frac) : (currentPrice - span * frac);
-        r.price = +(Math.round(rawTarget * 4) / 4).toFixed(2);
+      const candidateList = [
+        { price: d1Res, label: 'D1 SNR RES', tf: 'D1', side: 'RES', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
+        { price: d1Sup, label: 'D1 SNR SUP', tf: 'D1', side: 'SUP', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
+        { price: h8Res, label: 'H8 SNR RES', tf: 'H8', side: 'RES', strength: '90%', col: '#fb7185', zoneFill: 'rgba(244, 63, 94, 0.11)',  badgeBg: 'rgba(48, 8, 20, 0.94)',  prio: 9 },
+        { price: h8Sup, label: 'H8 SNR SUP', tf: 'H8', side: 'SUP', strength: '90%', col: '#34d399', zoneFill: 'rgba(16, 185, 129, 0.11)', badgeBg: 'rgba(5, 38, 24, 0.94)',  prio: 9 },
+        { price: h4Res, label: 'H4 SNR RES', tf: 'H4', side: 'RES', strength: '85%', col: '#f472b6', zoneFill: 'rgba(236, 72, 153, 0.10)', badgeBg: 'rgba(45, 10, 32, 0.94)', prio: 8 },
+        { price: h4Sup, label: 'H4 SNR SUP', tf: 'H4', side: 'SUP', strength: '85%', col: '#10b981', zoneFill: 'rgba(16, 185, 129, 0.10)', badgeBg: 'rgba(6, 36, 24, 0.94)',  prio: 8 },
+        { price: h1Res, label: 'H1 SNR RES', tf: 'H1', side: 'RES', strength: '80%', col: '#fb923c', zoneFill: 'rgba(249, 115, 22, 0.10)', badgeBg: 'rgba(45, 18, 6, 0.94)',  prio: 7 },
+        { price: h1Sup, label: 'H1 SNR SUP', tf: 'H1', side: 'SUP', strength: '80%', col: '#38bdf8', zoneFill: 'rgba(56, 189, 248, 0.10)', badgeBg: 'rgba(6, 26, 44, 0.94)',  prio: 7 }
+      ];
+
+      const usedPrices = [];
+      for (const r of candidateList) {
+        while (usedPrices.some(up => Math.abs(up - r.price) < 0.45)) {
+          r.price = +(r.price + (r.side === 'RES' ? 0.50 : -0.50)).toFixed(2);
+        }
+        usedPrices.push(r.price);
       }
-      // Prevent two different TF levels from sitting on the exact same price
-      while (usedPrices.some(up => Math.abs(up - r.price) < 0.30)) {
-        r.price = +(r.price + (r.side === 'RES' ? 0.35 : -0.35)).toFixed(2);
-      }
-      usedPrices.push(r.price);
+      this._lockedHtfSnrLevels = candidateList;
     }
+
+    const rawLevels = this._lockedHtfSnrLevels;
 
     const nowTs = Date.now();
     for (const r of rawLevels) {
