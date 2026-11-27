@@ -1,3 +1,71 @@
+
+/* ─── v97.0: Global Master Bookmap SNR Engine (Shared 100% Across Bookmap [1], Cluster [2], Footprint [3], Lilin [4], Split [5]) ─── */
+window.getMasterBookmapSnrLevels = function(sessions, currentPrice) {
+  sessions = sessions || {};
+  const curP = Number(currentPrice || window._lastMasterSnrPrice || 3650.0);
+  if (curP > 0) window._lastMasterSnrPrice = curP;
+
+  if (!window._masterSnrTouchTracker) window._masterSnrTouchTracker = {};
+
+  if (!window._lockedMasterSnrAnchor || !window._lockedMasterSnrList || Math.abs(curP - window._lockedMasterSnrAnchor) > 6.50) {
+    const anchorP = Math.round(curP * 2) / 2;
+    window._lockedMasterSnrAnchor = anchorP;
+
+    const pickFixedLevel = (rawServerP, defaultOffset, side) => {
+      const p = Number(rawServerP || 0);
+      if (p > 0 && Math.abs(p - anchorP) >= 0.40 && Math.abs(p - anchorP) <= 4.20) {
+        return +(Math.round(p * 4) / 4).toFixed(2);
+      }
+      return +(anchorP + (side === 'RES' ? defaultOffset : -defaultOffset)).toFixed(2);
+    };
+
+    const d1Res = pickFixedLevel(sessions.pdh    || sessions.d1_high, 3.50, 'RES');
+    const d1Sup = pickFixedLevel(sessions.pdl    || sessions.d1_low,  3.50, 'SUP');
+    const h8Res = pickFixedLevel(sessions.h8_res || sessions.h8_high, 2.75, 'RES');
+    const h8Sup = pickFixedLevel(sessions.h8_sup || sessions.h8_low,  2.75, 'SUP');
+    const h4Res = pickFixedLevel(sessions.h4_res || sessions.h4_high, 2.00, 'RES');
+    const h4Sup = pickFixedLevel(sessions.h4_sup || sessions.h4_low,  2.00, 'SUP');
+    const h1Res = pickFixedLevel(sessions.h1_res || sessions.h1_high, 1.25, 'RES');
+    const h1Sup = pickFixedLevel(sessions.h1_sup || sessions.h1_low,  1.25, 'SUP');
+
+    const candidateList = [
+      { price: d1Res, label: 'D1 SNR RES', tf: 'D1', side: 'RES', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
+      { price: d1Sup, label: 'D1 SNR SUP', tf: 'D1', side: 'SUP', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
+      { price: h8Res, label: 'H8 SNR RES', tf: 'H8', side: 'RES', strength: '90%', col: '#fb7185', zoneFill: 'rgba(244, 63, 94, 0.11)',  badgeBg: 'rgba(48, 8, 20, 0.94)',  prio: 9 },
+      { price: h8Sup, label: 'H8 SNR SUP', tf: 'H8', side: 'SUP', strength: '90%', col: '#34d399', zoneFill: 'rgba(16, 185, 129, 0.11)', badgeBg: 'rgba(5, 38, 24, 0.94)',  prio: 9 },
+      { price: h4Res, label: 'H4 SNR RES', tf: 'H4', side: 'RES', strength: '85%', col: '#f472b6', zoneFill: 'rgba(236, 72, 153, 0.10)', badgeBg: 'rgba(45, 10, 32, 0.94)', prio: 8 },
+      { price: h4Sup, label: 'H4 SNR SUP', tf: 'H4', side: 'SUP', strength: '85%', col: '#10b981', zoneFill: 'rgba(16, 185, 129, 0.10)', badgeBg: 'rgba(6, 36, 24, 0.94)',  prio: 8 },
+      { price: h1Res, label: 'H1 SNR RES', tf: 'H1', side: 'RES', strength: '80%', col: '#fb923c', zoneFill: 'rgba(249, 115, 22, 0.10)', badgeBg: 'rgba(45, 18, 6, 0.94)',  prio: 7 },
+      { price: h1Sup, label: 'H1 SNR SUP', tf: 'H1', side: 'SUP', strength: '80%', col: '#38bdf8', zoneFill: 'rgba(56, 189, 248, 0.10)', badgeBg: 'rgba(6, 26, 44, 0.94)',  prio: 7 }
+    ];
+
+    const usedPrices = [];
+    for (const r of candidateList) {
+      while (usedPrices.some(up => Math.abs(up - r.price) < 0.45)) {
+        r.price = +(r.price + (r.side === 'RES' ? 0.50 : -0.50)).toFixed(2);
+      }
+      usedPrices.push(r.price);
+    }
+    candidateList.sort((a, b) => b.prio - a.prio);
+    window._lockedMasterSnrList = candidateList;
+  }
+
+  const nowTs = Date.now();
+  for (const r of window._lockedMasterSnrList) {
+    const k = r.price.toFixed(2);
+    if (!window._masterSnrTouchTracker[k]) window._masterSnrTouchTracker[k] = { count: 0, lastTouch: 0 };
+    if (curP > 0 && Math.abs(curP - r.price) <= 0.18 && (nowTs - window._masterSnrTouchTracker[k].lastTouch > 35000)) {
+      window._masterSnrTouchTracker[k].count += 1;
+      window._masterSnrTouchTracker[k].lastTouch = nowTs;
+    }
+    const tInfo = window._masterSnrTouchTracker[k];
+    r.statusStr = tInfo.count === 0 ? 'FRESH' : `TESTED ${tInfo.count}x`;
+    r.fullText = `${r.label} $${r.price.toFixed(2)} [${r.statusStr}•${r.strength}]`;
+  }
+
+  return window._lockedMasterSnrList;
+};
+
 /**
  * ╔══════════════════════════════════════════════════════════════════════════╗
  * ║  BOOKMAP™ PROFESSIONAL CANVAS ENGINE v6.0 — INSTITUTIONAL PRO REPLICA    ║
@@ -2520,87 +2588,13 @@ class BookmapRenderer {
     ctx.restore();
   }
 
-  /* ─── v95.0: Institutional H1, H4, H8, D1 SNR Shaded Zone Boxes & Dashed Lines on Bookmap [1] ────── */
+  /* ─── v97.0: Master Bookmap [1] H1, H4, H8, D1 SNR Shaded Zone Boxes & Dashed Lines ────── */
   _drawSessionLevels(ctx, sessions) {
     if (!sessions) return;
     ctx.save();
 
-    if (!window.snrTfFilter) {
-      window.snrTfFilter = { M15: true, M30: true, H1: true, H4: true, H8: true, D1: true };
-    } else {
-      // Ensure H1, H4, H8, D1 are enabled by default
-      window.snrTfFilter.H1 = true;
-      window.snrTfFilter.H4 = true;
-      window.snrTfFilter.H8 = true;
-      window.snrTfFilter.D1 = true;
-    }
-
-    if (!this._snrTouchTracker) this._snrTouchTracker = {};
-
     const currentPrice = this._currentPrice || (this._latestSnapshot && (this._latestSnapshot.last_price || this._latestSnapshot.bid)) || 3650.0;
-    const minP = Number.isFinite(this.minPrice) ? this.minPrice : currentPrice - 4.5;
-    const maxP = Number.isFinite(this.maxPrice) ? this.maxPrice : currentPrice + 4.5;
-    const span = Math.max(3.0, maxP - minP);
-
-    // v95.1: Lock H1, H4, H8, D1 SNR levels to a STATIONARY Structural Anchor Price!
-    // Never recalculate SNR prices from tick-by-tick `currentPrice` so SNR lines stay 100% rock-solid and stationary!
-    if (!this._lockedSnrAnchorPrice || !this._lockedHtfSnrLevels || Math.abs(currentPrice - this._lockedSnrAnchorPrice) > 6.50) {
-      const anchorP = Math.round(currentPrice * 2) / 2; // Fixed $0.50 institutional anchor
-      this._lockedSnrAnchorPrice = anchorP;
-
-      const pickFixedLevel = (rawServerP, defaultOffset, side) => {
-        const p = Number(rawServerP || 0);
-        // Use server level if it lies within reasonable visible range (±$4.20 of anchor); otherwise lock to fixed $0.50 structural harmonic
-        if (p > 0 && Math.abs(p - anchorP) >= 0.40 && Math.abs(p - anchorP) <= 4.20) {
-          return +(Math.round(p * 4) / 4).toFixed(2);
-        }
-        return +(anchorP + (side === 'RES' ? defaultOffset : -defaultOffset)).toFixed(2);
-      };
-
-      const d1Res = pickFixedLevel(sessions.pdh    || sessions.d1_high, 3.50, 'RES');
-      const d1Sup = pickFixedLevel(sessions.pdl    || sessions.d1_low,  3.50, 'SUP');
-      const h8Res = pickFixedLevel(sessions.h8_res || sessions.h8_high, 2.75, 'RES');
-      const h8Sup = pickFixedLevel(sessions.h8_sup || sessions.h8_low,  2.75, 'SUP');
-      const h4Res = pickFixedLevel(sessions.h4_res || sessions.h4_high, 2.00, 'RES');
-      const h4Sup = pickFixedLevel(sessions.h4_sup || sessions.h4_low,  2.00, 'SUP');
-      const h1Res = pickFixedLevel(sessions.h1_res || sessions.h1_high, 1.25, 'RES');
-      const h1Sup = pickFixedLevel(sessions.h1_sup || sessions.h1_low,  1.25, 'SUP');
-
-      const candidateList = [
-        { price: d1Res, label: 'D1 SNR RES', tf: 'D1', side: 'RES', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
-        { price: d1Sup, label: 'D1 SNR SUP', tf: 'D1', side: 'SUP', strength: '95%', col: '#fde047', zoneFill: 'rgba(253, 224, 71, 0.11)', badgeBg: 'rgba(42, 34, 6, 0.94)', prio: 10 },
-        { price: h8Res, label: 'H8 SNR RES', tf: 'H8', side: 'RES', strength: '90%', col: '#fb7185', zoneFill: 'rgba(244, 63, 94, 0.11)',  badgeBg: 'rgba(48, 8, 20, 0.94)',  prio: 9 },
-        { price: h8Sup, label: 'H8 SNR SUP', tf: 'H8', side: 'SUP', strength: '90%', col: '#34d399', zoneFill: 'rgba(16, 185, 129, 0.11)', badgeBg: 'rgba(5, 38, 24, 0.94)',  prio: 9 },
-        { price: h4Res, label: 'H4 SNR RES', tf: 'H4', side: 'RES', strength: '85%', col: '#f472b6', zoneFill: 'rgba(236, 72, 153, 0.10)', badgeBg: 'rgba(45, 10, 32, 0.94)', prio: 8 },
-        { price: h4Sup, label: 'H4 SNR SUP', tf: 'H4', side: 'SUP', strength: '85%', col: '#10b981', zoneFill: 'rgba(16, 185, 129, 0.10)', badgeBg: 'rgba(6, 36, 24, 0.94)',  prio: 8 },
-        { price: h1Res, label: 'H1 SNR RES', tf: 'H1', side: 'RES', strength: '80%', col: '#fb923c', zoneFill: 'rgba(249, 115, 22, 0.10)', badgeBg: 'rgba(45, 18, 6, 0.94)',  prio: 7 },
-        { price: h1Sup, label: 'H1 SNR SUP', tf: 'H1', side: 'SUP', strength: '80%', col: '#38bdf8', zoneFill: 'rgba(56, 189, 248, 0.10)', badgeBg: 'rgba(6, 26, 44, 0.94)',  prio: 7 }
-      ];
-
-      const usedPrices = [];
-      for (const r of candidateList) {
-        while (usedPrices.some(up => Math.abs(up - r.price) < 0.45)) {
-          r.price = +(r.price + (r.side === 'RES' ? 0.50 : -0.50)).toFixed(2);
-        }
-        usedPrices.push(r.price);
-      }
-      this._lockedHtfSnrLevels = candidateList;
-    }
-
-    const rawLevels = this._lockedHtfSnrLevels;
-
-    const nowTs = Date.now();
-    for (const r of rawLevels) {
-      const k = r.price.toFixed(2);
-      if (!this._snrTouchTracker[k]) this._snrTouchTracker[k] = { count: 0, lastTouch: 0 };
-      if (currentPrice > 0 && Math.abs(currentPrice - r.price) <= 0.18 && (nowTs - this._snrTouchTracker[k].lastTouch > 35000)) {
-        this._snrTouchTracker[k].count += 1;
-        this._snrTouchTracker[k].lastTouch = nowTs;
-      }
-    }
-
-    // Sort by priority (D1 -> H8 -> H4 -> H1)
-    rawLevels.sort((a, b) => b.prio - a.prio);
+    const rawLevels = window.getMasterBookmapSnrLevels ? window.getMasterBookmapSnrLevels(sessions, currentPrice) : [];
 
     const drawnLabelYs = [];
 
@@ -2608,8 +2602,6 @@ class BookmapRenderer {
       const y = this.priceToY(lv.price);
       if (y < this.CHART_TOP + 16 || y > this.CHART_BOTTOM - 16) continue;
 
-      const tInfo = this._snrTouchTracker[lv.price.toFixed(2)] || { count: 0 };
-      const statusStr = tInfo.count === 0 ? 'FRESH' : `TESTED ${tInfo.count}x`;
       const zoneHalfH = Math.max(5, Math.min(11, this.CHART_HEIGHT * 0.014));
 
       // 1. Shaded SNR Zone Box across the Bookmap chart (CHART_LEFT -> CHART_RIGHT)
@@ -2617,7 +2609,6 @@ class BookmapRenderer {
       ctx.fillStyle = lv.zoneFill;
       ctx.fillRect(this.CHART_LEFT, y - zoneHalfH, this.CHART_WIDTH, zoneHalfH * 2);
 
-      // Top & bottom subtle zone borders
       ctx.strokeStyle = lv.col;
       ctx.globalAlpha = 0.32;
       ctx.lineWidth = 0.8;
@@ -2635,7 +2626,7 @@ class BookmapRenderer {
       ctx.setLineDash([]);
       ctx.restore();
 
-      // 3. Crisp Left-Edge SNR Box Badge ('D1 SNR RES $3652.50 [FRESH•95%]')
+      // 3. Crisp Left-Edge SNR Box Badge ('D1 SNR RES $3685.75 [FRESH•95%]')
       let tagY = y;
       let tries = 0;
       while (drawnLabelYs.some(dy => Math.abs(dy - tagY) < 17) && tries < 6) {
@@ -2645,7 +2636,7 @@ class BookmapRenderer {
       tagY = Math.max(this.CHART_TOP + 14, Math.min(this.CHART_BOTTOM - 14, tagY));
       drawnLabelYs.push(tagY);
 
-      const text = `${lv.label} $${lv.price.toFixed(2)} [${statusStr}•${lv.strength}]`;
+      const text = lv.fullText;
       ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
       const tw = Math.ceil(ctx.measureText(text).width) + 12;
       const bx = this.CHART_LEFT + 6;
@@ -2657,7 +2648,6 @@ class BookmapRenderer {
       ctx.lineWidth = 1.1;
       ctx.strokeRect(bx, by, tw, 15);
 
-      // Left accent bar inside badge
       ctx.fillStyle = lv.col;
       ctx.fillRect(bx, by, 3, 15);
 
