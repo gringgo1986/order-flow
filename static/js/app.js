@@ -2985,6 +2985,9 @@ class App {
       const data = await res.json();
       if (data && data.candles) {
         if (this.footprint) this.footprint.setHistoricalCandles(data.candles);
+        if (this.bookmap && typeof this.bookmap.setHistoricalCandles === 'function') {
+          this.bookmap.setHistoricalCandles(data.candles);
+        }
         if (window.tradingViewChartManager) window.tradingViewChartManager.setHistoricalData(data.candles);
         this._updateReplayHUD();
       }
