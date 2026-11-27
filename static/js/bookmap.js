@@ -3428,69 +3428,127 @@ class BookmapRenderer {
       }
     }
 
-    // ── v98.0: Render On-Chart BUY / SELL Signal Badge When Large LOT BANK & Large SVP(LOT) Overlap! ──
-    if (overlapSignals.length > 0) {
-      // Pick the strongest SELL overlap above price and strongest BUY overlap below price
-      const sellOverlaps = overlapSignals.filter(o => o.isSell).sort((a, b) => b.score - a.score);
-      const buyOverlaps  = overlapSignals.filter(o => !o.isSell).sort((a, b) => b.score - a.score);
-      const activeOverlaps = [];
-      if (sellOverlaps.length > 0) activeOverlaps.push(sellOverlaps[0]);
-      if (buyOverlaps.length > 0)  activeOverlaps.push(buyOverlaps[0]);
+    // ── v98.1: Persistent 'BANK SELL' & 'BANK BUY' Overlap Monitoring Engine ──
+    if (!this._persistedBankSvpSignals) {
+      this._persistedBankSvpSignals = [];
+      try {
+        const saved = sessionStorage.getItem('gringgo_persisted_bank_svp_v98');
+        if (saved) this._persistedBankSvpSignals = JSON.parse(saved) || [];
+      } catch (e) {}
+    }
 
-      for (const sig of activeOverlaps) {
-        const sy = Math.round(sig.y) + 0.5;
-        if (sy < this.CHART_TOP + 22 || sy > this.CHART_BOTTOM - 22) continue;
-
-        const isSell = sig.isSell;
-        const mainCol = isSell ? '#ff2a55' : '#00e676';
-        const bgCol   = isSell ? 'rgba(48, 6, 18, 0.95)' : 'rgba(4, 38, 22, 0.95)';
-        const dirWord = isSell ? 'SELL' : 'BUY';
-        const arrowCh = isSell ? '▼' : '▲';
-
-        // 1. Unified Outer Frame locking LOT BANK Box + SVP(LOT) Box together on the right panel
-        ctx.save();
-        ctx.strokeStyle = mainCol;
-        ctx.lineWidth = 1.6;
-        ctx.strokeRect(bankX + 0.5, sy - rowH / 2, (bankW + svpW) - 1, rowH);
-
-        // 2. Horizontal Laser Line projecting from the overlapping LOT BANK + SVP row into the Bookmap chart
-        const rayLen = isMob ? 135 : 235;
-        const rayStartX = Math.max(this.CHART_LEFT + 20, sx - rayLen);
-        ctx.setLineDash([5, 3]);
-        ctx.strokeStyle = mainCol;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(rayStartX, sy);
-        ctx.lineTo(sx, sy);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // 3. Glowing Directional Signal Pill inside the Bookmap Chart
-        const badgeTxt = isMob
-          ? `${arrowCh} ${dirWord} $${sig.p.toFixed(2)} [${sig.bankLots}L+${sig.svpLots}L]`
-          : `🎯 SIGNAL ${dirWord} @ $${sig.p.toFixed(2)} [BANK ${sig.bankLots}L + SVP ${sig.svpLots}L] ${arrowCh}`;
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        const tw = Math.ceil(ctx.measureText(badgeTxt).width) + 14;
-        const bh = 17;
-        const bx = Math.max(this.CHART_LEFT + 10, sx - tw - 10);
-        const by = Math.round(sy - bh / 2);
-
-        ctx.fillStyle = bgCol;
-        ctx.fillRect(bx, by, tw, bh);
-        ctx.strokeStyle = mainCol;
-        ctx.lineWidth = 1.3;
-        ctx.strokeRect(bx, by, tw, bh);
-
-        // Gold confluence accent bar on left & right edge of badge
-        ctx.fillStyle = '#facc15';
-        ctx.fillRect(bx, by, 3.5, bh);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(badgeTxt, bx + 8, by + bh / 2 + 0.5);
-        ctx.restore();
+    const nowMs = Date.now();
+    // 1. Register or update any new LOT BANK + SVP large lot overlap into the persistent monitoring list
+    for (const ov of overlapSignals) {
+      const existing = this._persistedBankSvpSignals.find(
+        s => s.isSell === ov.isSell && Math.abs(s.p - ov.p) <= 0.40
+      );
+      if (existing) {
+        existing.bankLots = Math.max(existing.bankLots, ov.bankLots);
+        existing.svpLots  = Math.max(existing.svpLots, ov.svpLots);
+        existing.score    = existing.bankLots * 2.5 + existing.svpLots;
+        existing.lastSeen = nowMs;
+      } else {
+        this._persistedBankSvpSignals.push({
+          p: ov.p,
+          isSell: ov.isSell,
+          bankLots: ov.bankLots,
+          svpLots: ov.svpLots,
+          score: ov.score,
+          firstSeen: nowMs,
+          lastSeen: nowMs
+        });
       }
+    }
+
+    // 2. Keep persisted signals locked for continuous monitoring!
+    //    Only prune if price has moved > $9.00 away OR broken clean through the level by > $2.50
+    this._persistedBankSvpSignals = this._persistedBankSvpSignals.filter(s => {
+      if (Math.abs(s.p - effectivePrice) > 9.0) return false;
+      if (s.isSell && effectivePrice > s.p + 2.50) return false;
+      if (!s.isSell && effectivePrice < s.p - 2.50) return false;
+      return true;
+    });
+
+    // Keep top 2 strongest BANK SELL and top 2 strongest BANK BUY signals for clean monitoring
+    const persistedSells = this._persistedBankSvpSignals
+      .filter(s => s.isSell)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2);
+    const persistedBuys = this._persistedBankSvpSignals
+      .filter(s => !s.isSell)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2);
+
+    this._persistedBankSvpSignals = [...persistedSells, ...persistedBuys];
+    try {
+      sessionStorage.setItem('gringgo_persisted_bank_svp_v98', JSON.stringify(this._persistedBankSvpSignals));
+    } catch (e) {}
+
+    // 3. Render Persistent 'BANK SELL' & 'BANK BUY' Badges on the Bookmap Chart
+    const drawnBankSigYs = [];
+    for (const sig of this._persistedBankSvpSignals) {
+      const sy = Math.round(this.priceToY(sig.p)) + 0.5;
+      if (sy < this.CHART_TOP + 20 || sy > this.CHART_BOTTOM - 20) continue;
+
+      const isSell = sig.isSell;
+      const mainCol = isSell ? '#ff2a55' : '#00e676';
+      const bgCol   = isSell ? 'rgba(48, 6, 18, 0.95)' : 'rgba(4, 38, 22, 0.95)';
+      const labelWord = isSell ? 'BANK SELL' : 'BANK BUY';
+      const arrowCh = isSell ? '▼' : '▲';
+
+      // A. Unified Outer Frame locking LOT BANK Box + SVP(LOT) Box together on the right panel
+      ctx.save();
+      ctx.strokeStyle = mainCol;
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(bankX + 0.5, sy - rowH / 2, (bankW + svpW) - 1, rowH);
+
+      // B. Full-Monitor Horizontal Guide Line across the right side of the chart so user can track price approaching this level
+      const rayLen = isMob ? 150 : 275;
+      const rayStartX = Math.max(this.CHART_LEFT + 20, sx - rayLen);
+      ctx.setLineDash([5, 3]);
+      ctx.strokeStyle = mainCol;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(rayStartX, sy);
+      ctx.lineTo(sx, sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Anti-collision vertical slotting if two signals are close
+      let badgeCenterY = sy;
+      let tries = 0;
+      while (drawnBankSigYs.some(dy => Math.abs(dy - badgeCenterY) < 19) && tries < 4) {
+        badgeCenterY += (isSell ? -19 : 19);
+        tries++;
+      }
+      drawnBankSigYs.push(badgeCenterY);
+
+      // C. Persistent 'BANK SELL' / 'BANK BUY' Badge inside the Bookmap Chart
+      const badgeTxt = isMob
+        ? `${arrowCh} ${labelWord} $${sig.p.toFixed(2)} [${sig.bankLots}L•${sig.svpLots}L]`
+        : `🏦 ${labelWord} @ $${sig.p.toFixed(2)} [BANK ${sig.bankLots}L • SVP ${sig.svpLots}L] ${arrowCh}`;
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      const tw = Math.ceil(ctx.measureText(badgeTxt).width) + 14;
+      const bh = 17;
+      const bx = Math.max(this.CHART_LEFT + 10, sx - tw - 10);
+      const by = Math.round(badgeCenterY - bh / 2);
+
+      ctx.fillStyle = bgCol;
+      ctx.fillRect(bx, by, tw, bh);
+      ctx.strokeStyle = mainCol;
+      ctx.lineWidth = 1.3;
+      ctx.strokeRect(bx, by, tw, bh);
+
+      // Gold confluence accent bar on left edge
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(bx, by, 3.5, bh);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeTxt, bx + 8, by + bh / 2 + 0.5);
+      ctx.restore();
     }
 
     // Live Current Price Green Highlight Box on Price Axis
