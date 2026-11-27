@@ -3413,41 +3413,62 @@ class BookmapRenderer {
         ctx.fillText(`${svpLots}L`, sx + sw - 3, y + 3);
       }
 
-      // ── v98.0: Check if Large LOT BANK and Large SVP(LOT) OVERLAP on this exact price row! ──
+      // ── v100.0: Check if Large LOT BANK and Large SVP(LOT) OVERLAP with Delta/Absorption Alignment ──
       const isLargeBank = isMajorBankWall || bankLots >= 60;
       const isLargeSvp  = isPalingKuat || isSvpKuat || svpLots >= 260;
-      if (isLargeBank && isLargeSvp) {
+      // Verify SVP absorption bias (for SELL: sellers active buyShare <= 0.62; for BUY: buyers active buyShare >= 0.38)
+      const biasOk = isAsk ? (buyShare <= 0.62) : (buyShare >= 0.38);
+      if (isLargeBank && isLargeSvp && biasOk) {
         overlapSignals.push({
           p,
           y,
           isSell: isAsk,
           bankLots,
           svpLots,
+          buyShare,
           isPalingKuat,
           score: bankLots * 2.5 + svpLots
         });
       }
     }
 
-    // ── v98.1: Persistent 'BANK SELL' & 'BANK BUY' Overlap Monitoring Engine ──
+    // ── v100.0: 2-Phase Smart Institutional 'LOT BANK + SVP' Engine (Pending Zone -> Confirmed SAH + Anti-Spoofing + SNR A+) ──
     if (!this._persistedBankSvpSignals) {
       this._persistedBankSvpSignals = [];
       try {
-        const saved = sessionStorage.getItem('gringgo_persisted_bank_svp_v98');
+        const saved = sessionStorage.getItem('gringgo_persisted_bank_svp_v100');
         if (saved) this._persistedBankSvpSignals = JSON.parse(saved) || [];
       } catch (e) {}
     }
 
+    // Map live rows by price so we can verify real-time LOT BANK retention (Anti-Spoofing / Wall Pulling check!)
+    const liveRowMap = new Map();
+    for (const r of rows) {
+      liveRowMap.set(r.p.toFixed(2), r);
+    }
+
+    // Fetch Master Bookmap SNR levels (H1, H4, H8, D1) to check A+ Confluence
+    const masterSnrList = (typeof window !== 'undefined' && window.getMasterBookmapSnrLevels)
+      ? window.getMasterBookmapSnrLevels(snap.sessions || {}, effectivePrice)
+      : [];
+
     const nowMs = Date.now();
-    // 1. Register or update any new LOT BANK + SVP large lot overlap into the persistent monitoring list
+
+    // 1. Register or update overlapping LOT BANK + SVP zones
     for (const ov of overlapSignals) {
+      const matchedSnr = masterSnrList.find(m => Math.abs(m.price - ov.p) <= 0.45);
+      const isAPlus = Boolean(matchedSnr);
+      const snrTf = matchedSnr ? matchedSnr.tf : null;
+
       const existing = this._persistedBankSvpSignals.find(
-        s => s.isSell === ov.isSell && Math.abs(s.p - ov.p) <= 0.40
+        s => s.isSell === ov.isSell && Math.abs(s.p - ov.p) <= 0.35
       );
       if (existing) {
-        existing.bankLots = Math.max(existing.bankLots, ov.bankLots);
+        existing.bankLots = ov.bankLots; // Live current Bank Lots (tracks pulling/stacking honestly!)
         existing.svpLots  = Math.max(existing.svpLots, ov.svpLots);
-        existing.score    = existing.bankLots * 2.5 + existing.svpLots;
+        existing.isAPlus  = existing.isAPlus || isAPlus;
+        existing.snrTf    = existing.snrTf || snrTf;
+        existing.score    = existing.bankLots * 2.5 + existing.svpLots + (existing.isAPlus ? 120 : 0);
         existing.lastSeen = nowMs;
       } else {
         this._persistedBankSvpSignals.push({
@@ -3455,61 +3476,107 @@ class BookmapRenderer {
           isSell: ov.isSell,
           bankLots: ov.bankLots,
           svpLots: ov.svpLots,
-          score: ov.score,
+          isAPlus,
+          snrTf,
+          wasTriggered: false,
+          triggeredAt: 0,
+          score: ov.score + (isAPlus ? 120 : 0),
           firstSeen: nowMs,
           lastSeen: nowMs
         });
       }
     }
 
-    // 2. Keep persisted signals locked for continuous monitoring!
-    //    Only prune if price has moved > $9.00 away OR broken clean through the level by > $2.50
+    // 2. Evaluate 2-Phase Lifecycle & Anti-Spoofing Filter on Every Persisted Signal
     this._persistedBankSvpSignals = this._persistedBankSvpSignals.filter(s => {
-      if (Math.abs(s.p - effectivePrice) > 9.0) return false;
-      if (s.isSell && effectivePrice > s.p + 2.50) return false;
-      if (!s.isSell && effectivePrice < s.p - 2.50) return false;
+      // A. Distance prune (> $8.50 away)
+      if (Math.abs(s.p - effectivePrice) > 8.50) return false;
+
+      // B. Breakout Invalidation: If price breaks cleanly through the Bank Wall by > $0.60, cancel immediately!
+      if (s.isSell && effectivePrice > s.p + 0.60) return false;
+      if (!s.isSell && effectivePrice < s.p - 0.60) return false;
+
+      // C. Anti-Spoofing / Wall Pulling Filter: Check live row's bankLots if visible on ladder
+      const liveR = liveRowMap.get(s.p.toFixed(2));
+      if (liveR) {
+        s.bankLots = liveR.bankLots;
+        s.svpLots  = Math.max(s.svpLots, liveR.svpLots);
+        // If Bank pulled its resting orders (< 35L remaining) BEFORE price triggered a bounce, remove fake wall!
+        if (!s.wasTriggered && liveR.bankLots < 35) return false;
+      }
+
+      // D. Phase 1 -> Phase 2 Trigger Check:
+      //    When live price touches/tests within <= $0.38 of the wall while Bank Lots hold firm (>= 50L) and price is not breaking through:
+      const distToWall = Math.abs(effectivePrice - s.p);
+      const holdingFirm = (s.bankLots >= 50);
+      const rejectingOk = s.isSell ? (effectivePrice <= s.p + 0.25) : (effectivePrice >= s.p - 0.25);
+      if (distToWall <= 0.38 && holdingFirm && rejectingOk) {
+        s.wasTriggered = true;
+        s.triggeredAt = nowMs;
+      }
+
+      // Refresh A+ SNR confluence flag
+      const matchedSnr = masterSnrList.find(m => Math.abs(m.price - s.p) <= 0.45);
+      if (matchedSnr) {
+        s.isAPlus = true;
+        s.snrTf = matchedSnr.tf;
+      }
+
       return true;
     });
 
-    // Keep top 2 strongest BANK SELL and top 2 strongest BANK BUY signals for clean monitoring
-    const persistedSells = this._persistedBankSvpSignals
-      .filter(s => s.isSell)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 2);
-    const persistedBuys = this._persistedBankSvpSignals
-      .filter(s => !s.isSell)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 2);
+    // Keep top 2 strongest BANK SELL and top 2 strongest BANK BUY signals (Confirmed SAH signals take priority over Pending zones)
+    const sortByPriority = (a, b) => ((b.wasTriggered ? 500 : 0) - (a.wasTriggered ? 500 : 0)) || (b.score - a.score);
+    const persistedSells = this._persistedBankSvpSignals.filter(s => s.isSell).sort(sortByPriority).slice(0, 2);
+    const persistedBuys  = this._persistedBankSvpSignals.filter(s => !s.isSell).sort(sortByPriority).slice(0, 2);
 
     this._persistedBankSvpSignals = [...persistedSells, ...persistedBuys];
     try {
-      sessionStorage.setItem('gringgo_persisted_bank_svp_v98', JSON.stringify(this._persistedBankSvpSignals));
+      sessionStorage.setItem('gringgo_persisted_bank_svp_v100', JSON.stringify(this._persistedBankSvpSignals));
     } catch (e) {}
 
-    // 3. Render Persistent 'BANK SELL' & 'BANK BUY' Badges on the Bookmap Chart
+    // 3. Render 2-Phase '⏳ ZON BANK ...' (Pending) vs '⚡/⭐ A+ BANK ... [SAH]' (Confirmed) on the Bookmap Chart
     const drawnBankSigYs = [];
     for (const sig of this._persistedBankSvpSignals) {
       const sy = Math.round(this.priceToY(sig.p)) + 0.5;
       if (sy < this.CHART_TOP + 20 || sy > this.CHART_BOTTOM - 20) continue;
 
       const isSell = sig.isSell;
-      const mainCol = isSell ? '#ff2a55' : '#00e676';
-      const bgCol   = isSell ? 'rgba(48, 6, 18, 0.95)' : 'rgba(4, 38, 22, 0.95)';
-      const labelWord = isSell ? 'BANK SELL' : 'BANK BUY';
-      const arrowCh = isSell ? '▼' : '▲';
+      const isConfirmed = Boolean(sig.wasTriggered);
+      const isAPlus = Boolean(sig.isAPlus);
+
+      // Visual styling by Phase:
+      // - Phase 1 (Pending Monitoring Zone): Amber-Gold / Muted Red-Green border, dashed line
+      // - Phase 2 (Confirmed Entry SAH): Vivid Neon Crimson (#ff2a55) / Neon Emerald (#00e676) border, bright laser line
+      const mainCol = isConfirmed
+        ? (isSell ? '#ff2a55' : '#00e676')
+        : (isSell ? '#fb923c' : '#38bdf8');
+      const bgCol = isConfirmed
+        ? (isSell ? 'rgba(56, 6, 20, 0.96)' : 'rgba(4, 44, 24, 0.96)')
+        : 'rgba(15, 23, 38, 0.92)';
+
+      const dirWord = isSell ? 'BANK SELL' : 'BANK BUY';
+      let badgeTxt;
+      if (isConfirmed) {
+        const prefix = isAPlus ? '⭐ A+' : '⚡';
+        badgeTxt = `${prefix} ${dirWord} ${sig.bankLots}L + ${sig.svpLots}L [SAH]`;
+      } else {
+        const prefix = isAPlus ? '⏳ ZON A+' : '⏳ ZON';
+        badgeTxt = `${prefix} ${dirWord} ${sig.bankLots}L + ${sig.svpLots}L`;
+      }
 
       // A. Unified Outer Frame locking LOT BANK Box + SVP(LOT) Box together on the right panel
       ctx.save();
       ctx.strokeStyle = mainCol;
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = isConfirmed ? 1.8 : 1.2;
       ctx.strokeRect(bankX + 0.5, sy - rowH / 2, (bankW + svpW) - 1, rowH);
 
-      // B. Full-Monitor Horizontal Guide Line across the right side of the chart so user can track price approaching this level
+      // B. Horizontal Guide Line into the Bookmap chart
       const rayLen = isMob ? 150 : 275;
       const rayStartX = Math.max(this.CHART_LEFT + 20, sx - rayLen);
-      ctx.setLineDash([5, 3]);
+      ctx.setLineDash(isConfirmed ? [6, 2] : [3, 4]);
       ctx.strokeStyle = mainCol;
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = isConfirmed ? 1.6 : 1.1;
       ctx.beginPath();
       ctx.moveTo(rayStartX, sy);
       ctx.lineTo(sx, sy);
@@ -3525,8 +3592,7 @@ class BookmapRenderer {
       }
       drawnBankSigYs.push(badgeCenterY);
 
-      // C. Persistent 'BANK SELL 125L + 420L' / 'BANK BUY 108L + 435L' Badge inside the Bookmap Chart
-      const badgeTxt = `${labelWord} ${sig.bankLots}L + ${sig.svpLots}L`;
+      // C. Badge Box inside the Bookmap Chart
       ctx.font = 'bold 9px "JetBrains Mono", monospace';
       const tw = Math.ceil(ctx.measureText(badgeTxt).width) + 14;
       const bh = 17;
@@ -3535,15 +3601,15 @@ class BookmapRenderer {
 
       ctx.fillStyle = bgCol;
       ctx.fillRect(bx, by, tw, bh);
-      ctx.strokeStyle = mainCol;
-      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = isAPlus ? '#facc15' : mainCol;
+      ctx.lineWidth = isConfirmed ? 1.4 : 1.0;
       ctx.strokeRect(bx, by, tw, bh);
 
-      // Gold confluence accent bar on left edge
-      ctx.fillStyle = '#facc15';
+      // Left accent bar (Gold for A+, Neon Red/Green for Confirmed, Amber/Cyan for Pending)
+      ctx.fillStyle = isAPlus ? '#facc15' : mainCol;
       ctx.fillRect(bx, by, 3.5, bh);
 
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = isConfirmed ? '#ffffff' : (isAPlus ? '#fef08a' : '#cbd5e1');
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeTxt, bx + 8, by + bh / 2 + 0.5);
